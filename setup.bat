@@ -22,7 +22,7 @@ set "HAS_ERROR=0"
 REM =============================================
 REM  1. Check Python
 REM =============================================
-echo [1/8] Checking Python ...
+echo [1/9] Checking Python ...
 python --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Python not found. Please install Python ^>=3.11:
@@ -37,7 +37,7 @@ echo        Python %PY_VER%  OK
 REM =============================================
 REM  2. Create virtualenv
 REM =============================================
-echo [2/8] Checking virtualenv ...
+echo [2/9] Checking virtualenv ...
 if exist "%VENV_PYTHON%" (
     echo        .venv exists, skip creation.
 ) else (
@@ -55,7 +55,7 @@ if exist "%VENV_PYTHON%" (
 REM =============================================
 REM  3. Upgrade pip + install deps
 REM =============================================
-echo [3/8] Installing Python dependencies (this may take 5-10 min) ...
+echo [3/9] Installing Python dependencies (this may take 5-10 min) ...
 "%VENV_PIP%" install --upgrade pip -q 2>nul
 "%VENV_PIP%" install -r "%REQ_FILE%" -q
 if errorlevel 1 (
@@ -80,7 +80,7 @@ if errorlevel 1 (
 REM =============================================
 REM  4. .env config
 REM =============================================
-echo [4/8] Checking .env config ...
+echo [4/9] Checking .env config ...
 if exist "%ENV_FILE%" (
     echo        .env exists
 ) else (
@@ -97,7 +97,7 @@ if exist "%ENV_FILE%" (
 REM =============================================
 REM  5. Check FreeCAD
 REM =============================================
-echo [5/8] Checking FreeCAD ...
+echo [5/9] Checking FreeCAD ...
 set "FC_BIN="
 
 REM Try registry
@@ -152,15 +152,12 @@ REM =============================================
 REM  6. Check Node.js + npm install
 REM =============================================
 echo [6/9] Checking Node.js ...
-node --version >nul 2>&1
+where node >nul 2>&1
 if errorlevel 1 (
-    echo        Node.js not found (optional: PPT export only)
+    echo        Node.js not found - PPT export will not work.
     echo        Download: https://nodejs.org/
 ) else (
-    node --version > "%TEMP%\node_ver.txt" 2>&1
-    set /p NODE_VER_TXT=<"%TEMP%\node_ver.txt"
-    echo        !NODE_VER_TXT! OK
-    del "%TEMP%\node_ver.txt" 2>nul
+    for /f "delims=" %%v in ('node -v 2^>^&1') do echo        Node %%v OK
 )
 
 echo [7/9] Installing Node.js packages ...
@@ -198,14 +195,11 @@ REM =============================================
 REM  9. Vector DB
 REM =============================================
 echo [9/9] Checking vector database ...
-set "DB_FILE=%ROOT_DIR%\db_data\vector_map_new.db"
-if not exist "%DB_FILE%" (
-    echo [WARN] db_data\vector_map_new.db not found.
-    echo        Copy it from the source machine (RAG feature requires it).
+if exist "%ROOT_DIR%\db_data\vector_map_new.db" (
+    echo        vector_map_new.db found.
 ) else (
-    for %%f in ("%DB_FILE%") do set DB_SIZE=%%~zf
-    set /a DB_MB=!DB_SIZE!/1048576
-    echo        vector_map_new.db found ^(!DB_MB! MB^)
+    echo [WARN] db_data\vector_map_new.db not found.
+    echo        Copy it from the source machine - RAG feature requires it.
 )
 
 REM =============================================
