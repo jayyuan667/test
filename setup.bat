@@ -149,22 +149,39 @@ if defined FC_BIN (
 )
 
 REM =============================================
-REM  6. Check Node.js (optional - PPT export only)
+REM  6. Check Node.js + npm install
 REM =============================================
-echo [6/8] Checking Node.js ...
+echo [6/9] Checking Node.js ...
 node --version >nul 2>&1
 if errorlevel 1 (
     echo        Node.js not found (optional: PPT export only)
     echo        Download: https://nodejs.org/
 ) else (
-    for /f "tokens=2 delims=v" %%v in ('node --version 2^>^&1') do set NODE_VER=%%v
-    echo        Node v!NODE_VER! OK
+    node --version > "%TEMP%\node_ver.txt" 2>&1
+    set /p NODE_VER_TXT=<"%TEMP%\node_ver.txt"
+    echo        !NODE_VER_TXT! OK
+    del "%TEMP%\node_ver.txt" 2>nul
+)
+
+echo [7/9] Installing Node.js packages ...
+if exist "%ROOT_DIR%\package.json" (
+    pushd "%ROOT_DIR%"
+    call npm install
+    if errorlevel 1 (
+        echo [WARN] npm install failed. PPT export may not work.
+        echo        Make sure Node.js is installed and in PATH.
+    ) else (
+        echo        npm packages installed.
+    )
+    popd
+) else (
+    echo        No package.json found, skip npm install.
 )
 
 REM =============================================
-REM  7. VC++ Redistributable check
+REM  8. VC++ Redistributable check
 REM =============================================
-echo [7/8] Checking VC++ Redistributable ...
+echo [8/9] Checking VC++ Redistributable ...
 set "VCREDIST=0"
 reg query "HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64" /v Version 2>nul | find "0" >nul && set "VCREDIST=1"
 reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X64" /v Version 2>nul | find "0" >nul && set "VCREDIST=1"
@@ -178,16 +195,17 @@ if "!VCREDIST!"=="1" (
 )
 
 REM =============================================
-REM  8. Vector DB
+REM  9. Vector DB
 REM =============================================
-echo [8/8] Checking vector database ...
-if not exist "%ROOT_DIR%\db_data\vector_map_new.db" (
+echo [9/9] Checking vector database ...
+set "DB_FILE=%ROOT_DIR%\db_data\vector_map_new.db"
+if not exist "%DB_FILE%" (
     echo [WARN] db_data\vector_map_new.db not found.
     echo        Copy it from the source machine (RAG feature requires it).
 ) else (
-    for %%f in ("%ROOT_DIR%\db_data\vector_map_new.db") do set "DB_SIZE=%%~zf"
-    set /a "DB_MB=!DB_SIZE!/1048576"
-    echo        vector_map_new.db found (!DB_MB! MB)
+    for %%f in ("%DB_FILE%") do set DB_SIZE=%%~zf
+    set /a DB_MB=!DB_SIZE!/1048576
+    echo        vector_map_new.db found ^(!DB_MB! MB^)
 )
 
 REM =============================================

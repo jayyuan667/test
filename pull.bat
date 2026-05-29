@@ -1,10 +1,18 @@
 @echo off
 
-echo 开始拉取
+echo ============================================
+echo   Git Pull + Submodule Update
+echo ============================================
+echo   Pull: git pull
 git pull
-echo 拉取完成
-echo 开始同步子仓库
+if errorlevel 1 (
+    echo   Pull failed. Check your connection or merge conflicts.
+    pause
+    exit /b 1
+)
+echo   Submodule: git submodule update --remote
 git submodule update --remote
-echo 同步子仓库完成
-
+echo ============================================
+echo   Done.
+echo ============================================
 pause
