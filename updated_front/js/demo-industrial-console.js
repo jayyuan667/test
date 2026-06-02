@@ -1,4 +1,25 @@
 ﻿
+    // ── Toast 通知系统 ──
+    let _toastStack = null;
+    function ensureToastStack() {
+      if (!_toastStack || !document.contains(_toastStack)) {
+        _toastStack = document.createElement('div');
+        _toastStack.className = 'toast-stack';
+        document.body.appendChild(_toastStack);
+      }
+      return _toastStack;
+    }
+    function showToast(message, type) {
+      var stack = ensureToastStack();
+      var el = document.createElement('div');
+      el.className = 'toast-item toast-' + (type || 'error');
+      el.textContent = message;
+      stack.appendChild(el);
+      el.addEventListener('animationend', function(e) {
+        if (e.animationName === 'toast-out') { el.remove(); }
+      });
+    }
+
     const navItems = [...document.querySelectorAll('.nav-item')];
     const topTabs = [...document.querySelectorAll('.top-tab')];
     const pages = [...document.querySelectorAll('.page')];
@@ -1156,7 +1177,7 @@
         if (backendState.latestTaskId === taskId) backendState.latestTaskId = null;
         renderHistoryPage();
       } catch (error) {
-        alert(`删除失败：${error.message}`);
+        showToast('删除失败：' + error.message, 'error');
         if (buttonEl) {
           buttonEl.disabled = false;
           buttonEl.textContent = '删除';
@@ -4011,7 +4032,7 @@
       const current = dbRecords[key];
       if (isPublicLibraryActive()) {
         closeDbDeleteModal();
-        alert('公共工艺库只读，不能删除废表。');
+        showToast('公共工艺库只读，不能删除废表。', 'warn');
         return;
       }
       if (current?.id) {
@@ -4019,7 +4040,7 @@
           .then(() => loadBackendLibrary(backendState.activeLibraryKey))
           .catch((error) => {
             console.error(error);
-            alert(error.message || '删除失败');
+            showToast(error.message || '删除失败', 'error');
           })
           .finally(closeDbDeleteModal);
         return;
@@ -4048,7 +4069,7 @@
     async function confirmDbDeleteLibrary() {
       if (isPublicLibraryActive()) {
         closeDbDeleteLibraryModal();
-        alert('公共工艺库只读，不能删除当前数据库。');
+        showToast('公共工艺库只读，不能删除当前数据库。', 'warn');
         return;
       }
 
@@ -4060,7 +4081,7 @@
         renderDbList();
       } catch (error) {
         console.error(error);
-        alert(error.message || '删除当前数据库失败');
+        showToast(error.message || '删除当前数据库失败', 'error');
       }
     }
 
@@ -4508,7 +4529,7 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
           await loadBackendLibrary(backendState.activeLibraryKey);
         } catch (error) {
           console.error(error);
-          alert(error.message || '保存失败');
+          showToast(error.message || '保存失败', 'error');
         }
         toggleDbEditor(false);
         return;
@@ -4681,7 +4702,7 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
               console.warn(`[demo] delete failed for ${taskId}:`, e);
             }
           }
-          if (failCount) alert(`${ids.length - failCount} 条已删除，${failCount} 条失败。`);
+          if (failCount) showToast((ids.length - failCount) + ' 条已删除，' + failCount + ' 条失败。', 'warn');
           updateHistoryBatchDeleteBtn();
           updateHistorySelectAllState();
           renderHistoryPage();

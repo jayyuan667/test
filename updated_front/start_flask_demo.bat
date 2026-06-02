@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
 
@@ -30,13 +30,13 @@ if exist "%ROOT_DIR%\.venv\Scripts\python.exe" (
 
 :: Kill any existing process on port 5090
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5090.*LISTENING" 2^>nul') do (
-    echo [提示] 端口 5090 被占用 (PID: %%a)，正在释放...
+    echo [提示] 端口 5090 被占用 ^(PID: %%a^)，正在释放...
     taskkill /f /pid %%a >nul 2>&1
 )
 
 :: Start backend
 echo [启动] 启动 Flask 后端...
-start "智能工艺系统-后端" /D "%ROOT_DIR%" cmd /c "set PYTHONIOENCODING=utf-8 && "!PYTHON_EXE!" -m backend.run"
+start "智能工艺系统-后端" /D "%ROOT_DIR%" "!PYTHON_EXE!" -m backend.run
 
 :: Wait for backend to be ready
 echo [等待] 等待后端就绪...

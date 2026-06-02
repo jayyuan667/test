@@ -37,7 +37,7 @@
     html, body { height: 100%; }
     body {
       margin: 0;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "WenQuanYi Micro Hei", sans-serif;
       background:
         linear-gradient(rgba(20, 34, 52, 0.035) 1px, transparent 1px),
         linear-gradient(90deg, rgba(20, 34, 52, 0.035) 1px, transparent 1px),
@@ -127,7 +127,7 @@
     }
 
     .brand-title {
-      font-family: 'Rajdhani', 'Noto Sans SC', sans-serif;
+      font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
       font-size: 24px;
       font-weight: 700;
       letter-spacing: 0.06em;
@@ -452,7 +452,7 @@
     }
 
     .status-value {
-      font-family: 'Rajdhani', sans-serif;
+      font-family: system-ui, sans-serif;
       font-size: 30px;
       font-weight: 700;
       line-height: 1;
@@ -533,7 +533,7 @@
       background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(246,249,252,0.94));
       border: 1px solid #d9e4ef;
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.88);
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       line-height: 1.5;
     }
 
@@ -751,7 +751,7 @@
       background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(246,249,252,0.94));
       border: 1px solid #d9e4ef;
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.88);
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       line-height: 1.5;
     }
 
@@ -859,7 +859,7 @@
       border-radius: 14px;
       background: #111b28;
       color: #f2f7fc;
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       font-size: 12px;
       line-height: 1.8;
       overflow: auto;
@@ -901,7 +901,7 @@
 
     .summary-card strong {
       display: block;
-      font-family: 'Rajdhani', sans-serif;
+      font-family: system-ui, sans-serif;
       font-size: 34px;
       line-height: 1;
       margin-bottom: 8px;
@@ -946,7 +946,7 @@
     }
 
     .browser-tab strong {
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       font-size: 12px;
       color: var(--accent);
     }
@@ -1047,7 +1047,7 @@
     }
 
     .browser-indicator {
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       font-size: 12px;
       color: var(--text-soft);
     }
@@ -1395,7 +1395,7 @@
       background: #fff;
       border: 1px solid #dbe5ef;
       color: #2f4a66;
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       font-size: 12px;
       font-weight: 600;
       box-shadow: 0 8px 18px rgba(27, 43, 64, 0.05);
@@ -1956,7 +1956,7 @@
     .step-table .step-no {
       width: 72px;
       text-align: center;
-      font-family: 'Rajdhani', sans-serif;
+      font-family: system-ui, sans-serif;
       font-size: 16px;
       font-weight: 700;
       color: var(--accent);
@@ -1979,7 +1979,7 @@
     }
 
     .step-row .step-code {
-      font-family: 'Rajdhani', sans-serif;
+      font-family: system-ui, sans-serif;
       font-size: 22px;
       font-weight: 700;
       color: var(--accent);
@@ -2138,7 +2138,7 @@
       padding: 12px 14px;
       line-height: 1.65;
       color: #20354f;
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       font-size: 12px;
     }
 
@@ -2218,7 +2218,7 @@
     }
 
     .history-table-count {
-      font-family: 'Rajdhani', sans-serif;
+      font-family: system-ui, sans-serif;
       font-size: 26px;
       font-weight: 700;
       color: var(--accent);
@@ -2461,7 +2461,7 @@
       background: rgba(255,255,255,0.9);
       border: 1px solid #dce4ee;
       color: var(--text-soft);
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       font-size: 12px;
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
@@ -2614,7 +2614,7 @@
       color: var(--accent-strong);
       font-size: 11px;
       font-weight: 800;
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       flex-shrink: 0;
     }
 
@@ -2830,7 +2830,7 @@
     .toolbar-pill strong { color: var(--text); font-weight: 700; }
     .toolbar-right { display: flex; align-items: center; gap: 12px; }
     .toolbar-clock {
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       font-size: 12px;
       color: var(--text-soft);
       padding: 8px 12px;
@@ -2923,7 +2923,7 @@
     }
 
     .db-stat-value {
-      font-family: 'Rajdhani', sans-serif;
+      font-family: system-ui, sans-serif;
       font-size: 34px;
       font-weight: 700;
       line-height: 1;
@@ -3093,7 +3093,7 @@
     }
 
     .db-page-indicator {
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       font-size: 12px;
       color: var(--text-soft);
     }
@@ -3294,7 +3294,7 @@
     }
 
     .log-time {
-      font-family: 'JetBrains Mono', monospace;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
       color: var(--text-soft);
       flex-shrink: 0;
     }
@@ -3537,7 +3537,7 @@
     .review-table td:first-child,
     .review-table .step-no {
       text-align: left;
-      font-family: 'Noto Sans SC', sans-serif;
+      font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "WenQuanYi Micro Hei", sans-serif;
       font-size: 13px;
       font-weight: 700;
       color: #35506b;
@@ -4460,4 +4460,39 @@ body {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 18px;
+}
+
+/* ── Toast notification ── */
+.toast-stack {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast-item {
+  pointer-events: auto;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  animation: toast-in 0.28s cubic-bezier(0.34,1.56,0.64,1), toast-out 0.22s ease 2.8s forwards;
+  max-width: 420px;
+  line-height: 1.5;
+}
+.toast-item.toast-error { background: #e74c3c; }
+.toast-item.toast-success { background: #27ae60; }
+.toast-item.toast-warn { background: #f39c12; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes toast-out {
+  from { opacity: 1; }
+  to { opacity: 0; transform: translateY(-8px); }
 }

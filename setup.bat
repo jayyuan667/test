@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
 
@@ -61,7 +61,7 @@ if exist "%ENV_FILE%" (
 ) else (
     if exist "%ENV_EXAMPLE%" (
         copy "%ENV_EXAMPLE%" "%ENV_FILE%" >nul
-        echo        已复制 .env.example -> .env，请确认 API Key 正确
+        echo        已复制 .env.example -^> .env，请确认 API Key 正确
     ) else (
         echo [警告] 未找到 .env.example，请手动创建 .env
     )
