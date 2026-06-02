@@ -1,0 +1,813 @@
+{
+  "Y1": {
+    "total_items": 42,
+    "numeric_count": 7,
+    "zones": {
+      "center": 11,
+      "tr": 1,
+      "right": 3,
+      "bottom": 10,
+      "br": 12,
+      "bl": 5
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        28.2,
+        35.0,
+        50.0,
+        200.0,
+        705.0
+      ],
+      "right": [],
+      "bl": [],
+      "bottom": [
+        57.0,
+        304.0
+      ],
+      "br": []
+    }
+  },
+  "Y10": {
+    "total_items": 18,
+    "numeric_count": 1,
+    "zones": {
+      "tl": 1,
+      "center": 5,
+      "tr": 2,
+      "bl": 3,
+      "bottom": 6,
+      "br": 1
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        15.0
+      ],
+      "right": [],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y11": {
+    "total_items": 1,
+    "numeric_count": 0,
+    "zones": {
+      "bottom": 1
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [],
+      "right": [],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y12": {
+    "total_items": 6,
+    "numeric_count": 1,
+    "zones": {
+      "center": 2,
+      "br": 4
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        37.0
+      ],
+      "right": [],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y13": {
+    "total_items": 35,
+    "numeric_count": 6,
+    "zones": {
+      "center": 7,
+      "tr": 3,
+      "tl": 1,
+      "right": 4,
+      "bl": 13,
+      "br": 7
+    },
+    "large_nums_by_zone": {
+      "tl": [
+        21.68
+      ],
+      "tr": [
+        27.3
+      ],
+      "center": [
+        42.0,
+        120.0
+      ],
+      "right": [
+        23.9
+      ],
+      "bl": [
+        11.0
+      ],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y14": {
+    "total_items": 21,
+    "numeric_count": 7,
+    "zones": {
+      "tr": 3,
+      "center": 10,
+      "right": 1,
+      "bottom": 6,
+      "br": 1
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        17.9,
+        240.0,
+        1080.0,
+        1490.0,
+        1980.0
+      ],
+      "right": [
+        13.0
+      ],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y15": {
+    "total_items": 27,
+    "numeric_count": 9,
+    "zones": {
+      "center": 3,
+      "tr": 1,
+      "right": 3,
+      "bottom": 7,
+      "br": 10,
+      "bl": 3
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        329.0,
+        336.0
+      ],
+      "right": [
+        70.0
+      ],
+      "bl": [],
+      "bottom": [
+        170.0,
+        274.0,
+        337.0,
+        339.0,
+        342.0,
+        350.0
+      ],
+      "br": []
+    }
+  },
+  "Y16": {
+    "total_items": 13,
+    "numeric_count": 4,
+    "zones": {
+      "center": 7,
+      "bl": 1,
+      "br": 5
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        54.6,
+        154.6,
+        163.8,
+        183.8
+      ],
+      "right": [],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y17": {
+    "total_items": 14,
+    "numeric_count": 1,
+    "zones": {
+      "right": 1,
+      "center": 2,
+      "bottom": 2,
+      "br": 9
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        251.0
+      ],
+      "right": [],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y18": {
+    "total_items": 17,
+    "numeric_count": 1,
+    "zones": {
+      "tr": 1,
+      "center": 1,
+      "right": 2,
+      "br": 11,
+      "bl": 2
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [],
+      "right": [
+        14.0
+      ],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y19": {
+    "total_items": 33,
+    "numeric_count": 6,
+    "zones": {
+      "center": 10,
+      "right": 8,
+      "br": 10,
+      "bl": 5
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        268.0
+      ],
+      "right": [
+        16.0,
+        110.5
+      ],
+      "bl": [],
+      "bottom": [],
+      "br": [
+        41.0,
+        80.0,
+        240.0
+      ]
+    }
+  },
+  "Y2": {
+    "total_items": 43,
+    "numeric_count": 13,
+    "zones": {
+      "tr": 3,
+      "center": 12,
+      "right": 3,
+      "bottom": 8,
+      "bl": 9,
+      "br": 8
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [
+        23.0,
+        72.0
+      ],
+      "center": [
+        30.0,
+        88.42,
+        100.0,
+        139.0,
+        149.0,
+        188.0,
+        208.0
+      ],
+      "right": [
+        43.0,
+        51.3
+      ],
+      "bl": [],
+      "bottom": [
+        260.0,
+        293.0
+      ],
+      "br": []
+    }
+  },
+  "Y20": {
+    "total_items": 22,
+    "numeric_count": 5,
+    "zones": {
+      "center": 3,
+      "br": 10,
+      "bottom": 5,
+      "bl": 4
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        282.0
+      ],
+      "right": [],
+      "bl": [],
+      "bottom": [
+        288.0,
+        310.0,
+        329.0,
+        339.0
+      ],
+      "br": []
+    }
+  },
+  "Y21_p14": {
+    "total_items": 6,
+    "numeric_count": 4,
+    "zones": {
+      "center": 2,
+      "right": 2,
+      "bottom": 1,
+      "br": 1
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        142.3
+      ],
+      "right": [
+        562.0,
+        600.8
+      ],
+      "bl": [],
+      "bottom": [],
+      "br": [
+        21.0
+      ]
+    }
+  },
+  "Y22": {
+    "total_items": 14,
+    "numeric_count": 4,
+    "zones": {
+      "center": 3,
+      "tl": 1,
+      "bottom": 6,
+      "bl": 3,
+      "br": 1
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        13.25,
+        34.0,
+        120.25
+      ],
+      "right": [],
+      "bl": [],
+      "bottom": [
+        104.5
+      ],
+      "br": []
+    }
+  },
+  "Y23": {
+    "total_items": 38,
+    "numeric_count": 16,
+    "zones": {
+      "tr": 2,
+      "tl": 1,
+      "center": 7,
+      "right": 4,
+      "br": 15,
+      "bl": 5,
+      "bottom": 4
+    },
+    "large_nums_by_zone": {
+      "tl": [
+        34.0,
+        90.0
+      ],
+      "tr": [
+        90.0
+      ],
+      "center": [
+        65.0
+      ],
+      "right": [
+        210.0
+      ],
+      "bl": [
+        50.5,
+        60.0,
+        69.5
+      ],
+      "bottom": [
+        270.5,
+        280.0,
+        289.5,
+        312.5
+      ],
+      "br": [
+        105.0
+      ]
+    }
+  },
+  "Y24": {
+    "total_items": 3,
+    "numeric_count": 0,
+    "zones": {
+      "br": 3
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [],
+      "right": [],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y25": {
+    "total_items": 27,
+    "numeric_count": 1,
+    "zones": {
+      "right": 2,
+      "center": 2,
+      "bl": 5,
+      "br": 9,
+      "bottom": 9
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        30.0
+      ],
+      "right": [],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y26": {
+    "total_items": 44,
+    "numeric_count": 10,
+    "zones": {
+      "center": 19,
+      "tr": 1,
+      "tl": 1,
+      "right": 2,
+      "br": 8,
+      "bottom": 6,
+      "bl": 7
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [
+        54.0
+      ],
+      "center": [
+        12.0,
+        50.0,
+        224.0,
+        300.0
+      ],
+      "right": [],
+      "bl": [
+        63.7
+      ],
+      "bottom": [
+        156.2
+      ],
+      "br": [
+        35.6,
+        38.0,
+        55.3
+      ]
+    }
+  },
+  "Y27": {
+    "total_items": 29,
+    "numeric_count": 0,
+    "zones": {
+      "center": 6,
+      "right": 1,
+      "bottom": 10,
+      "bl": 5,
+      "br": 7
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [],
+      "right": [],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y28": {
+    "total_items": 22,
+    "numeric_count": 0,
+    "zones": {
+      "right": 1,
+      "center": 4,
+      "bottom": 15,
+      "br": 2
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [],
+      "right": [],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y29": {
+    "total_items": 57,
+    "numeric_count": 7,
+    "zones": {
+      "center": 14,
+      "tr": 5,
+      "tl": 1,
+      "right": 11,
+      "bottom": 7,
+      "br": 11,
+      "bl": 8
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [
+        84.0
+      ],
+      "center": [
+        17.49,
+        39.0,
+        75.0
+      ],
+      "right": [],
+      "bl": [
+        14.0
+      ],
+      "bottom": [
+        14.5,
+        40.4
+      ],
+      "br": []
+    }
+  },
+  "Y3": {
+    "total_items": 20,
+    "numeric_count": 5,
+    "zones": {
+      "center": 10,
+      "bl": 3,
+      "bottom": 2,
+      "br": 5
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        20.0,
+        36.0,
+        196.0,
+        346.0
+      ],
+      "right": [],
+      "bl": [
+        53.3
+      ],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y30": {
+    "total_items": 42,
+    "numeric_count": 11,
+    "zones": {
+      "tr": 5,
+      "center": 7,
+      "right": 1,
+      "bl": 8,
+      "bottom": 7,
+      "br": 14
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [
+        47.0,
+        90.0,
+        150.0
+      ],
+      "center": [
+        280.0,
+        380.0,
+        438.0,
+        465.0,
+        482.6
+      ],
+      "right": [],
+      "bl": [
+        60.0
+      ],
+      "bottom": [
+        11.0
+      ],
+      "br": [
+        30.0
+      ]
+    }
+  },
+  "Y4": {
+    "total_items": 30,
+    "numeric_count": 4,
+    "zones": {
+      "center": 7,
+      "tr": 1,
+      "right": 4,
+      "bl": 5,
+      "br": 10,
+      "bottom": 3
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        46.5,
+        50.0,
+        57.0,
+        63.17
+      ],
+      "right": [],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y5": {
+    "total_items": 52,
+    "numeric_count": 12,
+    "zones": {
+      "center": 9,
+      "tr": 1,
+      "right": 3,
+      "bl": 10,
+      "br": 13,
+      "bottom": 16
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        18.0,
+        60.0,
+        90.0,
+        200.0
+      ],
+      "right": [],
+      "bl": [
+        30.32,
+        32.18,
+        200.0
+      ],
+      "bottom": [
+        10.44,
+        18.0,
+        23.0,
+        40.78
+      ],
+      "br": []
+    }
+  },
+  "Y6": {
+    "total_items": 30,
+    "numeric_count": 4,
+    "zones": {
+      "tr": 1,
+      "tl": 1,
+      "center": 3,
+      "right": 5,
+      "br": 10,
+      "bl": 5,
+      "bottom": 5
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        36.65,
+        53.35
+      ],
+      "right": [
+        12.0,
+        113.0
+      ],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y7": {
+    "total_items": 31,
+    "numeric_count": 1,
+    "zones": {
+      "tr": 3,
+      "tl": 1,
+      "center": 2,
+      "right": 5,
+      "br": 10,
+      "bl": 5,
+      "bottom": 5
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        149.0
+      ],
+      "right": [],
+      "bl": [],
+      "bottom": [],
+      "br": []
+    }
+  },
+  "Y8": {
+    "total_items": 40,
+    "numeric_count": 6,
+    "zones": {
+      "center": 10,
+      "tr": 1,
+      "tl": 1,
+      "right": 3,
+      "bottom": 7,
+      "br": 13,
+      "bl": 5
+    },
+    "large_nums_by_zone": {
+      "tl": [
+        1960.0
+      ],
+      "tr": [],
+      "center": [
+        50.0,
+        60.0,
+        90.0,
+        200.0
+      ],
+      "right": [],
+      "bl": [],
+      "bottom": [
+        57.0
+      ],
+      "br": []
+    }
+  },
+  "Y9": {
+    "total_items": 23,
+    "numeric_count": 4,
+    "zones": {
+      "center": 8,
+      "bl": 4,
+      "br": 5,
+      "bottom": 6
+    },
+    "large_nums_by_zone": {
+      "tl": [],
+      "tr": [],
+      "center": [
+        13.0,
+        66.0
+      ],
+      "right": [],
+      "bl": [
+        907.0
+      ],
+      "bottom": [],
+      "br": []
+    }
+  }
+}

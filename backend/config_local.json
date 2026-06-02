@@ -1,0 +1,8 @@
+{
+  "vision_api_key": "EMPTY",
+  "vision_api_base": "http://192.168.2.24:8000/v1",
+  "vision_model_id": "Qwen/Qwen3-VL-4B-Instruct",
+  "llm_api_key": "EMPTY",
+  "llm_base_url": "http://192.168.2.24:8000/v1",
+  "llm_model": "Qwen/Qwen3-VL-4B-Instruct"
+}

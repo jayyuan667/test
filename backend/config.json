@@ -1,0 +1,12 @@
+{
+  "vision_api_key": "",
+  "vision_api_base": "",
+  "vision_model_id": "",
+  "llm_api_key": "",
+  "llm_base_url": "",
+  "llm_model": "",
+  "vision_mode": "doubao",
+  "creo_exe": "C:\\Program Files\\PTC\\Creo 9.0.0.0\\Parametric\\bin\\parametric.exe",
+  "creo_base_dir": "D:\\project\\DLL2",
+  "creo_out_dir": "D:\\project\\DLL2\\out"
+}

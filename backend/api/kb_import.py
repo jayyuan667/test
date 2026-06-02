@@ -1,0 +1,1161 @@
+# -*- coding: utf-8 -*-
+"""ZIP-based knowledge base import for PRT + PDF pairs (and legacy PRT + XLSX)."""
+
+import hashlib
+import json
+import logging
+import os
+import re
+import shutil
+import sqlite3
+import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from typing import Dict, List, Optional
+
+from flask import Blueprint, jsonify, request
+from openpyxl import load_workbook
+from PIL import Image
+from werkzeug.utils import secure_filename
+
+from ..config import OUTPUT_FOLDER, UPLOAD_FOLDER, validate_vision_config, ensure_poppler_path
+from ..feature_report import build_feature_report, write_feature_report_json
+from ..library_scope import PUBLIC_LIBRARY_KEY, ensure_scope, mark_scope_batch, resolve_scope, sanitize_identifier
+from ..pipeline.vision_analyzer import VisionAnalyzer
+from ..pipeline.vlm_feature import build_vlm_feature_text
+from ..vision_utils import split_vision_results, format_vision_failure_message
+from ..prt_pipeline import prepare_prt_artifacts, export_gltf
+from ..vector_map_rag import DB_PATH
+from . import library as library_api
+from ._utils import PRT_FILE_RE
+
+
+kb_import_bp = Blueprint("kb_import", __name__)
+logger = logging.getLogger(__name__)
+
+
+def _ensure_import_tables():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kb_import_batches (
+            batch_id TEXT PRIMARY KEY,
+            zip_name TEXT,
+            conflict_mode TEXT,
+            total_files INTEGER DEFAULT 0,
+            pdf_count INTEGER DEFAULT 0,
+            xlsx_count INTEGER DEFAULT 0,
+            matched_pairs INTEGER DEFAULT 0,
+            imported_count INTEGER DEFAULT 0,
+            skipped_count INTEGER DEFAULT 0,
+            error_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            finished_at TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kb_import_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id TEXT,
+            prefix TEXT,
+            pdf_name TEXT,
+            xlsx_name TEXT,
+            status TEXT,
+            message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def _vision_analyzer():
+    vision_mode = os.getenv("VISION_MODE", "doubao").lower()
+    if vision_mode == "local" or not all(os.getenv(name) for name in ("VISION_API_KEY", "VISION_API_BASE", "VISION_MODEL_ID")):
+        from ..pipeline.local_vision_analyzer import LocalVisionAnalyzer
+
+        logger.info("[KB Import] Using LocalVisionAnalyzer")
+        return LocalVisionAnalyzer()
+    logger.info("[KB Import] Using VisionAnalyzer")
+    return VisionAnalyzer()
+
+
+def _write_batch_summary(report: Dict):
+    _ensure_import_tables()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO kb_import_batches
+        (batch_id, zip_name, conflict_mode, total_files, pdf_count, xlsx_count,
+         matched_pairs, imported_count, skipped_count, error_count, finished_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            report.get("batch_id"),
+            report.get("zip_name"),
+            report.get("conflict_mode"),
+            report.get("summary", {}).get("total_files", 0),
+            report.get("summary", {}).get("pdf_count", 0),
+            report.get("summary", {}).get("xlsx_count", 0),
+            report.get("summary", {}).get("matched_pairs", 0),
+            report.get("summary", {}).get("imported_count", 0),
+            report.get("summary", {}).get("skipped_count", 0),
+            report.get("summary", {}).get("error_count", 0),
+            datetime.now().isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _write_batch_item(batch_id: str, prefix: str, pdf_name: str, xlsx_name: str, status: str, message: str):
+    _ensure_import_tables()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO kb_import_items (batch_id, prefix, pdf_name, xlsx_name, status, message)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (batch_id, prefix, pdf_name, xlsx_name, status, message),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _normalize_key(filename: str) -> str:
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    prefix = library_api._extract_prefix(stem, "")
+    if prefix:
+        return prefix.upper()
+    cleaned = re.sub(r"[^A-Za-z0-9]+", "", stem).upper()
+    if cleaned:
+        return cleaned
+    return hashlib.sha1(stem.encode("utf-8")).hexdigest()[:12].upper()
+
+
+def _stem_to_source_name(path: str) -> str:
+    return os.path.splitext(os.path.basename(path))[0]
+
+
+def _strip_all_exts(filename: str) -> str:
+    """Strip every extension from a filename, handling multi-part exts like .prt.5.
+    '01.prt.5' → '01', 'XF25YS4101.prt' → 'XF25YS4101', 'part.pdf' → 'part'
+    """
+    name = os.path.basename(filename)
+    while True:
+        base, ext = os.path.splitext(name)
+        if not ext:
+            break
+        name = base
+    return name
+
+
+def _extract_prefix_from_values(values: List[str]) -> Dict[str, str]:
+    for value in values:
+        key = _normalize_key(value)
+        if key and any(ch.isdigit() for ch in key):
+            return {"raw": value.strip().upper(), "key": key}
+    return {"raw": "", "key": ""}
+
+
+def _parse_xlsx_workbook(xlsx_path: str) -> Dict:
+    workbook = load_workbook(xlsx_path, data_only=True, read_only=True)
+    rows: List[str] = []
+    entries: List[Dict] = []
+    sheet_names: List[str] = []
+
+    for sheet in workbook.worksheets:
+        sheet_names.append(sheet.title)
+        for row_index, raw_row in enumerate(sheet.iter_rows(values_only=True), start=1):
+            values = [str(cell).strip() for cell in raw_row if cell is not None and str(cell).strip()]
+            if not values:
+                continue
+            prefix_info = _extract_prefix_from_values(values)
+            prefix = prefix_info.get("raw", "")
+            prefix_key = prefix_info.get("key", "")
+
+            if not prefix_key:
+                continue
+
+            prefix_index = next((idx for idx, value in enumerate(values) if _normalize_key(value) == prefix_key), 0)
+            content = " | ".join(values[prefix_index + 1 :]).strip()
+            if not content:
+                continue
+
+            entry = {
+                "prefix": prefix,
+                "prefix_key": prefix_key,
+                "content": content,
+                "sheet_name": sheet.title,
+                "row_index": row_index,
+                "raw_values": values,
+            }
+            entries.append(entry)
+            rows.append(f"{prefix}@{content}")
+
+    text = "\n".join(rows).strip()
+    prefix_hint = entries[0]["prefix"] if entries else os.path.splitext(os.path.basename(xlsx_path))[0]
+    return {
+        "text": text,
+        "rows": [entry["content"] for entry in entries],
+        "entries": entries,
+        "sheet_names": sheet_names,
+        "prefix_hint": prefix_hint,
+    }
+
+
+def _parse_pdf_document(pdf_path: str, work_dir: str) -> Dict:
+    ensure_poppler_path()
+    pdf_image_dir = os.path.join(work_dir, "pdf_pages")
+    os.makedirs(pdf_image_dir, exist_ok=True)
+
+    png_paths = convert_pdf_to_images(pdf_path, pdf_image_dir)
+    analyzer = _vision_analyzer()
+    descriptions = analyzer.analyze_images(png_paths)
+    pages = [item.get("description", "").strip() for item in descriptions if item.get("description", "").strip()]
+    text = "\n\n".join(pages).strip()
+    stem = os.path.splitext(os.path.basename(pdf_path))[0]
+    prefix_key = _normalize_key(stem)
+    return {
+        "source_path": pdf_path,
+        "source_kind": "pdf",
+        "text": text,
+        "rows": pages,
+        "png_paths": png_paths,
+        "prefix_hint": stem,
+        "prefix_key": prefix_key,
+        "page_count": len(png_paths),
+    }
+
+
+def _parse_image_document(image_path: str, work_dir: str) -> Dict:
+    image_dir = os.path.join(work_dir, "image_pages")
+    os.makedirs(image_dir, exist_ok=True)
+
+    stem = os.path.splitext(os.path.basename(image_path))[0]
+    normalized_png = os.path.join(image_dir, f"{stem}.png")
+    with Image.open(image_path) as img:
+        normalized = img.convert("RGB") if img.mode not in ("RGB", "RGBA") else img
+        normalized.save(normalized_png, format="PNG")
+
+    analyzer = _vision_analyzer()
+    descriptions = analyzer.analyze_images([normalized_png])
+    pages = [item.get("description", "").strip() for item in descriptions if item.get("description", "").strip()]
+    text = "\n\n".join(pages).strip()
+    prefix_key = _normalize_key(stem)
+    return {
+        "source_path": image_path,
+        "source_kind": "image",
+        "text": text,
+        "rows": pages,
+        "png_paths": [normalized_png],
+        "prefix_hint": stem,
+        "prefix_key": prefix_key,
+        "page_count": 1,
+    }
+
+
+def _parse_pdf_process(pdf_path: str, work_dir: str) -> Dict:
+    """Extract process steps from a PDF process-spec file (工艺规程)."""
+    ensure_poppler_path()
+    from ..pipeline.pdf_converter import convert_pdf_to_images
+    from ..pipeline.process_spec_analyzer import ProcessSpecAnalyzer, merge_multipage_rows
+
+    stem = _strip_all_exts(os.path.basename(pdf_path))  # '01.pdf' → '01'
+    pdf_dir = os.path.join(work_dir, f"pdf_pages_{stem}")
+    os.makedirs(pdf_dir, exist_ok=True)
+    png_paths = convert_pdf_to_images(pdf_path, pdf_dir)
+
+    analyzer = ProcessSpecAnalyzer()
+    page_results = analyzer.analyze_pages(png_paths)
+    rows = merge_multipage_rows(page_results)
+    text = "\n".join(rows)
+    return {
+        "source_path": pdf_path,
+        "source_kind": "pdf",
+        "text": text,
+        "rows": rows,
+        "png_paths": png_paths,
+        "prefix_hint": stem,
+        "prefix_key": stem.upper(),
+        "page_count": len(png_paths),
+    }
+
+
+_DRAWING_FIELD_ALIASES = {
+    "模型编号": "图号", "图纸编号": "图号", "零件号": "图号", "零件图号": "图号",
+    "产品名称": "零件名称", "部件名称": "零件名称",
+    "毛坯": "毛坯类型", "材料": "毛坯类型",
+    "技术条件": "技术要求", "加工要求": "技术要求",
+    "外形": "形态", "工件形态": "形态",
+    "类别": "类型",
+}
+
+def _normalize_drawing_text(text: str, stem: str) -> str:
+    """把 VLM 输出的分号分隔格式 (模型编号 Y6；零件名称：xxx；...) 转成 【字段】值 格式。"""
+    import re as _re
+
+    # 已经是 【】 格式：做别名替换后返回
+    if "【" in text and "】" in text:
+        for alias, canonical in _DRAWING_FIELD_ALIASES.items():
+            text = text.replace(f"【{alias}】", f"【{canonical}】")
+        if "【图号】" not in text:
+            text = f"【图号】{stem}\n" + text
+        return text.strip()
+
+    # 尝试解析 "字段名 值；字段名：值；" 格式
+    # 先把全角冒号、分号统一
+    normalized = text.replace("：", ":").replace("；", ";")
+    # 按分号分割
+    segments = [s.strip() for s in _re.split(r'[;；\n]+', normalized) if s.strip()]
+
+    lines = []
+    has_drawing_id = False
+    for seg in segments:
+        # 匹配 "字段名 值" 或 "字段名: 值" 两种格式
+        m = _re.match(r'^([^:：\d]{2,10})[:\s]\s*(.+)$', seg)
+        if m:
+            raw_field = m.group(1).strip()
+            value = m.group(2).strip()
+            field = _DRAWING_FIELD_ALIASES.get(raw_field, raw_field)
+            if field == "图号":
+                has_drawing_id = True
+            lines.append(f"【{field}】{value}")
+        else:
+            lines.append(seg)
+
+    result = "\n".join(lines)
+    if not has_drawing_id:
+        result = f"【图号】{stem}\n" + result
+    return result.strip()
+
+
+def _parse_drawing_pdf_for_visual(pdf_path: str, work_dir: str) -> Dict:
+    """用 VisionAnalyzer 分析图纸PDF，返回适合 visual_items 的字典。"""
+    ensure_poppler_path()
+    from ..pipeline.pdf_converter import convert_pdf_to_images
+
+    stem = _strip_all_exts(os.path.basename(pdf_path))
+    pdf_dir = os.path.join(work_dir, f"drawing_pages_{stem}")
+    os.makedirs(pdf_dir, exist_ok=True)
+    png_paths = convert_pdf_to_images(pdf_path, pdf_dir)
+
+    analyzer = _vision_analyzer()
+    descriptions = analyzer.analyze_images(png_paths)
+    pages = [item.get("description", "").strip() for item in descriptions if item.get("description", "").strip()]
+    raw_text = "\n\n".join(pages).strip()
+    feature_text = _normalize_drawing_text(raw_text, stem) if raw_text else f"【图号】{stem}"
+
+    return {
+        "source_path": pdf_path,
+        "source_kind": "drawing_pdf",
+        "text": feature_text,
+        "rows": pages,
+        "png_paths": png_paths,
+        "prefix_hint": stem,
+        "prefix_key": stem.upper(),
+        "page_count": len(png_paths),
+        "feature_report_text": feature_text,
+        "feature_report_json": {"report_text": feature_text, "pages": []},
+    }
+
+def _prepare_prt_only(prt_path: str, work_dir: str) -> Dict:
+    """Phase 1 (must run serially — Creo single-instance): extract Creo/FreeCAD artifacts."""
+    stem = _strip_all_exts(os.path.basename(prt_path))
+    prt_dir = os.path.join(work_dir, f"prt_{stem}")
+    os.makedirs(prt_dir, exist_ok=True)
+    artifacts = prepare_prt_artifacts(prt_path, prt_dir)
+    return {"prt_path": prt_path, "stem": stem, "prt_dir": prt_dir, "artifacts": artifacts}
+
+
+def _vlm_and_gltf_for_prt(prt_info: Dict) -> Dict:
+    """Phase 2 (parallel-safe): VLM feature extraction + GLB export."""
+    prt_path = prt_info["prt_path"]
+    stem = prt_info["stem"]
+    prt_dir = prt_info["prt_dir"]
+    artifacts = prt_info["artifacts"]
+    step_path = artifacts.get("step_path") or ""
+    view_paths = artifacts.get("view_paths") or []
+
+    vlm_text, vlm_mode = build_vlm_feature_text(
+        freecad_views_dir=artifacts.get("views_dir", ""),
+        creo_views_dir=artifacts.get("creo_views_dir", ""),
+        creo_txt_path=artifacts.get("creo_zhushi_path", ""),
+        step_path=step_path,
+    )
+    feature_text = (vlm_text + f"\n【图号】{stem}") if vlm_text else f"【图号】{stem}"
+
+    # GLB: use FreeCAD STEP→GLB (same path as upload.py) for a proper 3D mesh.
+    # Creo screenshot path produced flat textured planes with wrong/empty captures.
+    gltf_path = ""
+    try:
+        gltf_path = export_gltf(step_path, prt_dir)
+        logger.info("[KB Import] glTF exported: %s", gltf_path)
+    except Exception as _gltf_err:
+        logger.warning("[KB Import] glTF export skipped for %s: %s", stem, _gltf_err)
+
+    return {
+        "source_path": prt_path,
+        "source_kind": "prt",
+        "text": feature_text,
+        "rows": [],
+        "png_paths": view_paths,
+        "prefix_hint": stem,
+        "prefix_key": stem.upper(),
+        "page_count": len(view_paths),
+        "feature_report_json": {"report_text": feature_text, "pages": []},
+        "feature_report_text": feature_text,
+        "feature_report_path": "",
+        "vision_failures": [],
+        "gltf_path": gltf_path,
+    }
+
+
+def _load_zip_entries(extract_dir: str) -> Dict[str, Dict[str, List[str]]]:
+    prt_files: List[str] = []
+    xlsx_files: List[str] = []
+    pdf_files: List[str] = []
+
+    for root, _, files in os.walk(extract_dir):
+        for filename in files:
+            path = os.path.join(root, filename)
+            lower = filename.lower()
+            if PRT_FILE_RE.search(lower):
+                prt_files.append(path)
+            elif lower.endswith(".xlsx"):
+                xlsx_files.append(path)
+            elif lower.endswith(".pdf"):
+                pdf_files.append(path)
+
+    grouped: Dict[str, Dict[str, List[str]]] = {}
+    for path in prt_files:
+        grouped.setdefault(_normalize_key(path), {"visual": [], "xlsx": [], "pdf": []})["visual"].append(path)
+    for path in xlsx_files:
+        grouped.setdefault(_normalize_key(path), {"visual": [], "xlsx": [], "pdf": []})["xlsx"].append(path)
+    for path in pdf_files:
+        grouped.setdefault(_normalize_key(path), {"visual": [], "xlsx": [], "pdf": []})["pdf"].append(path)
+    return grouped
+
+
+def _build_record_from_prefix(
+    batch_id: str,
+    prefix: str,
+    xlsx_entries: List[Dict],
+    visual_items: List[Dict],
+    conflict_mode: str,
+    library_key: str,
+) -> Dict:
+    merged_xlsx_text = "\n".join(entry["content"] for entry in xlsx_entries if entry.get("content")).strip()
+    merged_visual_text = "\n\n".join(item.get("text", "") for item in visual_items if item.get("text")).strip()
+    # Prefer per-row list (PDF path sets "rows"); fall back to splitting the joined content string.
+    # Only use visual text as last resort when xlsx_entries existed but were content-less.
+    # PRT-only imports (xlsx_entries=[]) keep an empty process list intentionally.
+    content_rows: List[str] = []
+    for entry in xlsx_entries:
+        if entry.get("rows"):
+            content_rows.extend(entry["rows"])
+        elif entry.get("content"):
+            content_rows.extend(line.strip() for line in entry["content"].splitlines() if line.strip())
+    if not content_rows and xlsx_entries:
+        content_rows = [merged_visual_text] if merged_visual_text else []
+
+    source_name = (xlsx_entries[0].get("sheet_name") if xlsx_entries else None) or prefix
+
+    # ── 判断是否走 PRT 几何链路 ─────────────────────────────────────────────────
+    # 所有 visual_items 均为 PRT 几何分析结果（pages=[]）时，直接合并几何文本，
+    # 不再调用 build_feature_report（避免重建 report_text 破坏几何格式）。
+    # 注意：xlsx_entries 存在时（PRT+PDF 配对）同样走此链路：
+    #   vector = PRT 几何文本 embedding，content = PDF 工艺行（已存入 content_rows）
+    _all_prt_geo = (
+        bool(visual_items)
+        and all(
+            item.get("source_kind") == "prt"
+            and not (item.get("feature_report_json") or {}).get("pages")
+            for item in visual_items
+        )
+    )
+
+    if _all_prt_geo:
+        # PRT 几何链路：合并各 PRT 的几何文本，source_type 标记为 "prt"
+        geo_texts = [item.get("feature_report_text") or item.get("text") or "" for item in visual_items]
+        merged_geo_text = "\n".join(t for t in geo_texts if t.strip())
+        source_text = merged_geo_text or merged_visual_text
+        draft = library_api._build_draft(prefix, source_name or prefix, "prt", source_text, content_rows)
+        draft["feature_report_json"] = {"report_text": merged_geo_text, "pages": []}
+        draft["feature_report_text"] = merged_geo_text
+        feature_report = draft["feature_report_json"]
+    else:
+        # PDF / 视觉分析链路：drawing_pdf 逐页展开，与 batch.py 的每页 description 对齐
+        build_items: List[Dict] = []
+        for _vi in visual_items:
+            if _vi.get("source_kind") == "drawing_pdf":
+                _png_paths = _vi.get("png_paths") or []
+                for _page_num, _page_desc in enumerate(_vi.get("rows") or [], start=1):
+                    if _page_desc and _page_desc.strip():
+                        build_items.append({
+                            "description": _page_desc.strip(),
+                            "_page_number": _page_num,
+                            "image_path": _png_paths[_page_num - 1] if _page_num <= len(_png_paths) else "",
+                        })
+            else:
+                build_items.append(_vi)
+        feature_report = build_feature_report(
+            build_items or visual_items,
+            prefix_hint=prefix,
+            total_pages=sum(item.get("page_count", 0) for item in visual_items),
+        )
+        source_text = feature_report.get("report_text") or merged_visual_text
+        draft = library_api._build_draft(prefix, source_name or prefix, "zip", source_text, content_rows)
+        draft["feature_report_json"] = feature_report
+        draft["feature_report_text"] = feature_report.get("report_text") or source_text
+
+    draft["batch_id"] = batch_id
+    draft["source_xlsx"] = xlsx_entries[0].get("xlsx_name") if xlsx_entries else ""
+    source_filenames = [os.path.basename(item.get("source_path", "")) for item in visual_items]
+    draft["source_prts"] = [f for f in source_filenames if PRT_FILE_RE.search(f)]
+    draft["source_pdfs"] = [f for f in source_filenames if f.lower().endswith(".pdf")]
+    draft["conflict_mode"] = conflict_mode
+    draft["pdf_page_count"] = sum(item.get("page_count", 0) for item in visual_items)
+    draft["xlsx_sheet_names"] = sorted({entry.get("sheet_name", "") for entry in xlsx_entries if entry.get("sheet_name")})
+    draft["preview_task_id"] = f"kb_{batch_id}_{prefix}"
+    draft["preview_total_pages"] = draft["pdf_page_count"]
+    draft["process_list"] = content_rows
+
+    preview_dir = os.path.join(OUTPUT_FOLDER, draft["preview_task_id"])
+    os.makedirs(preview_dir, exist_ok=True)
+    draft["feature_report_json_path"] = write_feature_report_json(preview_dir, feature_report)
+    preview_urls: List[str] = []
+    seen_names = set()
+    for item_index, item in enumerate(visual_items, start=1):
+        for page_index, png_path in enumerate(item.get("png_paths") or [], start=1):
+            if not png_path or not os.path.isfile(png_path):
+                continue
+            base_name = os.path.basename(png_path)
+            target_name = base_name
+            if target_name in seen_names:
+                stem, ext = os.path.splitext(base_name)
+                target_name = f"{stem}_{item_index}_{page_index}{ext or '.png'}"
+            seen_names.add(target_name)
+            target_path = os.path.join(preview_dir, target_name)
+            shutil.copy2(png_path, target_path)
+            preview_urls.append(f"/api/result/{draft['preview_task_id']}/asset/{target_name}")
+    draft["preview_image_urls"] = preview_urls
+    draft["source_task_id"] = draft["preview_task_id"]
+
+    # ── PRT 几何链路：复制 glTF 到 preview 目录，写 result.json 供前端 3D 预览 ──
+    if _all_prt_geo:
+        gltf_src = next((item.get("gltf_path", "") for item in visual_items if item.get("gltf_path")), "")
+        if gltf_src and os.path.isfile(gltf_src):
+            gltf_dst = os.path.join(preview_dir, "model.glb")
+            shutil.copy2(gltf_src, gltf_dst)
+            gltf_url = f"/api/result/{draft['preview_task_id']}/asset/model.glb"
+            draft["gltf_url"] = gltf_url
+            with open(os.path.join(preview_dir, "result.json"), "w", encoding="utf-8") as _rf:
+                json.dump({"gltf_url": gltf_url, "status": "completed", "source_type": "prt"}, _rf, ensure_ascii=False)
+
+    existing = library_api._fetch_existing_record(prefix, library_key=library_key)
+    replace = conflict_mode == "replace"
+    status = "imported"
+    message = "已写入知识库"
+
+    if existing and conflict_mode in {"keep", "skip"}:
+        status = "skipped"
+        message = "发现同图号记录，已保留旧版"
+    else:
+        library_api._upsert_record(draft, replace=replace and bool(existing), library_key=library_key)
+        if existing and replace:
+            status = "replaced"
+            message = "发现同图号记录，已替换写入"
+
+    return {
+        "prefix": prefix,
+        "pdf_names": [os.path.basename(item.get("source_path", "")) for item in visual_items],
+        "prt_names": [os.path.basename(item.get("source_path", "")) for item in visual_items],
+        "xlsx_names": [entry.get("xlsx_name", "") for entry in xlsx_entries],
+        "status": status,
+        "message": message,
+        "draft": draft,
+        "existing": existing,
+    }
+
+
+def import_zip_knowledge(
+    zip_path: str,
+    zip_name: str,
+    conflict_mode: str = "replace",
+    library_mode: str = "private_seed_public",
+    library_name: str = "",
+    library_key: str = "",
+) -> Dict:
+    batch_id = datetime.now().strftime("kb_%Y%m%d_%H%M%S_%f")
+    extract_dir = os.path.join(OUTPUT_FOLDER, "kb_imports", batch_id, "extract")
+    os.makedirs(extract_dir, exist_ok=True)
+    os.makedirs(os.path.join(UPLOAD_FOLDER, "kb_imports"), exist_ok=True)
+
+    report: Dict = {
+        "batch_id": batch_id,
+        "zip_name": zip_name,
+        "conflict_mode": conflict_mode,
+        "library_mode": library_mode,
+        "summary": {
+            "total_files": 0,
+            "prt_count": 0,
+            "pdf_count": 0,
+            "image_count": 0,
+            "xlsx_count": 0,
+            "matched_pairs": 0,
+            "imported_count": 0,
+            "skipped_count": 0,
+            "error_count": 0,
+        },
+        "matched_pairs": [],
+        "unmatched_prts": [],
+        "unmatched_pdfs": [],
+        "unmatched_images": [],
+        "unmatched_xlsx": [],
+        "errors": [],
+        "created_at": datetime.now().isoformat(),
+    }
+
+    normalized_mode = library_mode if library_mode in {"private_seed_public", "private_empty", "public"} else "private_seed_public"
+    if normalized_mode == "public":
+        target_scope = resolve_scope(PUBLIC_LIBRARY_KEY)
+    elif library_key and (existing_scope := resolve_scope(library_key)):
+        # User selected an existing private library — use it directly to avoid
+        # overwriting library_name in the scope registry via INSERT OR REPLACE.
+        target_scope = existing_scope
+        mark_scope_batch(target_scope["library_key"], batch_id)
+    else:
+        proposed_key = sanitize_identifier(library_key or library_name or f"user_{batch_id}")
+        proposed_name = (library_name or proposed_key).strip() or proposed_key
+        target_scope = ensure_scope(
+            proposed_key,
+            proposed_name,
+            scope_type="private",
+            seed_public=normalized_mode == "private_seed_public",
+            last_batch_id=batch_id,
+        )
+    report["target_library"] = target_scope
+
+    batch_root = os.path.join(OUTPUT_FOLDER, "kb_imports", batch_id)
+    os.makedirs(batch_root, exist_ok=True)
+
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(extract_dir)
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"Invalid zip file: {exc}") from exc
+
+    # 图纸子目录名（大小写不敏感）：这些目录下的 PDF 用 VisionAnalyzer 分析图纸特征
+    _DRAWING_FOLDER_NAMES = {"drawing", "drawings", "图纸"}
+
+    def _in_drawing_folder(path: str) -> bool:
+        rel = os.path.relpath(path, extract_dir).replace("\\", "/")
+        parts = rel.split("/")
+        return any(p.lower() in _DRAWING_FOLDER_NAMES for p in parts[:-1])
+
+    prt_files: List[str] = []
+    xlsx_files: List[str] = []
+    drawing_pdf_files: List[str] = []  # 图纸 PDF → VisionAnalyzer → visual_groups
+    craft_pdf_files: List[str] = []    # 工艺 PDF → ProcessSpecAnalyzer → pdf_groups
+    for root, _, files in os.walk(extract_dir):
+        for filename in files:
+            path = os.path.join(root, filename)
+            lower = filename.lower()
+            if PRT_FILE_RE.search(lower):
+                prt_files.append(path)
+            elif lower.endswith(".xlsx"):
+                xlsx_files.append(path)
+            elif lower.endswith(".pdf"):
+                if _in_drawing_folder(path):
+                    drawing_pdf_files.append(path)
+                else:
+                    craft_pdf_files.append(path)
+
+    report["summary"]["total_files"] = len(prt_files) + len(xlsx_files) + len(drawing_pdf_files) + len(craft_pdf_files)
+    report["summary"]["prt_count"] = len(prt_files)
+    report["summary"]["pdf_count"] = len(drawing_pdf_files) + len(craft_pdf_files)
+    report["summary"]["drawing_pdf_count"] = len(drawing_pdf_files)
+    report["summary"]["craft_pdf_count"] = len(craft_pdf_files)
+    report["summary"]["image_count"] = 0
+    report["summary"]["xlsx_count"] = len(xlsx_files)
+
+    _ensure_import_tables()
+
+    # ── Step 1: Prepare PRT artifacts (serial — Creo single-instance) ────────
+    # Only Creo/FreeCAD artifact extraction runs here; VLM comes in Step 3.
+    prt_artifact_list: List[tuple] = []  # [(stem_key, prt_info), ...]
+    for prt_path in prt_files:
+        try:
+            info = _prepare_prt_only(prt_path, batch_root)
+            prt_artifact_list.append((info["stem"].upper(), info))
+        except Exception as exc:
+            report["summary"]["error_count"] += 1
+            report["errors"].append({"prt_name": os.path.basename(prt_path), "error": str(exc)})
+
+    # ── Step 2: Parse all XLSX files (fast, serial) ───────────────────────────
+    xlsx_groups: Dict[str, List[Dict]] = {}
+    for xlsx_path in xlsx_files:
+        try:
+            xlsx_data = _parse_xlsx_workbook(xlsx_path)
+            for entry in xlsx_data.get("entries", []):
+                xlsx_stem = os.path.splitext(os.path.basename(xlsx_path))[0].upper()
+                prefix = entry.get("prefix_key") or xlsx_stem
+                entry = dict(entry)
+                entry["xlsx_name"] = os.path.basename(xlsx_path)
+                xlsx_groups.setdefault(prefix, []).append(entry)
+        except Exception as exc:
+            report["summary"]["error_count"] += 1
+            report["errors"].append({"xlsx_name": os.path.basename(xlsx_path), "error": str(exc)})
+
+    # ── Step 3: Parallel — VLM for PRT artifacts + PDF page analysis ─────────
+    # VLM calls (network-bound) and PDF→image→VLM pipelines are independent;
+    # run all of them concurrently now that the Creo phase is complete.
+    visual_groups: Dict[str, List[Dict]] = {}
+    pdf_groups: Dict[str, List[Dict]] = {}
+
+    with ThreadPoolExecutor(max_workers=4) as _exec:
+        # Submit PRT VLM+GLB tasks
+        _prt_futs: Dict = {
+            _exec.submit(_vlm_and_gltf_for_prt, info): stem_key
+            for stem_key, info in prt_artifact_list
+        }
+        # 图纸 PDF → VisionAnalyzer → visual_groups（与 PRT 路径平行）
+        _drawing_futs: Dict = {
+            _exec.submit(_parse_drawing_pdf_for_visual, pdf_path, batch_root): pdf_path
+            for pdf_path in drawing_pdf_files
+        }
+        # 工艺 PDF → ProcessSpecAnalyzer → pdf_groups（原有逻辑不变）
+        _pdf_futs: Dict = {
+            _exec.submit(_parse_pdf_process, pdf_path, batch_root): pdf_path
+            for pdf_path in craft_pdf_files
+        }
+
+        for fut in as_completed(_prt_futs):
+            stem_key = _prt_futs[fut]
+            try:
+                doc = fut.result()
+                actual_key = doc.get("prefix_key") or stem_key
+                visual_groups.setdefault(actual_key, []).append(doc)
+            except Exception as exc:
+                report["summary"]["error_count"] += 1
+                report["errors"].append({"stem_key": stem_key, "error": str(exc)})
+
+        for fut in as_completed(_drawing_futs):
+            pdf_path = _drawing_futs[fut]
+            try:
+                doc = fut.result()
+                actual_key = doc.get("prefix_key") or _strip_all_exts(os.path.basename(pdf_path)).upper()
+                visual_groups.setdefault(actual_key, []).append(doc)
+            except Exception as exc:
+                report["summary"]["error_count"] += 1
+                report["errors"].append({"pdf_name": os.path.basename(pdf_path), "error": str(exc)})
+
+        for fut in as_completed(_pdf_futs):
+            pdf_path = _pdf_futs[fut]
+            try:
+                pdf_data = fut.result()
+                stem_key = pdf_data.get("prefix_key") or _strip_all_exts(os.path.basename(pdf_path)).upper()
+                pdf_groups.setdefault(stem_key, []).append({
+                    "pdf_name": os.path.basename(pdf_path),
+                    "content": pdf_data.get("text", ""),
+                    "rows": pdf_data.get("rows", []),
+                    "prefix": pdf_data.get("prefix_hint", ""),
+                    "prefix_key": stem_key,
+                })
+            except Exception as exc:
+                report["summary"]["error_count"] += 1
+                report["errors"].append({"pdf_name": os.path.basename(pdf_path), "error": str(exc)})
+
+    # ── Step 4: Pair and import ───────────────────────────────────────────────
+    all_stem_keys = sorted(set(visual_groups.keys()) | set(xlsx_groups.keys()) | set(pdf_groups.keys()))
+    for stem_key in all_stem_keys:
+        xlsx_entries = xlsx_groups.get(stem_key, [])
+        pdf_entries  = pdf_groups.get(stem_key, [])
+        visual_items = visual_groups.get(stem_key, [])
+
+        # PDF takes priority as process source; XLSX is legacy fallback
+        if not xlsx_entries and pdf_entries:
+            pdf_content = "\n".join(e.get("content", "") for e in pdf_entries if e.get("content"))
+            pdf_rows: List[str] = []
+            for e in pdf_entries:
+                pdf_rows.extend(e.get("rows", []))
+            xlsx_entries = [{
+                "prefix": pdf_entries[0].get("prefix", stem_key),
+                "prefix_key": stem_key,
+                "content": pdf_content,
+                "rows": pdf_rows,
+                "sheet_name": "PDF工艺规程",
+                "row_index": 1,
+                "raw_values": [pdf_content],
+                "xlsx_name": pdf_entries[0].get("pdf_name", ""),
+            }]
+
+        # Process source (PDF/XLSX) without any PRT — cannot create embedding, skip.
+        if not visual_items:
+            for xlsx_name in sorted({e.get("xlsx_name", "") for e in xlsx_entries if e.get("xlsx_name")}):
+                if xlsx_name not in report["unmatched_xlsx"]:
+                    report["unmatched_xlsx"].append(xlsx_name)
+            continue
+
+        # PRT with no process source — import with empty process_list so the
+        # 3-D feature embedding is available for retrieval; steps can be added later.
+
+        try:
+            display_prefix = (xlsx_entries[0].get("prefix") if xlsx_entries else None) or visual_items[0].get("prefix_hint") or stem_key
+            item = _build_record_from_prefix(batch_id, display_prefix, xlsx_entries, visual_items, conflict_mode, target_scope["library_key"])
+            report["matched_pairs"].append(item)
+            report["summary"]["matched_pairs"] += 1
+            if item["status"] == "skipped":
+                report["summary"]["skipped_count"] += 1
+            else:
+                report["summary"]["imported_count"] += 1
+            _write_batch_item(batch_id, item["prefix"], ",".join(item["pdf_names"]), ",".join(item["xlsx_names"]), item["status"], item["message"])
+        except Exception as exc:
+            report["summary"]["error_count"] += 1
+            report["errors"].append({
+                "stem_key": stem_key,
+                "prt_names": [os.path.basename(i.get("source_path", "")) for i in visual_items],
+                "process_sources": [e.get("xlsx_name", "") for e in xlsx_entries],
+                "error": str(exc),
+            })
+
+    report["summary"]["matched_pairs"] = len(report["matched_pairs"])
+    report["unmatched_pdfs"] = list(report.get("unmatched_prts", []))
+
+    report_path = os.path.join(batch_root, "report.json")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+    report["report_path"] = report_path
+
+    _write_batch_summary(report)
+    mark_scope_batch(target_scope["library_key"], batch_id)
+    shutil.rmtree(extract_dir, ignore_errors=True)
+    return report
+
+
+def import_folder_knowledge(
+    drawing_dir: str,
+    craft_dir: str,
+    conflict_mode: str = "replace",
+    library_mode: str = "private_seed_public",
+    library_name: str = "",
+    library_key: str = "",
+) -> Dict:
+    """从图纸文件夹和工艺文件夹批量入库。
+
+    drawing_dir: 图纸 PDF 所在目录（用 VisionAnalyzer 提取特征，生成 Embedding）
+    craft_dir:   工艺 PDF 所在目录（用 ProcessSpecAnalyzer 提取工序行）
+    按文件名主干（去掉扩展名）自动配对，配对成功才写库；
+    有图纸无工艺的条目以空工序列表写入，有工艺无图纸的跳过。
+    """
+    batch_id = datetime.now().strftime("kb_%Y%m%d_%H%M%S_%f")
+    batch_root = os.path.join(OUTPUT_FOLDER, "kb_imports", batch_id)
+    os.makedirs(batch_root, exist_ok=True)
+
+    report: Dict = {
+        "batch_id": batch_id,
+        "zip_name": f"folder:{os.path.basename(drawing_dir)}/{os.path.basename(craft_dir)}",
+        "drawing_dir": drawing_dir,
+        "craft_dir": craft_dir,
+        "conflict_mode": conflict_mode,
+        "library_mode": library_mode,
+        "summary": {
+            "total_files": 0,
+            "drawing_pdf_count": 0,
+            "craft_pdf_count": 0,
+            "pdf_count": 0,
+            "xlsx_count": 0,
+            "matched_pairs": 0,
+            "imported_count": 0,
+            "skipped_count": 0,
+            "error_count": 0,
+        },
+        "matched_pairs": [],
+        "unmatched_drawings": [],
+        "unmatched_crafts": [],
+        "errors": [],
+        "created_at": datetime.now().isoformat(),
+    }
+
+    # ── 解析库 scope ──────────────────────────────────────────────────────────
+    normalized_mode = library_mode if library_mode in {"private_seed_public", "private_empty", "public"} else "private_seed_public"
+    if normalized_mode == "public":
+        target_scope = resolve_scope(PUBLIC_LIBRARY_KEY)
+    elif library_key and (existing_scope := resolve_scope(library_key)):
+        target_scope = existing_scope
+        mark_scope_batch(target_scope["library_key"], batch_id)
+    else:
+        proposed_key = sanitize_identifier(library_key or library_name or f"user_{batch_id}")
+        proposed_name = (library_name or proposed_key).strip() or proposed_key
+        target_scope = ensure_scope(
+            proposed_key,
+            proposed_name,
+            scope_type="private",
+            seed_public=normalized_mode == "private_seed_public",
+            last_batch_id=batch_id,
+        )
+    report["target_library"] = target_scope
+
+    # ── 扫描两个文件夹 ────────────────────────────────────────────────────────
+    drawing_pdfs: Dict[str, str] = {}  # stem_key(大写) -> 绝对路径
+    for filename in sorted(os.listdir(drawing_dir)):
+        if filename.lower().endswith(".pdf"):
+            stem_key = _strip_all_exts(filename).upper()
+            drawing_pdfs[stem_key] = os.path.join(drawing_dir, filename)
+
+    craft_pdfs: Dict[str, str] = {}   # stem_key(大写) -> 绝对路径
+    for filename in sorted(os.listdir(craft_dir)):
+        if filename.lower().endswith(".pdf"):
+            stem_key = _strip_all_exts(filename).upper()
+            craft_pdfs[stem_key] = os.path.join(craft_dir, filename)
+
+    report["summary"]["drawing_pdf_count"] = len(drawing_pdfs)
+    report["summary"]["craft_pdf_count"] = len(craft_pdfs)
+    report["summary"]["pdf_count"] = len(drawing_pdfs)
+    report["summary"]["total_files"] = len(drawing_pdfs) + len(craft_pdfs)
+
+    for stem_key in drawing_pdfs:
+        if stem_key not in craft_pdfs:
+            report["unmatched_drawings"].append(os.path.basename(drawing_pdfs[stem_key]))
+    for stem_key in craft_pdfs:
+        if stem_key not in drawing_pdfs:
+            report["unmatched_crafts"].append(os.path.basename(craft_pdfs[stem_key]))
+
+    _ensure_import_tables()
+
+    all_stem_keys = sorted(set(drawing_pdfs.keys()) | set(craft_pdfs.keys()))
+
+    # ── 并行解析：图纸VLM + 工艺ProcessSpec ──────────────────────────────────
+    def _process_pair(stem_key: str):
+        drawing_path = drawing_pdfs.get(stem_key)
+        craft_path = craft_pdfs.get(stem_key)
+
+        visual_item = None
+        if drawing_path:
+            visual_item = _parse_drawing_pdf_for_visual(drawing_path, batch_root)
+
+        craft_entry = None
+        if craft_path:
+            craft_data = _parse_pdf_process(craft_path, batch_root)
+            craft_entry = {
+                "prefix": craft_data.get("prefix_hint", stem_key),
+                "prefix_key": stem_key,
+                "content": craft_data.get("text", ""),
+                "rows": craft_data.get("rows", []),
+                "sheet_name": "PDF工艺规程",
+                "row_index": 1,
+                "raw_values": [],
+                "xlsx_name": os.path.basename(craft_path),
+            }
+
+        return stem_key, visual_item, craft_entry
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(_process_pair, k): k for k in all_stem_keys}
+        for fut in as_completed(futures):
+            stem_key = futures[fut]
+            try:
+                _key, visual_item, craft_entry = fut.result()
+                if not visual_item:
+                    # 有工艺无图纸 → 无法生成 Embedding，跳过
+                    if craft_entry:
+                        report["errors"].append({
+                            "stem_key": stem_key,
+                            "error": "有工艺PDF但缺少对应图纸PDF，已跳过",
+                        })
+                        report["summary"]["error_count"] += 1
+                    continue
+
+                visual_items = [visual_item]
+                xlsx_entries = [craft_entry] if craft_entry else []
+                prefix = visual_item.get("prefix_hint") or stem_key
+
+                item = _build_record_from_prefix(
+                    batch_id, prefix, xlsx_entries, visual_items,
+                    conflict_mode, target_scope["library_key"],
+                )
+                report["matched_pairs"].append(item)
+                report["summary"]["matched_pairs"] += 1
+                if item["status"] == "skipped":
+                    report["summary"]["skipped_count"] += 1
+                else:
+                    report["summary"]["imported_count"] += 1
+                _write_batch_item(
+                    batch_id, item["prefix"],
+                    ",".join(item.get("pdf_names", [])),
+                    ",".join(item.get("xlsx_names", [])),
+                    item["status"], item["message"],
+                )
+            except Exception as exc:
+                logger.exception("[KB Folder Import] stem_key=%s error", stem_key)
+                report["summary"]["error_count"] += 1
+                report["errors"].append({"stem_key": stem_key, "error": str(exc)})
+
+    report_path = os.path.join(batch_root, "report.json")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+    report["report_path"] = report_path
+
+    _write_batch_summary(report)
+    mark_scope_batch(target_scope["library_key"], batch_id)
+    return report
+
+
+@kb_import_bp.route("/kb/import_folder", methods=["POST"])
+def import_folder_route():
+    """从本地两个文件夹（图纸/工艺）批量入库，接受 JSON body。
+
+    {
+      "drawing_dir": "F:/xxx/drawing",   // 图纸 PDF 目录（必填）
+      "craft_dir":   "F:/xxx/craft",     // 工艺 PDF 目录（必填）
+      "conflict_mode": "replace",        // replace | keep | skip
+      "library_mode":  "private_seed_public",
+      "library_name":  "",
+      "library_key":   ""
+    }
+    """
+    payload = request.get_json(silent=True) or {}
+    drawing_dir = (payload.get("drawing_dir") or "").strip()
+    craft_dir   = (payload.get("craft_dir")   or "").strip()
+    conflict_mode = payload.get("conflict_mode") or "replace"
+    conflict_mode = conflict_mode if conflict_mode in {"replace", "keep", "skip"} else "replace"
+    library_mode  = payload.get("library_mode")  or "private_seed_public"
+    library_name  = payload.get("library_name")  or ""
+    library_key   = payload.get("library_key")   or ""
+
+    if not drawing_dir or not os.path.isdir(drawing_dir):
+        return jsonify({"error": f"drawing_dir 不存在或不是目录: {drawing_dir}"}), 400
+    if not craft_dir or not os.path.isdir(craft_dir):
+        return jsonify({"error": f"craft_dir 不存在或不是目录: {craft_dir}"}), 400
+
+    try:
+        report = import_folder_knowledge(
+            drawing_dir=drawing_dir,
+            craft_dir=craft_dir,
+            conflict_mode=conflict_mode,
+            library_mode=library_mode,
+            library_name=library_name,
+            library_key=library_key,
+        )
+        return jsonify(report)
+    except Exception as exc:
+        logger.exception("Folder import failed")
+        return jsonify({"error": str(exc)}), 500
+
+
+@kb_import_bp.route("/kb/import_zip", methods=["POST"])
+def import_zip_route():
+    upload = request.files.get("zip_file") or request.files.get("file")
+    if not upload or not upload.filename:
+        return jsonify({"error": "zip_file required"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    conflict_mode = request.form.get("conflict_mode") or payload.get("conflict_mode") or "replace"
+    conflict_mode = conflict_mode if conflict_mode in {"replace", "keep", "skip"} else "replace"
+    library_mode = request.form.get("library_mode") or payload.get("library_mode") or "private_seed_public"
+    library_name = request.form.get("library_name") or payload.get("library_name") or ""
+    library_key = request.form.get("library_key") or payload.get("library_key") or ""
+
+    if not upload.filename.lower().endswith(".zip"):
+        return jsonify({"error": "zip file required"}), 400
+
+    filename = secure_filename(upload.filename)
+    if not filename or not filename.lower().endswith(".zip"):
+        filename = f"upload_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.zip"
+
+    temp_dir = os.path.join(UPLOAD_FOLDER, "kb_imports")
+    os.makedirs(temp_dir, exist_ok=True)
+    zip_path = os.path.join(temp_dir, f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}")
+    upload.save(zip_path)
+
+    try:
+        report = import_zip_knowledge(
+            zip_path,
+            filename,
+            conflict_mode=conflict_mode,
+            library_mode=library_mode,
+            library_name=library_name,
+            library_key=library_key,
+        )
+        return jsonify(report)
+    except Exception as exc:
+        logger.exception("ZIP import failed")
+        return jsonify({"error": str(exc)}), 500
+
+
+@kb_import_bp.route("/kb/sample_zip", methods=["GET"])
+def sample_zip_route():
+    """Return a downloadable sample ZIP showing the expected PRT + PDF import structure."""
+    import io
+    import zipfile
+    from flask import send_file
+
+    readme = """\
+ZIP 工艺包格式说明
+==================
+
+上传要求
+--------
+将 PRT 零件图纸文件和 PDF 工艺规程文件放入同一个 ZIP，
+二者按文件名主干（去掉所有扩展名的剩余部分）自动配对。
+
+配对规则
+--------
+  shaft_001.prt.5  ←→  shaft_001.pdf
+  XF25YS4101.prt   ←→  XF25YS4101.pdf
+
+  主干提取示例：
+    shaft_001.prt.5 → 去 .5 → 去 .prt → 主干 "shaft_001"
+    shaft_001.pdf   → 去 .pdf         → 主干 "shaft_001"
+    两者主干相同，系统自动配对 ✔
+
+每种文件的作用
+--------------
+  PRT 文件（.prt / .prt.1 / .prt.5 …）
+    → 零件三维模型，系统进行视觉特征分析，
+      生成 Embedding 向量作为检索索引。
+
+  PDF 文件（.pdf）
+    → 工艺规程文档，系统用 AI 识别工序表格，
+      提取格式为 "0010@粗车：加工内容（设备）" 的工序行，
+      存入知识库作为检索结果。
+
+本示例包含的占位文件
+--------------------
+  shaft_001.prt.5  ——  请替换为真实的 PRT 模型
+  shaft_001.pdf    ——  请替换为真实的工艺规程 PDF
+  XF25YS4101.prt   ——  请替换为真实的 PRT 模型
+  XF25YS4101.pdf   ——  请替换为真实的工艺规程 PDF
+
+使用步骤
+--------
+  1. 按上述规则将真实文件放入文件夹并压缩为 ZIP
+  2. 在"工艺入库"页面点击"上传工艺包"
+  3. 系统自动完成：文件配对 → PRT 视觉分析 → PDF 工序提取 → 写库
+""".encode("utf-8")
+
+    prt_placeholder = "此文件为占位符，请替换为真实的 PRT 模型文件（Creo .prt / .prt.N 格式）。\n".encode("utf-8")
+    pdf_placeholder = "此文件为占位符，请替换为真实的工艺规程 PDF 文件（含工序表格）。\n".encode("utf-8")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("README.txt", readme)
+        zf.writestr("shaft_001.prt.5", prt_placeholder)
+        zf.writestr("shaft_001.pdf", pdf_placeholder)
+        zf.writestr("XF25YS4101.prt", prt_placeholder)
+        zf.writestr("XF25YS4101.pdf", pdf_placeholder)
+    buf.seek(0)
+
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="sample_process_library.zip",
+    )

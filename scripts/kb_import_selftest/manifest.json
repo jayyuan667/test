@@ -1,0 +1,22 @@
+{
+  "created_at": "2026-04-29T10:06:55.169613",
+  "description": "Synthetic ZIP import self-test package for PDF + XLSX pairing",
+  "cases": [
+    {
+      "prefix": "D125A-181200A003",
+      "pdf": "D125A-181200A003.pdf",
+      "xlsx": "D125A-181200A003.xlsx",
+      "part_name": "Rotor Bracket"
+    },
+    {
+      "prefix": "GJ-2024-001",
+      "pdf": "GJ-2024-001.pdf",
+      "xlsx": "GJ-2024-001.xlsx",
+      "part_name": "Flange Support"
+    }
+  ],
+  "unmatched": [
+    "UNMATCHED-AX99.pdf",
+    "UNMATCHED-BB99.xlsx"
+  ]
+}
