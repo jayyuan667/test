@@ -3389,7 +3389,8 @@
               task_id: taskId,
             };
             cacheHistoryResult(taskId, backendState.latestResult);
-            if (!backendState.reviewDirty && !backendState.reviewRenderedForTask
+            const reviewAlreadySubmitted = backendState.reviewSubmittedForTaskId === taskId;
+            if (!reviewAlreadySubmitted && !backendState.reviewDirty && !backendState.reviewRenderedForTask
                 && (result.review_text || result.feature_report || result.raw_review_text)) {
               backendState.reviewRenderedForTask = taskId;
               renderReviewTable({
@@ -3400,7 +3401,7 @@
                 failures: result.vision_failures || [],
                 message: '任务正在等待特征确认。',
               });
-            } else if (!backendState.reviewDirty && backendState.latestReviewPayload?.content) {
+            } else if (!reviewAlreadySubmitted && !backendState.reviewDirty && backendState.latestReviewPayload?.content) {
               renderReviewTable({ ...backendState.latestReviewPayload, task_id: taskId });
             }
             renderHistoryPage();
