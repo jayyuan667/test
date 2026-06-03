@@ -1090,9 +1090,17 @@ def import_zip_route():
         return jsonify({"error": str(exc)}), 500
 
 
+def _sample_zip_dir() -> str:
+    """Resolve the bundled sample_zip directory (works both in dev and PyInstaller)."""
+    import sys as _sys
+    if hasattr(_sys, "_MEIPASS"):
+        return os.path.join(_sys._MEIPASS, "sample_zip")
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_zip")
+
+
 @kb_import_bp.route("/kb/sample_zip", methods=["GET"])
 def sample_zip_route():
-    """Return a downloadable sample ZIP showing the expected PRT + PDF import structure."""
+    """Return a downloadable sample ZIP with real 2D drawing + craft PDF examples."""
     import io
     import zipfile
     from flask import send_file
@@ -1101,56 +1109,87 @@ def sample_zip_route():
 ZIP 工艺包格式说明
 ==================
 
-上传要求
---------
-将 PRT 零件图纸文件和 PDF 工艺规程文件放入同一个 ZIP，
-二者按文件名主干（去掉所有扩展名的剩余部分）自动配对。
+目录结构要求
+------------
+ZIP 内必须包含两个子文件夹：
+
+  sample_process_library.zip
+  ├── drawing/          ← 2D 图纸 PDF（每个零件一份）
+  │   ├── Y1.pdf
+  │   ├── Y2.pdf
+  │   └── ...
+  └── craft/            ← 工艺规程 PDF（每个零件一份）
+      ├── Y1.pdf
+      ├── Y2.pdf
+      └── ...
+
+  "drawing" 文件夹也可命名为 "drawings" 或 "图纸"。
+  "craft" 文件夹可以是任意其他名称（非 drawing/drawings/图纸）。
 
 配对规则
 --------
-  shaft_001.prt.5  ←→  shaft_001.pdf
-  XF25YS4101.prt   ←→  XF25YS4101.pdf
+系统按文件名主干（去掉所有扩展名后的剩余部分）自动配对：
 
-  主干提取示例：
-    shaft_001.prt.5 → 去 .5 → 去 .prt → 主干 "shaft_001"
-    shaft_001.pdf   → 去 .pdf         → 主干 "shaft_001"
-    两者主干相同，系统自动配对 ✔
+  drawing/Y1.pdf  ←→  craft/Y1.pdf        主干 "Y1"  ✔
+  drawing/Y2.pdf  ←→  craft/Y2.pdf        主干 "Y2"  ✔
 
-每种文件的作用
---------------
-  PRT 文件（.prt / .prt.1 / .prt.5 …）
-    → 零件三维模型，系统进行视觉特征分析，
-      生成 Embedding 向量作为检索索引。
+  大小写不敏感：drawing/PART-001.pdf ←→ craft/part-001.pdf  ✔
 
-  PDF 文件（.pdf）
-    → 工艺规程文档，系统用 AI 识别工序表格，
-      提取格式为 "0010@粗车：加工内容（设备）" 的工序行，
-      存入知识库作为检索结果。
+每个文件夹的作用
+----------------
+  drawing/ 中的 PDF（图纸）
+    → AI 视觉分析：识别零件轮廓、尺寸公差、粗糙度、形位公差等
+      几何特征，生成向量索引，用于后续工艺规程的精准检索。
 
-本示例包含的占位文件
---------------------
-  shaft_001.prt.5  ——  请替换为真实的 PRT 模型
-  shaft_001.pdf    ——  请替换为真实的工艺规程 PDF
-  XF25YS4101.prt   ——  请替换为真实的 PRT 模型
-  XF25YS4101.pdf   ——  请替换为真实的工艺规程 PDF
+  craft/ 中的 PDF（工艺规程）
+    → AI 解析工序表格，提取加工工序、设备、切削参数等，
+      存入知识库作为可检索的工艺条目。
+
+重要：缺少图纸时该记录将被跳过
+--------------------------------
+  若 craft/ 中有一份工艺规程 PDF，但 drawing/ 中没有同名图纸，
+  该记录无法生成视觉索引，系统将自动跳过，不写入知识库。
+
+  → 请确保每份工艺规程都有对应的 2D 图纸 PDF。
+
+冲突处理（上传时可选）
+----------------------
+  replace（默认）：若知识库中已存在同名记录，用新文件覆盖。
+  keep           ：若已存在同名记录，跳过，保留旧版本。
 
 使用步骤
 --------
-  1. 按上述规则将真实文件放入文件夹并压缩为 ZIP
-  2. 在"工艺入库"页面点击"上传工艺包"
-  3. 系统自动完成：文件配对 → PRT 视觉分析 → PDF 工序提取 → 写库
+  1. 按上述目录结构组织文件，压缩为 .zip
+  2. 在"工艺入库"页面，将 ZIP 拖入上传区或点击选择文件
+  3. 确认文件配对结果（匹配数 / 未匹配数）
+  4. 选择冲突处理方式后点击"开始入库"
+  5. 等待入库完成，查看入库报告
+
+常见问题
+--------
+  Q: 上传后显示"未匹配"的文件是什么？
+  A: drawing/ 或 craft/ 中找不到对应配对的文件。
+     检查两侧文件名主干是否一致（注意多余的空格或特殊字符）。
+
+  Q: 已有记录能重新入库吗？
+  A: 可以，选择 "replace" 模式即可覆盖更新。
 """.encode("utf-8")
 
-    prt_placeholder = "此文件为占位符，请替换为真实的 PRT 模型文件（Creo .prt / .prt.N 格式）。\n".encode("utf-8")
-    pdf_placeholder = "此文件为占位符，请替换为真实的工艺规程 PDF 文件（含工序表格）。\n".encode("utf-8")
+    sample_dir = _sample_zip_dir()
+
+    def _read_pdf(rel_path: str) -> bytes:
+        full = os.path.join(sample_dir, rel_path)
+        if os.path.isfile(full):
+            with open(full, "rb") as f:
+                return f.read()
+        return f"占位符：{rel_path}（真实文件未找到）\n".encode("utf-8")
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("README.txt", readme)
-        zf.writestr("shaft_001.prt.5", prt_placeholder)
-        zf.writestr("shaft_001.pdf", pdf_placeholder)
-        zf.writestr("XF25YS4101.prt", prt_placeholder)
-        zf.writestr("XF25YS4101.pdf", pdf_placeholder)
+        for name in ["Y1", "Y2", "Y3", "Y4", "Y5", "Y6", "Y7", "Y8"]:
+            zf.writestr(f"drawing/{name}.pdf", _read_pdf(f"drawing/{name}.pdf"))
+            zf.writestr(f"craft/{name}.pdf",   _read_pdf(f"craft/{name}.pdf"))
     buf.seek(0)
 
     return send_file(

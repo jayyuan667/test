@@ -9,7 +9,7 @@
 ```
 PDF 工程图纸上传
     │
-    ├── OCR 特征提取（PaddleOCR）
+    ├── OCR 特征提取（RapidOCR）
     │   ├── 图纸标题栏识别（图号、零件名、材料、比例）
     │   ├── 尺寸标注提取（长宽高、壁厚、孔径）
     │   └── 技术要求识别（热处理、表面处理、检验标准）
@@ -42,7 +42,7 @@ PDF 工程图纸上传
 | 功能 | 说明 |
 |------|------|
 | PDF 上传 | 工程图纸 PDF，多页支持，Poppler 转 PNG |
-| OCR 特征提取 | PaddleOCR 识别标题栏、尺寸、技术要求 |
+| OCR 特征提取 | RapidOCR 识别标题栏、尺寸、技术要求 |
 | OCR 厚度校验 | VLM 交叉验证 OCR 提取的厚度值 |
 | 视觉特征 | 豆包视觉模型提取语义特征和尺寸 |
 | 人工审阅 | 特征表格可在线编辑，确认后继续生成 |
@@ -86,7 +86,7 @@ PDF 工程图纸上传
 │   │   ├── vision_analyzer.py       # 云端视觉分析（豆包 VL）
 │   │   ├── local_vision_analyzer.py # 本地视觉分析
 │   │   ├── vlm_feature.py           # VLM 特征提取 + 厚度推断
-│   │   ├── ocr_feature.py           # PaddleOCR 特征提取
+│   │   ├── ocr_feature.py           # RapidOCR 特征提取
 │   │   ├── ocr_thickness.py         # OCR 厚度交叉验��
 │   │   ├── process_spec_analyzer.py # 工艺规格分析
 │   │   ├── process_gen.py           # 工艺规程生成（含跨库回退）
@@ -261,7 +261,7 @@ python gen_license.py <机器码> <到期日>
 | 层级 | 组件 |
 |------|------|
 | 后端框架 | Flask 3.x + Flask-CORS |
-| OCR | PaddleOCR (PP-OCRv4) |
+| OCR | RapidOCR (rapidocr-onnxruntime) |
 | 视觉分析 | 豆包多模态（Ark） |
 | LLM | DeepSeek Chat |
 | 向量嵌入 | 豆包 Embedding (1024d) |

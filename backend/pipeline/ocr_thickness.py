@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """OCR-based thickness cross-validation for drawing analysis.
 
-Extracts numerical dimensions from drawing images via PaddleOCR,
+Extracts numerical dimensions from drawing images via RapidOCR,
 applies deterministic rules to infer plate thickness, and compares
 against VLM output. Designed as a non-blocking validation layer —
 annotates conflicts but does not modify VLM output.
@@ -306,7 +306,7 @@ def verify_drawing_thickness(
     try:
         lines = run_ocr_on_images(image_paths)
     except ImportError:
-        logger.warning("[ocr_thickness] PaddleOCR not available, skipping")
+        logger.warning("[ocr_thickness] RapidOCR not available, skipping")
         return None
     except Exception:
         logger.warning("[ocr_thickness] OCR failed", exc_info=True)
@@ -316,7 +316,7 @@ def verify_drawing_thickness(
     #     where detail/section views typically live (top-right, right-half).
     #     The full-image OCR often misses small-dimension annotations there.
     #     Use multiple overlapping crops to maximize OCR coverage, since
-    #     PaddleOCR can miss values on any single crop.
+    #     RapidOCR can miss values on any single crop.
     if _is_stepped:
         _extra_lines: list[str] = []
         for _img_path in image_paths:

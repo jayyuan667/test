@@ -43,6 +43,7 @@
     const reviewStayBtn = document.getElementById('reviewStayBtn');
     const reviewConfirmBtn = document.getElementById('reviewConfirmBtn');
     const reviewTableHost = document.getElementById('reviewTableHost');
+    const reviewEmptyState = document.getElementById('reviewEmptyState');
     const reviewTextarea = document.getElementById('reviewTextarea');
     const reviewSourceNote = document.getElementById('reviewSourceNote');
     const reviewStatusBadge = document.getElementById('reviewStatusBadge');
@@ -2640,6 +2641,7 @@
         fields,
       };
 
+      if (reviewEmptyState) reviewEmptyState.style.display = 'none';
       if (reviewTableHost) {
         reviewTableHost.innerHTML = `
           <table class="step-table review-table">
@@ -3494,6 +3496,7 @@
       if (processResult) processResult.style.display = 'none';
 
       if (reviewTableHost) reviewTableHost.innerHTML = '';
+      if (reviewEmptyState) reviewEmptyState.style.display = '';
       if (reviewStatusBadge) {
         reviewStatusBadge.textContent = '未开始';
         reviewStatusBadge.className = 'status-badge warn';

@@ -1316,6 +1316,49 @@
       align-self: stretch;
     }
 
+    .upload-panel .glyph {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      border-width: 2px;
+      border-color: rgba(255, 102, 40, 0.4);
+      font-size: 24px;
+      margin-bottom: 16px;
+    }
+
+    /* 去掉上传区双层嵌套：idle 时卡片边框/背景退到透明，hover/drag 态仍会亮起 */
+    .upload-panel .dropzone {
+      border-color: transparent;
+      background: transparent;
+    }
+
+    /* 右侧特征审阅空状态 */
+    .review-empty-state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 10px;
+      text-align: center;
+      padding: 24px;
+      color: #54708d;
+    }
+
+    .review-empty-state .review-empty-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #284560;
+      margin: 0;
+    }
+
+    .review-empty-state .review-empty-copy {
+      font-size: 13px;
+      max-width: 72%;
+      line-height: 1.65;
+      color: #6b89a4;
+    }
+
     .result-panel {
       align-self: stretch;
     }
