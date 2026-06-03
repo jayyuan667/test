@@ -2,7 +2,7 @@
 chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
 
-set "ROOT_DIR=%~dp0.."
+for %%I in ("%~dp0..") do set "ROOT_DIR=%%~fI"
 set "URL=http://127.0.0.1:5090/dev/demo-industrial-console"
 set "PYTHONIOENCODING=utf-8"
 

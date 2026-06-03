@@ -8,7 +8,7 @@
 - 创建 `.venv` 虚拟环境
 - 安装全部依赖
 - 从 `.env.example` 生成 `.env`
-- 检测 FreeCAD 安装路径
+- 检查知识库（db_data\2d-v.db）
 
 **Linux：** 手动执行：
 ```bash
@@ -61,7 +61,7 @@ updated_front\start_flask_demo.bat
 
 脚本自动等待服务就绪后打开浏览器，无需手动访问地址。
 
-> 手动启动：`.venv\Scripts\python -m backend.run`，然后访问 **http://localhost:5000/dev/demo-industrial-console**
+> 手动启动：`.venv\Scripts\python -m backend.run`，然后访问 **http://localhost:5090/dev/demo-industrial-console**
 
 ### Linux 服务器
 
@@ -78,7 +78,7 @@ xvfb-run -a python -m backend.run
 
 ### 上传 PRT 文件生成工艺
 
-1. 打开 http://localhost:5000/dev/demo-industrial-console
+1. 打开 http://localhost:5090/dev/demo-industrial-console
 2. 点击左侧「**上传 PRT**」，选择 `.prt` 或 `.prt.N` 文件
 3. 右侧进度条依次显示：
    - OnShape 转换（约 30–60 秒）
@@ -102,9 +102,9 @@ xvfb-run -a python -m backend.run
 
 ### 切换云模式 / 本地模式（Windows）
 
-双击运行 `switch_mode.bat`：
-- **选 1**：使用云端 DeepSeek + 豆包（需联网）
-- **选 2**：使用本地 vLLM（需内网服务器 192.168.2.24:8000）
+手动将 `backend/config_cloud.json` 或 `backend/config_local.json` 复制为 `backend/config.json`：
+- **config_cloud.json**：使用云端 DeepSeek + 豆包（需联网）
+- **config_local.json**：使用本地 vLLM（需内网服务器 192.168.2.24:8000）
 
 ---
 
@@ -112,9 +112,9 @@ xvfb-run -a python -m backend.run
 
 | 现象 | 原因 | 解决 |
 |------|------|------|
-| 页面打不开 | 服务未启动 | 确认 `python backend/app.py` 在运行，端口 5000 未被占用 |
+| 页面打不开 | 服务未启动 | 确认 `python -m backend.run` 在运行，端口 5090 未被占用 |
 | OnShape 转换超时 | 网络或凭证问题 | 检查 `.env` 中 `onshape_credentials/did/wid`，确认能访问 cad.onshape.com |
 | 三视图截图失败（Linux） | 无虚拟显示 | 用 `xvfb-run -a` 启动 |
 | PDF 报 Poppler 错误 | Poppler 未安装或路径错 | Windows：配置 `POPPLER_PATH`；Linux：`apt install poppler-utils` |
 | VLM 特征提取跳过 | API 未配置 | 确认 `.env` 中 `VISION_API_KEY/BASE/MODEL_ID` 有值 |
-| RAG 检索无结果 | 数据库缺失 | 确认 `db_data/vector_map_new.db` 存在 |
+| RAG 检索无结果 | 数据库缺失 | 确认 `db_data/2d-v.db` 存在 |

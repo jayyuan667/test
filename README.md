@@ -114,7 +114,7 @@ PDF 工程图纸上传
 ├── db_data/                         # SQLite 数据库（2d-v.db）
 ├── .env                             # API Key 配置
 ├── setup.bat                        # 开发环境初始化
-├── switch_mode.bat                  # 云模式/本地模式切换
+├── push.bat / pull.bat              # Git 快捷脚本
 └── CLAUDE.md                        # AI 助手指引
 ```
 
