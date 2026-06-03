@@ -2463,7 +2463,7 @@
       exportModalImagePlaceholder.style.display = 'block';
       exportModalImagePlaceholder.textContent = '加载中...';
       exportModalInfo.innerHTML = '加载中...';
-      exportModalTable.querySelector('tbody').innerHTML = '<tr><td colspan="2" class="empty-row">加载中...</td></tr>';
+      exportModalTable.querySelector('tbody').innerHTML = '<tr><td colspan="3" class="empty-row">加载中...</td></tr>';
       document.body.style.overflow = 'hidden';
       exportModal.classList.add('open');
 
@@ -2573,7 +2573,12 @@
         const code = String(row.getAttribute('data-process-row') || row.querySelector('.step-no')?.textContent || '').trim();
         const tradeType = String(row.dataset.trade || row.querySelector('[data-step-trade]')?.textContent || '').trim();
         const contentEl = row.querySelector('[data-process-content]');
-        const content = String(contentEl?.textContent || row.dataset.content || '').trim();
+        const rawHtml = contentEl ? contentEl.innerHTML : '';
+        const content = String(
+          rawHtml
+            ? rawHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
+            : row.dataset.content || ''
+        ).trim();
         return { code, tradeType, content };
       }).filter((row) => row.code || row.content);
     }
