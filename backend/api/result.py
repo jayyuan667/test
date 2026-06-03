@@ -5,7 +5,7 @@ import os
 import json
 from flask import Blueprint, jsonify, send_from_directory
 
-from ..config import OUTPUT_FOLDER
+from ..config import OUTPUT_FOLDER, KB_PREVIEW_FOLDER
 from ._response import fail, ERR_TASK_NOT_FOUND
 
 
@@ -18,6 +18,8 @@ tasks = {}
 
 
 def _result_dir(task_id: str):
+    if task_id.startswith("kb_"):
+        return os.path.join(KB_PREVIEW_FOLDER, task_id)
     return os.path.join(OUTPUT_FOLDER, task_id)
 
 

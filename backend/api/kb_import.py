@@ -18,7 +18,7 @@ from openpyxl import load_workbook
 from PIL import Image
 from werkzeug.utils import secure_filename
 
-from ..config import OUTPUT_FOLDER, UPLOAD_FOLDER, validate_vision_config, ensure_poppler_path
+from ..config import OUTPUT_FOLDER, UPLOAD_FOLDER, KB_PREVIEW_FOLDER, validate_vision_config, ensure_poppler_path
 from ..feature_report import build_feature_report, write_feature_report_json
 from ..library_scope import PUBLIC_LIBRARY_KEY, ensure_scope, mark_scope_batch, resolve_scope, sanitize_identifier
 from ..pipeline.vision_analyzer import VisionAnalyzer
@@ -527,7 +527,7 @@ def _build_record_from_prefix(
     draft["preview_total_pages"] = draft["pdf_page_count"]
     draft["process_list"] = content_rows
 
-    preview_dir = os.path.join(OUTPUT_FOLDER, draft["preview_task_id"])
+    preview_dir = os.path.join(KB_PREVIEW_FOLDER, draft["preview_task_id"])
     os.makedirs(preview_dir, exist_ok=True)
     draft["feature_report_json_path"] = write_feature_report_json(preview_dir, feature_report)
     preview_urls: List[str] = []

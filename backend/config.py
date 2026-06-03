@@ -168,6 +168,7 @@ def ensure_poppler_path() -> None:
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 OUTPUT_FOLDER = os.path.join(BASE_DIR, "output")
+KB_PREVIEW_FOLDER = os.path.join(BASE_DIR, "db_data", "kb_previews")
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024
 MAX_HISTORY_COUNT = 50
 
