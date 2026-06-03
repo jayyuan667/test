@@ -282,7 +282,6 @@
     const dbPreviewResetBtn = document.getElementById('dbPreviewResetBtn');
     const dbPreviewZoomLabel = document.getElementById('dbPreviewZoomLabel');
     const dbEditorShell = document.getElementById('dbEditorShell');
-    const dbEditorTextarea = document.getElementById('dbEditorTextarea');
     const dbEditorPreview = document.getElementById('dbEditorPreview');
     const dbEditorProductType = document.getElementById('dbEditorProductType');
     const dbEditorContent = document.getElementById('dbEditorContent');
@@ -1152,7 +1151,7 @@
 
     function openHistorySnapshot(taskId) {
       if (!taskId || !historySnapshotModal) return;
-      const historyItem = (Array.isArray(backendState.history) ? backendState.history : []).find((item) => item.task_id === taskId) || { task_id: task_id };
+      const historyItem = (Array.isArray(backendState.history) ? backendState.history : []).find((item) => item.task_id === taskId) || { task_id: taskId };
       const cachedResult = getHistoryTaskResult(taskId);
       const apply = (result = {}) => {
         const nextResult = result || cachedResult || {};
@@ -2272,7 +2271,7 @@
         backendState.previewImages = newPreviewImages;
       }
       clampPreviewIndex();
-      if (!isSamePreviewTask || !existingShell) {
+      if (uploadPanelBody && (!isSamePreviewTask || !existingShell)) {
         uploadPanelBody.innerHTML = `
         <div class="task-preview-shell">
           <div class="task-preview-head">
@@ -4249,40 +4248,6 @@
       stageCards.forEach((card, index) => card.classList.toggle('active', index === activeIndex));
     }
 
-    function renderUploadedPreview() {
-      uploadPanelBody.innerHTML = `
-        <div class="preview-files">
-          <div class="file-card">
-            <div class="file-card-title">已接收 PRT 模型</div>
-            <div class="file-card-meta">1F16800.prt</div>
-            <div class="chip-row" style="justify-content:flex-start; margin-top:auto;">
-              <span class="chip">PRT</span>
-              <span class="chip">1 页</span>
-            </div>
-          </div>
-          <div class="file-card">
-            <div class="file-card-title">特征摘要</div>
-            <div class="file-card-meta">主轴类 / 阶梯内孔 / R5 过渡 / 调质</div>
-            <div class="chip-row" style="justify-content:flex-start; margin-top:auto;">
-              <span class="chip">模型编号</span>
-              <span class="chip">1F16800</span>
-            </div>
-          </div>
-        </div>
-        <div class="dropzone compact ready">
-          <div class="glyph" style="margin-bottom:16px;">✓</div>
-          <div class="dropzone-title" style="font-size:24px;">文件已载入</div>
-          <div class="dropzone-copy" style="font-size:15px; max-width: 88%;">当前为演示态：已跳过真实上传，只模拟“PRT 接收 → 模型视图解析 → 专家判断 → 工艺生成”的完整链路。</div>
-        </div>
-        <div class="stage-strip">
-          <div class="stage-card"><div class="stage-name">文件接收</div><div class="stage-desc">上传完成</div></div>
-          <div class="stage-card"><div class="stage-name">模型解析</div><div class="stage-desc">字段识别</div></div>
-          <div class="stage-card"><div class="stage-name">专家判断</div><div class="stage-desc">工艺归纳</div></div>
-          <div class="stage-card"><div class="stage-name">工艺生成</div><div class="stage-desc">路线输出</div></div>
-        </div>
-      `;
-      setStageState(3);
-    }
 
 function runGenerateFlow() {
       createHiddenFileInput('.prt,.prt.1,.prt.2,.prt.3,.prt.4,.prt.5,.prt.6,.prt.7,.prt.8,.prt.9,.pdf,.png,.jpg,.jpeg,.dxf,.dwg', true)
@@ -4605,15 +4570,8 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
 
       if (current) {
         const next = { ...current };
-        dbEditorTextarea.value.split(/\r?\n/).forEach((line) => {
-          const [rawLabel, ...rest] = line.split('：');
-          const label = (rawLabel || '').trim();
-          const value = rest.join('：').trim();
-          if (label === '产品类型') next.type = value || next.type;
-          if (label === '工艺摘要') next.summary = value || next.summary;
-          if (label === '技术要求') next.requirement = value || next.requirement;
-          if (label === '删除风险') next.risk = value || next.risk;
-        });
+        if (dbEditorProductType) next.type = dbEditorProductType.value.trim() || next.type;
+        if (dbEditorContent) next.content = dbEditorContent.value.trim() || next.content;
         dbRecords[dbState.selectedKey] = next;
         renderDbDetail(next);
         renderDbList();
