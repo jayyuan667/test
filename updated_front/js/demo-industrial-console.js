@@ -316,10 +316,17 @@
     const viewMyDbFromLockBtn = document.getElementById('viewMyDbFromLockBtn');
     const dbBrowseBanner = document.getElementById('dbBrowseBanner');
     const dbUnlockHintBtn = document.getElementById('dbUnlockHintBtn');
-    const zipImportHud = document.getElementById('zipImportHud');
+    const zipImportHud = document.getElementById('zipImportHud'); // may be null (removed from HTML)
     const zipImportPhase = document.getElementById('zipImportPhase');
     const zipImportPercent = document.getElementById('zipImportPercent');
     const zipProgressBar = document.getElementById('zipProgressBar');
+    const zipStatusZone = document.getElementById('zipStatusZone');
+    const zipResultTabs = document.getElementById('zipResultTabs');
+    const zipResultBanner = document.getElementById('zipResultBanner');
+    const zipBannerIcon = document.getElementById('zipBannerIcon');
+    const zipBannerTitle = document.getElementById('zipBannerTitle');
+    const zipBannerSub = document.getElementById('zipBannerSub');
+    const zipAgainBtn = document.getElementById('zipAgainBtn');
     const exportModal = document.getElementById('exportModal');
     const exportModalCloseBtn = document.getElementById('exportModalCloseBtn');
     const exportCancelBtn = document.getElementById('exportCancelBtn');
@@ -552,6 +559,11 @@
         tab.disabled = disabled;
         tab.classList.toggle('disabled', disabled);
       });
+    }
+
+    function setZipState(state) {
+      if (zipStatusZone) zipStatusZone.className = `zip-status-zone state-${state}`;
+      if (zipResultTabs) zipResultTabs.classList.toggle('tabs-inactive', state === 'idle');
     }
 
     function updateZipConflictModeButton() {
@@ -3192,33 +3204,7 @@
       zipBrowserState.matchedPage = clampZipPage(zipBrowserState.matchedPage, matchedTotalPages);
       zipBrowserState.unmatchedPage = clampZipPage(zipBrowserState.unmatchedPage, unmatchedTotalPages);
 
-      const dropzoneTitle = document.querySelector('#zipDropzone .dropzone-title');
-      const dropzoneCopy = document.querySelector('#zipDropzone .dropzone-copy');
-      if (dropzoneTitle) {
-        dropzoneTitle.textContent = report.batch_id ? '知识库已入库' : '等待上传知识库压缩包';
-      }
-      if (dropzoneCopy) {
-        dropzoneCopy.textContent = report.batch_id
-          ? `批次 ${report.batch_id} 已完成导入，已写入 ${backendState.activeLibraryName || '目标库'}。这里展示的是知识库结果，不是模型分析结果。`
-          : '上传 ZIP 后会自动导入知识库内容；要分析 PRT 模型，请到“工艺生成”页上传 PRT。';
-      }
-
-      const steps = [...document.querySelectorAll('#zipWorkbench .batch-step')];
-      const stepMeta = [
-        [`文件解压`, `总文件 ${summary.total_files || 0} 个`],
-        [`模型编号提取`, `PRT ${summary.prt_count || 0} / PDF ${summary.pdf_count || 0}`],
-        [`PRT 匹配`, `匹配 ${summary.matched_pairs || 0} 组`],
-        [`报告生成`, `错误 ${summary.error_count || 0} 项`],
-      ];
-      steps.forEach((step, index) => {
-        const titleEl = step.querySelector('strong');
-        const descEl = step.querySelector('span');
-        const hasProgress = !!report.batch_id;
-        step.classList.toggle('active', hasProgress);
-        step.classList.toggle('done', hasProgress && index < 3);
-        if (titleEl) titleEl.textContent = stepMeta[index][0];
-        if (descEl) descEl.textContent = report.batch_id ? stepMeta[index][1] : descEl.textContent;
-      });
+      // (dropzone text and batch-step updates removed — handled by setZipState / banner)
 
       updateZipPager(zipMatchedPrevBtn, zipMatchedNextBtn, zipMatchedPageIndicator, zipBrowserState.matchedPage, matchedTotalPages);
       updateZipPager(zipUnmatchedPrevBtn, zipUnmatchedNextBtn, zipUnmatchedPageIndicator, zipBrowserState.unmatchedPage, unmatchedTotalPages);
@@ -3288,33 +3274,50 @@
         `未匹配 PRT ${unmatchedPrts.length} 项，未匹配 PDF ${unmatchedPdfs.length} 项。`,
         ...errors.slice(0, 3).map((err) => `错误：${err.prefix || err.pdf_name || err.prt_name || '批次项'} - ${err.error || err.message || '解析失败'}`),
       ];
-      zipLogList.innerHTML = logLines.map((text, index) => `<div class="log-line"><span class="log-time">10:12:${String(1 + index * 5).padStart(2, '0')}</span><span>${escapeHtml(text)}</span></div>`).join('');
+      const _logBase = new Date();
+      zipLogList.innerHTML = logLines.map((text, index) => {
+        const d = new Date(_logBase.getTime() + index * 1000);
+        const ts = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+        return `<div class="log-line"><span class="log-time">${ts}</span><span>${escapeHtml(text)}</span></div>`;
+      }).join('');
       activateZipView('zip-matched');
     }
 
     function setZipImportState(phase, detail) {
-      const busyPhase = /上传中|解析中|入库中/.test(String(phase || ''));
+      const phaseStr = String(phase || '');
+      const busyPhase = /上传中|解析中|入库中/.test(phaseStr);
+      const isDone = /已完成/.test(phaseStr);
+      const isIdle = !busyPhase && !isDone;
       const thinkingText = getZipPhaseLabel(phase);
+
       setTextIfChanged(zipImportStatus, detail || phase || '等待工艺入库');
       setTextIfChanged(zipImportPhase, thinkingText);
-      const progress = /上传中/.test(String(phase || '')) ? 18 : (/解析中/.test(String(phase || '')) ? 48 : (/入库中/.test(String(phase || '')) ? 78 : (/已完成/.test(String(phase || '')) ? 100 : 0)));
-      setTextIfChanged(zipImportPercent, `${Math.max(0, Math.min(100, progress))}%`);
+
+      const progress = /上传中/.test(phaseStr) ? 18 : (/解析中/.test(phaseStr) ? 48 : (/入库中/.test(phaseStr) ? 78 : (isDone ? 100 : 0)));
+      setTextIfChanged(zipImportPercent, `${progress}%`);
       if (zipProgressBar) {
-        const nextWidth = `${Math.max(0, Math.min(100, progress))}%`;
+        const nextWidth = `${progress}%`;
         if (zipProgressBar.style.width !== nextWidth) zipProgressBar.style.width = nextWidth;
       }
-      if (zipImportHud) {
-        zipImportHud.classList.toggle('busy', busyPhase);
-        zipImportHud.classList.toggle('completed', /已完成/.test(String(phase || '')));
+
+      // Drive the state zone
+      if (busyPhase) {
+        setZipState('running');
+      } else if (isDone) {
+        setZipState('done');
+        if (zipResultBanner) zipResultBanner.className = 'zip-result-banner success';
+        if (zipBannerIcon) zipBannerIcon.textContent = '✓';
+        if (zipBannerTitle) zipBannerTitle.textContent = `入库完成 — ${backendState.activeLibraryName || '目标库'}`;
+        if (zipBannerSub) zipBannerSub.textContent = detail || '';
+      } else if (isIdle) {
+        setZipState('idle');
       }
+
       setTextIfChanged(zipBatchChip, phase || '等待知识库批次');
       setTextIfChanged(zipResultChip, phase && phase !== '等待批次' ? '处理中' : '未开始');
-      const uploadBtn = zipRunBtn;
-      const resetBtn = zipResetBtn;
-      const conflictBtn = zipConflictModeBtn;
-      setDisabledIfChanged(uploadBtn, busyPhase);
-      setDisabledIfChanged(resetBtn, busyPhase);
-      setDisabledIfChanged(conflictBtn, busyPhase);
+      setDisabledIfChanged(zipRunBtn, busyPhase);
+      setDisabledIfChanged(zipResetBtn, busyPhase);
+      setDisabledIfChanged(zipConflictModeBtn, busyPhase);
     }
 
     async function followTaskProgress(taskId) {
@@ -4267,6 +4270,11 @@ function runGenerateFlow() {
       createHiddenFileInput('.zip', false)
         .then((files) => uploadToBackend(files).catch((error) => {
           console.error(error);
+          setZipState('error');
+          if (zipResultBanner) zipResultBanner.className = 'zip-result-banner error';
+          if (zipBannerIcon) zipBannerIcon.textContent = '✗';
+          if (zipBannerTitle) zipBannerTitle.textContent = '入库失败';
+          if (zipBannerSub) zipBannerSub.textContent = error?.message || '请检查 ZIP 文件格式后重试';
           zipBatchChip.textContent = '入库失败';
           backendState.zipBusy = false;
           updateNavigationLockState();
@@ -4275,6 +4283,7 @@ function runGenerateFlow() {
     }
 
     function resetZipFlow() {
+      setZipState('idle');
       setZipImportState('等待批次', '等待上传工艺包');
       renderZipReport(backendState.latestZipReport || {});
       bootstrapBackend().catch(() => null);
@@ -4294,6 +4303,15 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
       featureCacheToggleBtn.classList.toggle('is-active', on);
     });
     zipRunBtn.addEventListener('click', runZipFlow);
+    if (zipAgainBtn) zipAgainBtn.addEventListener('click', () => {
+      backendState.latestZipReport = null;
+      backendState.zipBrowserState = { matchedPage: 1, unmatchedPage: 1 };
+      setZipState('idle');
+      renderZipReport({});
+      runZipFlow();
+    });
+    const zipIdleDropzone = document.getElementById('zipDropzone');
+    if (zipIdleDropzone) zipIdleDropzone.addEventListener('click', () => { if (!backendState.zipBusy) runZipFlow(); });
 
     // Detect backend restart and clear stale visual state
     checkStartupToken();

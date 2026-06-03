@@ -423,128 +423,133 @@
               <div class="toolbar-actions">
                 <button class="button secondary" id="zipConflictModeBtn">⇄ 冲突模式：替换入库</button>
               </div>
-              <div class="result-tabs" style="justify-content:flex-end;">
+            </div>
+
+            <!-- hidden elements kept for JS compatibility -->
+            <span id="zipBatchChip" style="display:none;"></span>
+            <span id="zipResultChip" style="display:none;"></span>
+            <span id="zipImportStatus" style="display:none;"></span>
+
+            <!-- 状态区：state-idle / state-running / state-done / state-error -->
+            <div class="zip-status-zone state-idle" id="zipStatusZone">
+              <div class="zip-status-panel zip-idle-panel">
+                <div class="dropzone compact zip-idle-dropzone" id="zipDropzone">
+                  <div class="glyph">⌁</div>
+                  <div class="dropzone-title">拖拽 ZIP 工艺包到此处</div>
+                  <div class="dropzone-copy">或点击上方 <strong>”上传工艺包”</strong> 按钮 · 支持 PRT + PDF 打包 ZIP，文件名主干需一致</div>
+                </div>
+              </div>
+
+              <div class="zip-status-panel zip-running-panel">
+                <div class="zip-progress-head">
+                  <div class="zip-phase-wrap">
+                    <span class="zip-pulse-dot"></span>
+                    <span id="zipImportPhase" class="zip-phase-text">等待上传工艺包</span>
+                  </div>
+                  <span id="zipImportPercent" class="zip-progress-pct">0%</span>
+                </div>
+                <div class="zip-progress-rail">
+                  <div id="zipProgressBar" class="zip-progress-bar" style="width:0%;"></div>
+                </div>
+                <div class="zip-stats-row">
+                  <span>总文件 <strong id="zipTotalFiles">0</strong></span>
+                  <span>配对 <strong id="zipMatchedCount">0</strong></span>
+                  <span>未匹配 <strong id="zipUnmatchedCount">0</strong></span>
+                  <span>错误 <strong id="zipErrorCount">0</strong></span>
+                </div>
+              </div>
+
+              <div class="zip-status-panel zip-done-panel">
+                <div class="zip-result-banner" id="zipResultBanner">
+                  <span class="zip-banner-icon" id="zipBannerIcon">✓</span>
+                  <div class="zip-banner-body">
+                    <div class="zip-banner-title" id="zipBannerTitle">入库完成</div>
+                    <div class="zip-banner-sub" id="zipBannerSub"></div>
+                  </div>
+                  <button class="button secondary" id="zipAgainBtn" style="margin-left:auto;">再次上传</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 结果区 -->
+            <div class="zip-result-area">
+              <div class="result-tabs" id="zipResultTabs">
                 <button class="result-tab active" data-zip-view="zip-matched">已匹配记录</button>
                 <button class="result-tab" data-zip-view="zip-unmatched">未匹配项</button>
                 <button class="result-tab" data-zip-view="zip-log">批次日志</button>
               </div>
-            </div>
-
-            <div class="summary-grid" id="zipSummaryGrid">
-              <div class="summary-card"><span>总文件</span><strong id="zipTotalFiles">0</strong><small>PRT + PDF</small></div>
-              <div class="summary-card"><span>配对</span><strong id="zipMatchedCount">0</strong><small>成功匹配组数</small></div>
-              <div class="summary-card"><span>未匹配</span><strong id="zipUnmatchedCount">0</strong><small>待处理记录</small></div>
-              <div class="summary-card"><span>错误</span><strong id="zipErrorCount">0</strong><small>解析异常数</small></div>
-            </div>
-
-            <div class="zip-workbench" id="zipWorkbench">
-              <div class="workbench-panel upload-panel">
-                <div class="workbench-panel-head">
-                  <div class="panel-title">工艺入库总览</div>
-                  <div class="panel-chip" id="zipBatchChip">等待批次</div>
-                </div>
-                <div class="summary-note" id="zipImportStatus" style="margin:0 0 12px;"></div>
-                <div id="zipImportHud" class="zip-import-hud">
-                  <div class="zip-import-head">
-                    <div id="zipImportPhase" class="zip-import-phase">等待上传工艺包</div>
-                    <div id="zipImportPercent" class="zip-import-percent">0%</div>
+              <div class="browser-shell">
+                <div class="browser-view active" id="zip-matched">
+                  <div class="result-empty" id="zipMatchedEmpty">
+                    <div class="glyph blue">▣</div>
+                    <div class="dropzone-title" style="font-size:24px; margin:0;">暂无匹配记录</div>
+                    <div class="dropzone-copy" style="font-size:15px; max-width:84%;">点击”上传工艺包”后，这里会展示目标库、匹配记录卡片、来源文件、工艺条数和状态说明。</div>
                   </div>
-                  <div class="zip-import-rail">
-                    <div id="zipProgressBar" class="zip-import-bar" style="width:0%;"></div>
-                  </div>
-                </div>
-                <div class="upload-panel-body">
-                  <div class="dropzone compact" id="zipDropzone">
-                    <div class="glyph">⌁</div>
-                    <div class="dropzone-title" style="font-size:24px;">等待上传工艺包</div>
-                    <div class=”dropzone-copy” style=”font-size:15px; max-width:88%;”>上传 ZIP 后，后端会解析 PRT + PDF 配对（按文件名主干匹配），这里会展示”已匹配记录””未匹配项”和”批次日志”。</div>
-                  </div>
-
-                </div>
-              </div>
-
-              <div class="resizer" id="zipResizer" aria-hidden="true"></div>
-
-              <div class="workbench-panel result-panel">
-                <div class="workbench-panel-head">
-                  <div class="panel-title">批次记录浏览器</div>
-                  <div class="panel-chip" id="zipResultChip">未开始</div>
-                </div>
-                <div class="result-panel-body">
-                  <div class="browser-shell">
-                    <div class="browser-view active" id="zip-matched">
-                      <div class="result-empty" id="zipMatchedEmpty">
-                        <div class="glyph blue">▣</div>
-                        <div class="dropzone-title" style="font-size:24px; margin:0;">暂无匹配记录</div>
-                         <div class="dropzone-copy" style="font-size:15px; max-width:84%;">点击“上传工艺包”后，这里会展示目标库、匹配记录卡片、来源文件、工艺条数和状态说明。</div>
-                      </div>
-                      <div class="browser-actions" id="zipMatchedPager" style="margin: 0 0 12px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
-                        <div class="browser-indicator" id="zipMatchedPageIndicator">当前页：第 1 / 1 页</div>
-                        <div class="pill-stack">
-                          <button class="button secondary" id="zipMatchedPrevBtn" style="padding:10px 14px;">上一页</button>
-                          <button class="button secondary" id="zipMatchedNextBtn" style="padding:10px 14px;">下一页</button>
-                        </div>
-                      </div>
-                      <div id="zipMatchedCard" style="display:none;">
-                        <div class="match-card">
-                          <div class="match-head">
-                            <div>
-                              <div class="match-title">D125A-181200A003</div>
-                              <div class="match-sub">PRT：D125A-181200A003.prt.5 · PDF：D125A-181200A003.pdf</div>
-                            </div>
-                            <span class="status-badge success">已替换</span>
-                          </div>
-                          <div class="match-columns">
-                            <div class="match-pane">
-                              <h4>已有记录</h4>
-                              <div class="summary-note">旧版工艺共 5 条，最后更新时间 2026-04-18 14:20。</div>
-                            </div>
-                            <div class="match-pane">
-                              <h4>本次导入</h4>
-                              <div class="summary-note">新增热处理要求，工艺调整为 7 条，并保留箱体内腔防腐处理说明。</div>
-                            </div>
-                          </div>
-                          <div class="match-meta-row">
-                            <span class="chip">工序 7 条</span>
-                            <span class="chip">视图页数 3</span>
-                            <span class="chip">冲突模式：替换</span>
-                          </div>
-                        </div>
-                      </div>
+                  <div class="browser-actions" id="zipMatchedPager" style="margin: 0 0 12px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                    <div class="browser-indicator" id="zipMatchedPageIndicator">当前页：第 1 / 1 页</div>
+                    <div class="pill-stack">
+                      <button class="button secondary" id="zipMatchedPrevBtn" style="padding:10px 14px;">上一页</button>
+                      <button class="button secondary" id="zipMatchedNextBtn" style="padding:10px 14px;">下一页</button>
                     </div>
-
-                    <div class="browser-view" id="zip-unmatched">
-                      <div class="browser-actions">
-                        <div class="browser-indicator" id="zipUnmatchedPageIndicator">当前页：第 1 / 1 页</div>
-                        <div class="pill-stack">
-                          <button class="button secondary" id="zipUnmatchedPrevBtn" style="padding:10px 14px;">上一页</button>
-                          <button class="button secondary" id="zipUnmatchedNextBtn" style="padding:10px 14px;">下一页</button>
+                  </div>
+                  <div id="zipMatchedCard" style="display:none;">
+                    <div class="match-card">
+                      <div class="match-head">
+                        <div>
+                          <div class="match-title">D125A-181200A003</div>
+                          <div class="match-sub">PRT：D125A-181200A003.prt.5 · PDF：D125A-181200A003.pdf</div>
                         </div>
+                        <span class="status-badge success">已替换</span>
                       </div>
                       <div class="match-columns">
                         <div class="match-pane">
-                          <h4>未匹配 PRT</h4>
-                          <div class="pill-stack">
-                            <span class="chip">UNMATCHED-AX99.prt</span>
-                            <span class="chip">QZ-07-441.prt</span>
-                          </div>
+                          <h4>已有记录</h4>
+                          <div class="summary-note">旧版工艺共 5 条，最后更新时间 2026-04-18 14:20。</div>
                         </div>
                         <div class="match-pane">
-                          <h4>未匹配 PDF</h4>
-                          <div class="pill-stack">
-                            <span class="chip">UNMATCHED-BB99.pdf</span>
-                            <span class="chip">GJ-2024-001.pdf</span>
-                            <span class="chip">D125A-181200A003.pdf</span>
-                          </div>
+                          <h4>本次导入</h4>
+                          <div class="summary-note">新增热处理要求，工艺调整为 7 条，并保留箱体内腔防腐处理说明。</div>
                         </div>
                       </div>
-                    </div>
-
-                    <div class="browser-view" id="zip-log">
-                      <div class="log-list" id="zipLogList">
-                        <div class="log-line"><span class="log-time">10:12:01</span><span>等待工艺包上传。</span></div>
+                      <div class="match-meta-row">
+                        <span class="chip">工序 7 条</span>
+                        <span class="chip">视图页数 3</span>
+                        <span class="chip">冲突模式：替换</span>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                <div class="browser-view" id="zip-unmatched">
+                  <div class="browser-actions">
+                    <div class="browser-indicator" id="zipUnmatchedPageIndicator">当前页：第 1 / 1 页</div>
+                    <div class="pill-stack">
+                      <button class="button secondary" id="zipUnmatchedPrevBtn" style="padding:10px 14px;">上一页</button>
+                      <button class="button secondary" id="zipUnmatchedNextBtn" style="padding:10px 14px;">下一页</button>
+                    </div>
+                  </div>
+                  <div class="match-columns">
+                    <div class="match-pane">
+                      <h4>未匹配 PRT</h4>
+                      <div class="pill-stack">
+                        <span class="chip">UNMATCHED-AX99.prt</span>
+                        <span class="chip">QZ-07-441.prt</span>
+                      </div>
+                    </div>
+                    <div class="match-pane">
+                      <h4>未匹配 PDF</h4>
+                      <div class="pill-stack">
+                        <span class="chip">UNMATCHED-BB99.pdf</span>
+                        <span class="chip">GJ-2024-001.pdf</span>
+                        <span class="chip">D125A-181200A003.pdf</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="browser-view" id="zip-log">
+                  <div class="log-list" id="zipLogList">
+                    <div class="log-line"><span class="log-time">--:--:--</span><span>等待工艺包上传。</span></div>
                   </div>
                 </div>
               </div>

@@ -614,114 +614,148 @@
       animation: workflow-sheen 1.6s linear infinite;
     }
 
-    .zip-import-hud {
-      margin: 0 0 14px;
-      padding: 12px 14px;
+    /* ── zip status zone ─────────────────────────────────── */
+    .zip-status-zone {
+      margin-bottom: 16px;
+    }
+
+    .zip-status-zone .zip-status-panel { display: none; }
+    .zip-status-zone.state-idle    .zip-idle-panel    { display: block; }
+    .zip-status-zone.state-running .zip-running-panel { display: block; }
+    .zip-status-zone.state-done    .zip-done-panel,
+    .zip-status-zone.state-error   .zip-done-panel    { display: block; }
+
+    /* idle: dropzone is the entire panel */
+    .zip-idle-dropzone { cursor: pointer; }
+
+    /* running panel */
+    .zip-running-panel {
+      padding: 16px 18px;
       border: 1px solid #dfe7f0;
       border-radius: 14px;
       background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
-      position: relative;
-      overflow: hidden;
     }
 
-    .zip-import-hud::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at 18% 18%, rgba(255, 101, 40, 0.06), transparent 24%);
-      pointer-events: none;
-    }
-
-    .zip-import-hud.busy {
-      box-shadow: 0 14px 30px rgba(24, 38, 58, 0.08), inset 0 1px 0 rgba(255,255,255,0.65);
-    }
-
-    .zip-import-head {
+    .zip-progress-head {
       display: flex;
       justify-content: space-between;
-      gap: 12px;
       align-items: center;
-      margin-bottom: 8px;
-      position: relative;
-      z-index: 1;
+      margin-bottom: 10px;
     }
 
-    .zip-import-phase {
-      font-weight: 800;
+    .zip-phase-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .zip-pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #2563eb;
+      animation: zip-pulse 1.2s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes zip-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.75); }
+    }
+
+    .zip-phase-text {
+      font-weight: 700;
+      font-size: 14px;
       color: #1f2d3d;
-      letter-spacing: 0.02em;
     }
 
-    .zip-import-percent {
+    .zip-progress-pct {
       font-weight: 800;
+      font-size: 15px;
       color: #ff6528;
+      font-variant-numeric: tabular-nums;
     }
 
-    .zip-import-rail {
-      height: 12px;
+    .zip-progress-rail {
+      height: 8px;
       border-radius: 999px;
-      background: linear-gradient(180deg, rgba(232,238,245,0.95) 0%, rgba(220,228,238,0.95) 100%);
+      background: linear-gradient(180deg, #e8eef5 0%, #dce4ee 100%);
       border: 1px solid #d6e1ec;
       overflow: hidden;
-      position: relative;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
-      z-index: 1;
+      margin-bottom: 12px;
     }
 
-    .zip-import-rail::before {
-      content: '';
-      position: absolute;
-      inset: 1px;
-      border-radius: inherit;
-      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.58) 50%, transparent 100%);
-      opacity: 0;
-      transform: translateX(-120%);
-      pointer-events: none;
-    }
-
-    .zip-import-hud.busy .zip-import-rail::before {
-      opacity: 1;
-      animation: workflow-sheen 1.8s linear infinite;
-    }
-
-    .zip-import-bar {
+    .zip-progress-bar {
       height: 100%;
       border-radius: inherit;
-      background: linear-gradient(90deg, #ff8b4d 0%, #ff6528 32%, #ff9c5d 68%, #ff6528 100%);
-      background-size: 220% 100%;
-      transition: width 0.32s cubic-bezier(0.16, 1, 0.3, 1), filter 0.32s ease;
-      position: relative;
-      will-change: width, transform;
+      background: linear-gradient(90deg, #1d4ed8, #3b82f6);
+      transition: width 0.36s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .zip-import-hud.busy .zip-import-bar {
-      animation: workflow-shimmer 1.9s linear infinite;
-      filter: saturate(1.06);
+    .zip-stats-row {
+      display: flex;
+      gap: 20px;
+      font-size: 12px;
+      color: var(--text-soft);
     }
 
-    .zip-import-bar::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      width: 34%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.42) 50%, transparent 100%);
-      transform: translateX(-160%) skewX(-16deg);
+    .zip-stats-row strong {
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* done / error banner */
+    .zip-result-banner {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 18px;
+      border-radius: 12px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+    }
+
+    .zip-result-banner.error {
+      background: #fef2f2;
+      border-color: #fecaca;
+    }
+
+    .zip-banner-icon {
+      font-size: 22px;
+      color: #16a34a;
+      flex-shrink: 0;
+    }
+
+    .zip-result-banner.error .zip-banner-icon { color: #dc2626; }
+
+    .zip-banner-body { flex: 1; min-width: 0; }
+
+    .zip-banner-title {
+      font-weight: 700;
+      font-size: 14px;
+      color: #15803d;
+    }
+
+    .zip-result-banner.error .zip-banner-title { color: #dc2626; }
+
+    .zip-banner-sub {
+      font-size: 12px;
+      color: #166534;
+      margin-top: 2px;
+    }
+
+    .zip-result-banner.error .zip-banner-sub { color: #b91c1c; }
+
+    /* result area below status zone */
+    .zip-result-area {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .result-tabs.tabs-inactive .result-tab {
+      opacity: 0.4;
       pointer-events: none;
-    }
-
-    .zip-import-hud.busy .zip-import-bar::after {
-      animation: button-sheen 1.6s linear infinite;
-    }
-
-    @keyframes workflow-sheen {
-      from { transform: translateX(-160%); }
-      to { transform: translateX(420%); }
-    }
-
-    @keyframes workflow-shimmer {
-      0% { background-position: 0% 50%; }
-      100% { background-position: 220% 50%; }
     }
 
     @keyframes workflow-pulse {
@@ -866,13 +900,7 @@
       min-height: 180px;
     }
 
-    .zip-workbench {
-      display: grid;
-      grid-template-columns: minmax(360px, 0.92fr) 14px minmax(420px, 1.08fr);
-      gap: 0;
-      min-height: 680px;
-      align-items: stretch;
-    }
+    /* .zip-workbench removed — replaced by .zip-status-zone + .zip-result-area */
 
     .summary-grid {
       display: grid;
@@ -3416,8 +3444,7 @@
         grid-template-columns: 1fr;
       }
 
-      .workbench,
-      .zip-workbench {
+      .workbench {
         grid-template-columns: 1fr;
       }
 
