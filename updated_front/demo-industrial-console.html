@@ -382,38 +382,47 @@
           </div>
         </section>
 
-        <section class="page active" id="page-zip">
-          <div class="zip-hero">
-            <div class="hero-card">
-              <div class="page-kicker" style="margin-bottom:6px;">知识库构建</div>
-              <div class="hero-title">上传一个 ZIP，把工艺直接写进你的库或公共库。</div>
-              <div class="hero-copy">默认推荐先建“我的工艺库”，可选复制公共基线后再导入。这样最安全，也方便后续只看自己的入库结果；如需共享，再直接追加到公共库。</div>
-              <div class="hero-actions">
-                <button class="button primary" id="zipRunBtn">⤴ 上传工艺包</button>
-                <button class="button secondary" id="sampleZipDownloadBtn">⬇ 下载示例 ZIP</button>
-                <button class="button secondary" id="zipResetBtn">↺ 刷新后端状态</button>
+        <section class=”page active” id=”page-zip”>
+          <div class=”zip-hero”>
+            <div class=”hero-card”>
+              <div class=”page-kicker” style=”margin-bottom:6px;”>知识库构建</div>
+              <div class=”hero-title”>上传 ZIP，把工艺写入知识库。</div>
+              <div class=”hero-copy”>右侧选好目标库，点击上传，后端自动解析 PRT + PDF 配对并入库。</div>
+              <div class=”zip-steps”>
+                <div class=”zip-step”><span class=”zip-step-num”>①</span><span>选目标库</span></div>
+                <div class=”zip-step-arrow”></div>
+                <div class=”zip-step”><span class=”zip-step-num”>②</span><span>上传 ZIP</span></div>
+                <div class=”zip-step-arrow”></div>
+                <div class=”zip-step”><span class=”zip-step-num”>③</span><span>查看入库结果</span></div>
+              </div>
+              <div class=”hero-actions”>
+                <button class=”button primary” id=”zipRunBtn”>⤴ 上传工艺包</button>
+                <button class=”button secondary” id=”sampleZipDownloadBtn”>⬇ 下载示例 ZIP</button>
+              </div>
+              <div class=”zip-secondary-actions”>
+                <button class=”button ghost” id=”zipResetBtn”>↺ 刷新后端状态</button>
               </div>
             </div>
-              <div class="hero-card">
+            <div class=”hero-card”>
               <h3>入库目标</h3>
-              <div class="filter-group" style="margin-bottom:8px;">
+              <div class=”filter-group” style=”margin-bottom:8px;”>
                 <label>选择目标库</label>
               </div>
-              <select id="zipLibraryList" class="filter-select" style="width:100%;margin-bottom:10px;">
+              <select id=”zipLibraryList” class=”filter-select zip-library-select”>
                 <option disabled selected>加载中...</option>
               </select>
-              <div id="zipNewLibraryForm" style="display:none;">
-                <input id="zipLibraryNameInput" class="filter-input" placeholder="例如：张三-液压项目库" value="我的工艺库" />
-                <label>
-                  <input type="checkbox" id="zipSeedPublicCheckbox" checked />
+              <div id=”zipNewLibraryForm” class=”zip-new-library-form” style=”display:none;”>
+                <input id=”zipLibraryNameInput” class=”filter-input” placeholder=”例如：张三-液压项目库” value=”我的工艺库” />
+                <label class=”zip-seed-label”>
+                  <input type=”checkbox” id=”zipSeedPublicCheckbox” checked />
                   复制公共工艺库基线（推荐）
                 </label>
               </div>
-              <div class="detail-chip-row" style="margin-top:8px;">
-                <span class="detail-chip">SQLite：2d-v.db</span>
-                <span class="detail-chip" id="zipActiveLibraryChip">当前目标：未选择</span>
+              <div class=”detail-chip-row” style=”margin-top:8px;”>
+                <span class=”detail-chip”>SQLite：2d-v.db</span>
+                <span class=”detail-chip” id=”zipActiveLibraryChip”>当前目标：未选择</span>
               </div>
-              <div class="summary-note" style="margin-top:12px;">数据库浏览页会在至少完成一次 ZIP 入库后解锁，并默认打开你刚刚导入的那一个库。</div>
+              <div class=”summary-note zip-unlock-note”>入库完成后，数据库浏览页自动解锁并定位到该库。</div>
             </div>
           </div>
 
@@ -441,6 +450,7 @@
               <div class="workbench-panel upload-panel">
                 <div class="workbench-panel-head">
                   <div class="panel-title">工艺入库总览</div>
+                  <div class="panel-lib-label" id="zipPanelLibLabel">未选择目标库</div>
                   <div class="panel-chip" id="zipBatchChip">等待批次</div>
                 </div>
                 <div class="summary-note" id="zipImportStatus" style="margin:0 0 12px;"></div>
@@ -456,8 +466,8 @@
                 <div class="upload-panel-body">
                   <div class="dropzone compact" id="zipDropzone">
                     <div class="glyph">⌁</div>
-                    <div class="dropzone-title" style="font-size:24px;">等待上传工艺包</div>
-                    <div class=”dropzone-copy” style=”font-size:15px; max-width:88%;”>上传 ZIP 后，后端会解析 PRT + PDF 配对（按文件名主干匹配），这里会展示”已匹配记录””未匹配项”和”批次日志”。</div>
+                    <div class=”dropzone-title” style=”font-size:24px;”>等待上传工艺包</div>
+                    <div class=”dropzone-copy” style=”font-size:15px; max-width:88%;”>将 ZIP 拖放至此处，或点击上方”上传工艺包”按钮选择文件。后端将按文件名主干自动匹配 PRT + PDF 并入库。</div>
                   </div>
 
                 </div>

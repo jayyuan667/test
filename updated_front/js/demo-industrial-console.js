@@ -235,6 +235,7 @@
     const zipSeedPublicCheckbox = document.getElementById('zipSeedPublicCheckbox');
     const zipLibraryNameInput = document.getElementById('zipLibraryNameInput');
     const zipActiveLibraryChip = document.getElementById('zipActiveLibraryChip');
+    const zipPanelLibLabel = document.getElementById('zipPanelLibLabel');
     const dbLockedState = document.getElementById('dbLockedState');
     const dbReadyState = document.getElementById('dbReadyState');
     const goZipFromLockBtn = document.getElementById('goZipFromLockBtn');
@@ -581,15 +582,20 @@
     }
 
     function updateZipActiveLibraryChip() {
-      if (!zipActiveLibraryChip) return;
       const val = zipLibraryList?.value;
-      if (!val) { zipActiveLibraryChip.textContent = '当前目标：未选择'; return; }
-      if (val === '__new__') {
-        const name = (zipLibraryNameInput?.value || '').trim() || '新工艺库';
-        zipActiveLibraryChip.textContent = `当前目标：${name}（新建）`;
-      } else {
+      let label = '未选择目标库';
+      if (val && val !== '__new__') {
         const selectedOpt = zipLibraryList?.options[zipLibraryList.selectedIndex];
-        zipActiveLibraryChip.textContent = `当前目标：${selectedOpt?.textContent || val}`;
+        label = selectedOpt?.textContent || val;
+      } else if (val === '__new__') {
+        const name = (zipLibraryNameInput?.value || '').trim() || '新工艺库';
+        label = `${name}（新建）`;
+      }
+      if (zipActiveLibraryChip) {
+        zipActiveLibraryChip.textContent = val ? `当前目标：${label}` : '当前目标：未选择';
+      }
+      if (zipPanelLibLabel) {
+        zipPanelLibLabel.textContent = val ? `目标：${label}` : '未选择目标库';
       }
     }
 
@@ -3169,10 +3175,18 @@
         backendState.activeLibraryKey = report.target_library.library_key;
         backendState.activeLibraryName = report.target_library.library_name || report.target_library.library_key;
       }
-      zipBatchChip.textContent = report.batch_id ? '知识库批次已解析' : '等待批次';
-      zipResultChip.textContent = report.batch_id ? '仅知识库入库' : '未开始';
+      const matchedCount = report.summary?.matched_pairs || 0;
+      zipBatchChip.textContent = report.batch_id ? `批次 ${report.batch_id.slice(-6)}` : '等待批次';
+      zipResultChip.textContent = report.batch_id ? `已入库 ${matchedCount} 组` : '未开始';
       if (zipActiveLibraryChip) {
         zipActiveLibraryChip.textContent = `当前目标：${backendState.activeLibraryName || '未选择'}`;
+      }
+      if (zipPanelLibLabel) {
+        zipPanelLibLabel.textContent = backendState.activeLibraryName ? `目标：${backendState.activeLibraryName}` : '未选择目标库';
+      }
+      if (report.batch_id && zipImportHud) {
+        zipImportHud.classList.add('success');
+        zipImportHud.classList.remove('busy', 'error');
       }
       zipTotalFiles.textContent = String(summary.total_files || 0);
       zipMatchedCount.textContent = String(summary.matched_pairs || 0);
@@ -3288,16 +3302,24 @@
         `未匹配 PRT ${unmatchedPrts.length} 项，未匹配 PDF ${unmatchedPdfs.length} 项。`,
         ...errors.slice(0, 3).map((err) => `错误：${err.prefix || err.pdf_name || err.prt_name || '批次项'} - ${err.error || err.message || '解析失败'}`),
       ];
-      zipLogList.innerHTML = logLines.map((text, index) => `<div class="log-line"><span class="log-time">10:12:${String(1 + index * 5).padStart(2, '0')}</span><span>${escapeHtml(text)}</span></div>`).join('');
+      const logBase = new Date();
+      zipLogList.innerHTML = logLines.map((text, index) => {
+        const t = new Date(logBase.getTime() + index * 800);
+        const ts = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}`;
+        return `<div class="log-line"><span class="log-time">${ts}</span><span>${escapeHtml(text)}</span></div>`;
+      }).join('');
       activateZipView('zip-matched');
     }
 
     function setZipImportState(phase, detail) {
-      const busyPhase = /上传中|解析中|入库中/.test(String(phase || ''));
+      const phaseStr = String(phase || '');
+      const busyPhase = /上传中|解析中|入库中/.test(phaseStr);
+      const successPhase = /已完成/.test(phaseStr);
+      const errorPhase = /失败|错误/.test(phaseStr);
       const thinkingText = getZipPhaseLabel(phase);
       setTextIfChanged(zipImportStatus, detail || phase || '等待工艺入库');
       setTextIfChanged(zipImportPhase, thinkingText);
-      const progress = /上传中/.test(String(phase || '')) ? 18 : (/解析中/.test(String(phase || '')) ? 48 : (/入库中/.test(String(phase || '')) ? 78 : (/已完成/.test(String(phase || '')) ? 100 : 0)));
+      const progress = /上传中/.test(phaseStr) ? 18 : (/解析中/.test(phaseStr) ? 48 : (/入库中/.test(phaseStr) ? 78 : (successPhase ? 100 : 0)));
       setTextIfChanged(zipImportPercent, `${Math.max(0, Math.min(100, progress))}%`);
       if (zipProgressBar) {
         const nextWidth = `${Math.max(0, Math.min(100, progress))}%`;
@@ -3305,10 +3327,15 @@
       }
       if (zipImportHud) {
         zipImportHud.classList.toggle('busy', busyPhase);
-        zipImportHud.classList.toggle('completed', /已完成/.test(String(phase || '')));
+        zipImportHud.classList.toggle('success', successPhase);
+        zipImportHud.classList.toggle('error', errorPhase);
+        zipImportHud.classList.toggle('completed', successPhase);
       }
-      setTextIfChanged(zipBatchChip, phase || '等待知识库批次');
-      setTextIfChanged(zipResultChip, phase && phase !== '等待批次' ? '处理中' : '未开始');
+      const chipText = busyPhase ? (
+        /上传中/.test(phaseStr) ? '上传中' : /解析中/.test(phaseStr) ? '解析中' : '入库中'
+      ) : successPhase ? '入库完成' : errorPhase ? '入库失败' : (phase || '等待批次');
+      setTextIfChanged(zipBatchChip, chipText);
+      setTextIfChanged(zipResultChip, busyPhase ? '处理中' : successPhase ? '已入库' : errorPhase ? '失败' : phase && phase !== '等待批次' ? '处理中' : '未开始');
       const uploadBtn = zipRunBtn;
       const resetBtn = zipResetBtn;
       const conflictBtn = zipConflictModeBtn;
