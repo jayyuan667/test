@@ -26,17 +26,10 @@
     const resultTabs = [...document.querySelectorAll('.result-tab')];
     const resultViews = [...document.querySelectorAll('.result-view')];
 
-    const demoStatusValue = document.getElementById('demoStatusValue');
-    const demoHitValue = document.getElementById('demoHitValue');
-    const demoStepValue = document.getElementById('demoStepValue');
-    const demoResultChip = document.getElementById('generateResultChip');
-    const workflowPhase = document.getElementById('workflowPhase');
     const workflowPhaseHint = document.getElementById('workflowPhaseHint');
     const workflowPercent = document.getElementById('workflowPercent');
     const workflowProgressBar = document.getElementById('workflowProgressBar');
-    const workflowLiveBadge = null;
     const workflowThinkingLine = workflowPhaseHint;
-    const workflowLiveStream = null;
     const processEmpty = document.getElementById('processEmpty');
     const processResult = document.getElementById('processResult');
     const stageCards = [...document.querySelectorAll('.stage-card')];
@@ -113,21 +106,10 @@
     const taskPreviewResetBtn = document.getElementById('taskPreviewResetBtn');
     const taskPreviewFullscreenBtn = document.getElementById('taskPreviewFullscreenBtn');
 
-    function setDemoStatusText(value) {
-      if (demoStatusValue) demoStatusValue.textContent = value;
-    }
-
-    function setDemoHitText(value) {
-      if (demoHitValue) demoHitValue.textContent = value;
-    }
-
-    function setDemoStepText(value) {
-      if (demoStepValue) demoStepValue.textContent = value;
-    }
-
-    function setDemoResultChipText(value) {
-      if (demoResultChip) demoResultChip.textContent = value;
-    }
+    function setDemoStatusText() {}
+    function setDemoHitText() {}
+    function setDemoStepText() {}
+    function setDemoResultChipText() {}
 
     function setWorkflowThinkingLine(value) {
       if (workflowThinkingLine) workflowThinkingLine.textContent = String(value || '').trim() || '等待任务启动';
@@ -170,27 +152,11 @@
       return clean;
     }
 
-    function renderWorkflowLiveStream() {
-      if (!workflowLiveStream) return;
-      const items = backendState.workflowLiveEntries.slice(-6);
-      if (!items.length) {
-        workflowLiveStream.innerHTML = '<div class="workflow-live-item dim"><span class="tag">SYSTEM</span><span class="text">等待后端日志...</span></div>';
-        return;
-      }
-      workflowLiveStream.innerHTML = items.map((item) => `
-        <div class="workflow-live-item${item.tone ? ` is-${escapeHtml(item.tone)}` : ''}">
-          <span class="tag">${escapeHtml(item.tag || 'LOG')}</span>
-          <span class="text">${escapeHtml(item.text || '')}</span>
-        </div>
-      `).join('');
-      workflowLiveStream.scrollTop = workflowLiveStream.scrollHeight;
-    }
+    function renderWorkflowLiveStream() {}
 
     function resetWorkflowLiveConsole() {
       backendState.workflowLiveEntries = [];
-      if (workflowLiveBadge) workflowLiveBadge.textContent = 'LIVE';
       setWorkflowThinkingLine('等待任务启动');
-      renderWorkflowLiveStream();
     }
 
     function appendWorkflowLiveEntry(tag, text, tone = 'normal') {
@@ -805,7 +771,6 @@
       backendState.taskPhase = phase || '等待上传文件';
       backendState.taskProgress = Math.max(0, Math.min(100, Number(progress) || 0));
       backendState.taskBusy = !!busy;
-      setTextIfChanged(workflowPhase, backendState.taskPhase);
       setTextIfChanged(workflowPercent, `${backendState.taskProgress}%`);
       if (workflowProgressBar) {
         const nextWidth = `${backendState.taskProgress}%`;
@@ -1759,7 +1724,7 @@
             : `- ${normalized.content}`;
         }).join('\n');
       }
-      return editorTextarea.value;
+      return editorTextarea?.value || '';
     }
 
     function resetProcessStreamState(taskId = '') {
@@ -2114,6 +2079,72 @@
       return rows;
     }
 
+    const PROCESS_PRESET_TRADES = ['划线工','车工','铣工','钻工','镗工','磨工','钳工','热处理','检验','其他'];
+    const PROCESS_TRADE_COLOR = { '热处理': 'green', '检验': 'orange' };
+
+    function openProcessRowEdit(tr) {
+      if (!tr) return;
+      const openRow = tr.closest('table')?.querySelector('tr.process-row-editing');
+      if (openRow && openRow !== tr) closeProcessRowEdit(openRow, false);
+      tr.classList.add('process-row-editing');
+      const trade = tr.dataset.trade || '';
+      const content = tr.dataset.content || tr.querySelector('[data-process-content]')?.textContent.trim() || '';
+      const code = tr.querySelector('.step-no')?.textContent.trim() || tr.dataset.processRow || '';
+      tr.dataset.origTrade = trade;
+      tr.dataset.origContent = content;
+      const isCustom = trade && !PROCESS_PRESET_TRADES.slice(0, -1).includes(trade);
+      const selVal = isCustom ? '其他' : trade;
+      const tradeCell = tr.querySelector('td.step-trade');
+      const contentCell = tr.querySelector('td.step-content-cell');
+      const opCell = tr.querySelector('td.step-op');
+      if (tradeCell) {
+        tradeCell.innerHTML = `<div class="trade-edit"><select class="process-trade-select">${PROCESS_PRESET_TRADES.map((t) => `<option${t === selVal ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select><input type="text" class="process-custom-trade" placeholder="输入工种名称" value="${escapeHtml(isCustom ? trade : '')}" style="display:${isCustom ? 'block' : 'none'}"/></div>`;
+      }
+      if (contentCell) {
+        contentCell.innerHTML = `<textarea class="process-content-edit">${escapeHtml(content)}</textarea>`;
+      }
+      if (opCell) {
+        opCell.innerHTML = `<div class="step-edit-actions"><button class="button primary sm" data-process-save="${escapeHtml(code)}">保存</button><button class="button secondary sm" data-process-cancel="${escapeHtml(code)}">取消</button></div>`;
+      }
+    }
+
+    function closeProcessRowEdit(tr, save) {
+      if (!tr) return;
+      tr.classList.remove('process-row-editing');
+      const tradeSelect = tr.querySelector('.process-trade-select');
+      const customInput = tr.querySelector('.process-custom-trade');
+      const contentTextarea = tr.querySelector('.process-content-edit');
+      const code = tr.querySelector('.step-no')?.textContent.trim() || tr.dataset.processRow || '';
+      let trade = tr.dataset.origTrade || '';
+      let content = tr.dataset.origContent || '';
+      if (save) {
+        if (tradeSelect) {
+          trade = tradeSelect.value;
+          if (trade === '其他' && customInput) trade = customInput.value.trim() || '其他';
+        }
+        if (contentTextarea) content = contentTextarea.value;
+        tr.dataset.trade = trade;
+        tr.dataset.content = content;
+      }
+      const badgeClass = PROCESS_TRADE_COLOR[trade] || 'blue';
+      const tradeCell = tr.querySelector('td.step-trade');
+      const contentCell = tr.querySelector('td.step-content-cell');
+      const opCell = tr.querySelector('td.step-op');
+      if (tradeCell) tradeCell.innerHTML = `<span class="trade-badge trade-badge-${badgeClass}">${escapeHtml(trade)}</span>`;
+      if (contentCell) {
+        const div = document.createElement('div');
+        div.className = 'step-content';
+        div.setAttribute('data-process-content', '');
+        div.contentEditable = 'true';
+        div.spellcheck = false;
+        div.textContent = content;
+        contentCell.innerHTML = '';
+        contentCell.appendChild(div);
+      }
+      if (opCell) opCell.innerHTML = `<button class="step-edit-btn" data-process-edit="${escapeHtml(code)}">编辑</button>`;
+      if (save) syncProcessTableToEditor();
+    }
+
     function renderProcessRowsSurface(rows = [], options = {}) {
       const taskId = options.taskId || backendState.currentProcessTaskId || backendState.latestTaskId || '';
       const result = options.result || backendState.latestResult || {};
@@ -2156,18 +2187,22 @@
                   <col class="col-step-no" />
                   <col class="col-step-trade" />
                   <col />
+                  <col class="col-step-op" />
                 </colgroup>
                 <thead>
                   <tr>
                     <th>工序号</th>
                     <th>工种</th>
                     <th>工序名称及内容</th>
+                    <th class="th-op">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${rows.map((row) => {
                     const normalized = normalizeProcessRow(row);
-                    return `<tr data-process-row="${escapeHtml(normalized.code || '')}"><td class="step-no">${escapeHtml(normalized.code || '----')}</td><td class="step-trade" data-step-trade>${escapeHtml(normalized.tradeType || '')}</td><td class="step-content-cell"><div class="step-content" data-process-content contenteditable="true" spellcheck="false">${formatContentHtml(normalized.content)}</div></td></tr>`;
+                    const trade = normalized.tradeType || '';
+                    const badgeClass = PROCESS_TRADE_COLOR[trade] || 'blue';
+                    return `<tr data-process-row="${escapeHtml(normalized.code || '')}" data-trade="${escapeHtml(trade)}" data-content="${escapeHtml(normalized.content || '')}"><td class="step-no">${escapeHtml(normalized.code || '----')}</td><td class="step-trade"><span class="trade-badge trade-badge-${badgeClass}">${escapeHtml(trade)}</span></td><td class="step-content-cell"><div class="step-content" data-process-content contenteditable="true" spellcheck="false">${formatContentHtml(normalized.content)}</div></td><td class="step-op"><button class="step-edit-btn" data-process-edit="${escapeHtml(normalized.code || '')}">编辑</button></td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -2536,10 +2571,9 @@
       if (!list) return [];
       return [...list.querySelectorAll('[data-process-row]')].map((row) => {
         const code = String(row.getAttribute('data-process-row') || row.querySelector('.step-no')?.textContent || '').trim();
-        const tradeEl = row.querySelector('[data-step-trade]');
-        const tradeType = String(tradeEl?.textContent || '').trim();
+        const tradeType = String(row.dataset.trade || row.querySelector('[data-step-trade]')?.textContent || '').trim();
         const contentEl = row.querySelector('[data-process-content]');
-        const content = String(contentEl?.textContent || '').trim();
+        const content = String(contentEl?.textContent || row.dataset.content || '').trim();
         return { code, tradeType, content };
       }).filter((row) => row.code || row.content);
     }
@@ -3509,10 +3543,11 @@
     }
 
     function refreshEditorPreview() {
-      editorPreview.textContent = editorTextarea.value;
+      if (editorPreview && editorTextarea) editorPreview.textContent = editorTextarea.value;
     }
 
     function toggleEditor() {
+      if (!editorShell) return;
       const active = editorShell.classList.toggle('active');
       if (active) refreshEditorPreview();
     }
@@ -4430,9 +4465,18 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         const el = event.target instanceof Element ? event.target : null;
         if (!el) return;
         if (el.closest('#openExportCardBtn')) { openExportEngineeringCard(); return; }
+        // 编辑按钮
+        const editBtn = el.closest('[data-process-edit]');
+        if (editBtn) { openProcessRowEdit(editBtn.closest('tr')); return; }
+        // 保存按钮
+        const saveBtn = el.closest('[data-process-save]');
+        if (saveBtn) { closeProcessRowEdit(saveBtn.closest('tr'), true); return; }
+        // 取消按钮
+        const cancelBtn = el.closest('[data-process-cancel]');
+        if (cancelBtn) { closeProcessRowEdit(cancelBtn.closest('tr'), false); return; }
         // Clicking anywhere in a content cell (including padding) focuses the editable div
         const contentCell = el.closest('.step-content-cell');
-        if (contentCell && !el.closest('[data-process-content]')) {
+        if (contentCell && !el.closest('[data-process-content]') && !el.closest('.process-content-edit')) {
           const editable = contentCell.querySelector('[data-process-content]');
           if (editable) {
             editable.focus();
@@ -4441,6 +4485,18 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
             range.collapse(false);
             const sel = window.getSelection();
             if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+          }
+        }
+      });
+      processResult.addEventListener('change', (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target) return;
+        const sel = target.closest('.process-trade-select');
+        if (sel) {
+          const inp = sel.closest('.trade-edit')?.querySelector('.process-custom-trade');
+          if (inp) {
+            inp.style.display = sel.value === '其他' ? 'block' : 'none';
+            if (sel.value === '其他') inp.focus();
           }
         }
       });
@@ -4492,7 +4548,14 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
       if (event.key === 'Escape') closeRetrievalLibraryModal();
       if (event.key === 'Escape') closeExportModal();
     });
-    editorTextarea.addEventListener('input', refreshEditorPreview);
+    if (workflowHudToggleBtn) {
+      workflowHudToggleBtn.addEventListener('click', () => {
+        if (!workflowHudCard) return;
+        const collapsed = workflowHudCard.classList.toggle('collapsed');
+        workflowHudToggleBtn.textContent = collapsed ? '展开' : '收起';
+      });
+    }
+    if (editorTextarea) editorTextarea.addEventListener('input', refreshEditorPreview);
     if (dbEditorFeaturePageText) dbEditorFeaturePageText.addEventListener('input', syncDbFeatureReportEditor);
     dbEditBtn.addEventListener('click', () => toggleDbEditor());
     dbCancelBtn.addEventListener('click', () => {

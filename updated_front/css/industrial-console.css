@@ -4496,3 +4496,196 @@ body {
   from { opacity: 1; }
   to { opacity: 0; transform: translateY(-8px); }
 }
+
+/* ── 统一顶栏：操作按钮 + 进度 HUD 合并 ── */
+.generate-workspace {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.unified-topbar {
+  padding: 14px 20px 0;
+  border-bottom: 1px solid var(--line, #d8e1eb);
+  background: #fff;
+  position: relative;
+}
+
+.unified-topbar-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+}
+
+.unified-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.unified-phase-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text, #172334);
+}
+
+.unified-percent {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--accent, #ff6528);
+  min-width: 46px;
+  text-align: right;
+}
+
+.unified-topbar .workflow-hud-body {
+  padding-bottom: 14px;
+}
+
+.workspace-tabs-bar {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line, #d8e1eb);
+  background: #fff;
+}
+
+.workspace-tabs-bar .result-tabs {
+  margin: 0;
+}
+
+/* ── 工种 badge ── */
+.trade-badge {
+  display: inline-block;
+  border-radius: 5px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.trade-badge-blue {
+  background: var(--blue-soft, #e9f2ff);
+  color: var(--brand, #1a56db);
+}
+
+.trade-badge-green {
+  background: var(--green-soft, #e8faf2);
+  color: var(--green, #2ebd85);
+}
+
+.trade-badge-orange {
+  background: var(--orange-soft, #fff0e8);
+  color: var(--accent, #ff6528);
+}
+
+/* ── 工序号列居中、工种列宽、操作列 ── */
+.step-table col.col-step-op {
+  width: 72px;
+}
+
+.step-table .th-op {
+  text-align: right;
+}
+
+.step-table td.step-op {
+  text-align: right;
+  vertical-align: middle;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.step-edit-btn {
+  background: none;
+  border: 1px solid var(--line, #d8e1eb);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--text-soft, #67788f);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .15s;
+}
+
+.step-edit-btn:hover {
+  border-color: var(--brand, #1a56db);
+  color: var(--brand, #1a56db);
+}
+
+/* ── 行内编辑态 ── */
+.process-row-editing td {
+  background: var(--accent-soft, #fff0e8) !important;
+  border-bottom: 2px solid #ffd4b8;
+  vertical-align: middle;
+}
+
+.process-row-editing td:first-child {
+  border-left: 3px solid var(--accent, #ff6528);
+}
+
+.trade-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trade-edit .process-trade-select,
+.trade-edit .process-custom-trade {
+  font: 12px inherit;
+  color: var(--text, #172334);
+  border: 1px solid #ffd4b8;
+  border-radius: 6px;
+  padding: 5px 7px;
+  background: #fff;
+  outline: none;
+  width: 100%;
+}
+
+.trade-edit .process-trade-select:focus,
+.trade-edit .process-custom-trade:focus {
+  border-color: var(--accent, #ff6528);
+  box-shadow: 0 0 0 2px rgba(255,101,40,.1);
+}
+
+.trade-edit .process-custom-trade::placeholder {
+  color: #bbb;
+  font-size: 11px;
+}
+
+.process-content-edit {
+  font: 13px/1.6 inherit;
+  color: var(--text, #172334);
+  border: 1px solid #ffd4b8;
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: #fff;
+  outline: none;
+  resize: vertical;
+  min-height: 52px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.process-content-edit:focus {
+  border-color: var(--accent, #ff6528);
+  box-shadow: 0 0 0 2px rgba(255,101,40,.1);
+}
+
+.step-edit-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.button.sm {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+/* ── generate-workspace 内 workbench 自适应填满高度 ── */
+.generate-workspace .workbench {
+  flex: 1;
+  min-height: 0;
+}

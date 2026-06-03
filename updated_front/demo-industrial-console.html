@@ -63,31 +63,32 @@
     <main class="main" id="mainContent" tabindex="-1">
       <div class="content-scroll">
         <section class="page" id="page-generate">
-          <div class="workspace-card workflow-hud" id="workflowHudCard">
-              <div class="workflow-hud-head">
-                <div style="font-weight:800; color:#1f2d3d;">工艺生成进度</div>
-                <div class="workflow-hud-head-actions">
-                  <div style="font-weight:800; color:#ff6528;" id="workflowPercent">0%</div>
+          <div class="workspace-card generate-workspace">
+            <!-- 统一顶栏：操作按钮 + 进度 HUD 合并 -->
+            <div class="unified-topbar workflow-hud" id="workflowHudCard">
+              <div class="unified-topbar-main">
+                <div class="toolbar-actions">
+                  <button class="button primary" id="uploadGenerateBtn">⤴ 上传文件</button>
+                  <button class="button secondary" id="retrievalLibraryBtn">◉ 检索库：公共工艺库</button>
+                  <button class="button secondary" id="featureCacheToggleBtn" title="开启后，同一份图纸再次上传时跳过 VLM 提取，直接恢复上次分析结果">⚡ 特征缓存：关</button>
+                  <button class="button secondary" id="resetGenerateBtn">↺ 重置工作区</button>
+                </div>
+                <div class="unified-topbar-right">
+                  <span class="unified-phase-label">工艺生成进度</span>
+                  <div class="unified-percent" id="workflowPercent">0%</div>
                   <button class="button secondary workflow-hud-toggle" id="workflowHudToggleBtn" type="button">收起</button>
                 </div>
               </div>
               <div class="workflow-hud-body">
-                <div id="workflowPhaseHint" class="workflow-phase-hint" aria-live="polite">等待文件进入解析流程</div>
                 <div class="workflow-progress-rail">
                   <div id="workflowProgressBar" class="workflow-progress-bar" style="width:0%;"></div>
                 </div>
-            </div>
-          </div>
-
-          <div class="workspace-card">
-            <div class="workspace-toolbar">
-              <div class="section-label">图纸预览</div>
-              <div class="toolbar-actions">
-                <button class="button primary" id="uploadGenerateBtn">⤴ 上传文件</button>
-                <button class="button secondary" id="retrievalLibraryBtn">◉ 检索库：公共工艺库</button>
-                <button class="button secondary" id="featureCacheToggleBtn" title="开启后，同一份图纸再次上传时跳过 VLM 提取，直接恢复上次分析结果">⚡ 特征缓存：关</button>
-                <button class="button secondary" id="resetGenerateBtn">↺ 重置工作区</button>
+                <div id="workflowPhaseHint" class="workflow-phase-hint" aria-live="polite">等待文件进入解析流程</div>
               </div>
+            </div>
+
+            <!-- 视图标签栏 -->
+            <div class="workspace-tabs-bar">
               <div class="result-tabs">
                 <button class="result-tab active" data-result-view="view-review">特征审阅</button>
                 <button class="result-tab" data-result-view="view-process">工艺规程</button>
@@ -148,29 +149,9 @@
                             <button class="button secondary" id="openExportCardBtn">导出工艺文件</button>
                           </div>
                         </div>
-                        <div class="process-steps" id="processStepsList">
-                          <div class="step-row"><div class="step-code">0010</div><div class="step-content">划线、划检，确认毛坯余量、中心孔位置与基准面。</div></div>
-                          <div class="step-row"><div class="step-code">0020</div><div class="step-content">粗车外圆及内腔，各部位单边预留 5mm 加工余量。</div></div>
-                          <div class="step-row"><div class="step-code">0030</div><div class="step-content">F 面打硬度，检查热处理前材料状态并留存检测记录。</div></div>
-                          <div class="step-row"><div class="step-code">0040</div><div class="step-content">粗车、精车基准外圆，完成两端阶梯与 R5 过渡轮廓。</div></div>
-                          <div class="step-row"><div class="step-code">0050</div><div class="step-content">划两端联轴孔线，进行钻孔、扩孔和精镗，保证同轴度要求。</div></div>
-                        </div>
+                        <div class="process-steps" id="processStepsList"></div>
                       </div>
 
-                      <div class="editor-shell" id="editorShell">
-                        <div class="editor-pane">
-                          <h4>工艺文本编辑器</h4>
-                          <textarea class="editor-textarea" id="editorTextarea">- 0010: 划线、划检，确认毛坯余量、中心孔位置与基准面。
-- 0020: 粗车外圆及内腔，各部位单边预留 5mm 加工余量。
-- 0030: F 面打硬度，检查热处理前材料状态并留存检测记录。
-- 0040: 粗车、精车基准外圆，完成两端阶梯与 R5 过渡轮廓。
-- 0050: 划两端联轴孔线，进行钻孔、扩孔和精镗，保证同轴度要求。</textarea>
-                        </div>
-                        <div class="editor-pane">
-                          <h4>工艺预览</h4>
-                          <div class="editor-preview" id="editorPreview"></div>
-                        </div>
-                      </div>
                     </div>
                   </div>
 
@@ -429,7 +410,7 @@
                 </label>
               </div>
               <div class="detail-chip-row" style="margin-top:8px;">
-                <span class="detail-chip">SQLite：vector_map_new.db</span>
+                <span class="detail-chip">SQLite：2d-v.db</span>
                 <span class="detail-chip" id="zipActiveLibraryChip">当前目标：未选择</span>
               </div>
               <div class="summary-note" style="margin-top:12px;">数据库浏览页会在至少完成一次 ZIP 入库后解锁，并默认打开你刚刚导入的那一个库。</div>
@@ -676,7 +657,7 @@
           <div class="review-modal-title" id="dbPreviewTitle">库记录快照</div>
           <div class="review-modal-copy" id="dbPreviewMeta">点击按钮打开记录图片快照。</div>
         </div>
-        <button class="close-button" id="closeDbPreviewModal" type="button" aria-label="关闭库快照弹窗" onclick="var m=document.getElementById('dbPreviewModal'); if (m) { m.classList.remove('open'); } document.body.style.overflow='';">×</button>
+        <button class="close-button" id="closeDbPreviewModal" type="button" aria-label="关闭库快照弹窗">×</button>
       </div>
 
       <div class="history-modal-layout db-preview-layout">
