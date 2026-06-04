@@ -373,19 +373,36 @@ def _normalize_prefix_token(prefix: str) -> str:
 
 # ============ 零件类别分类 ============
 
-# 零件类别不相容表：key=查询零件类别，value=应被降权的数据库零件类别集合
-_CATEGORY_INCOMPATIBLE: Dict[str, set] = {
-    "板类":   {"轴类", "回转体类", "环类", "套类"},
-    "腔体类": {"轴类", "回转体类", "环类", "套类"},
-    "轴类":   {"板类", "腔体类", "支架类", "环类"},
+# 硬不兼容：工艺路线完全不同（旋转体 vs 平板/腔体），降权幅度大
+_CATEGORY_HARD_INCOMPATIBLE: Dict[str, set] = {
+    "板类":   {"轴类", "回转体类"},
+    "腔体类": {"轴类", "回转体类"},
+    "轴类":   {"板类", "腔体类"},
+    "环类":   {"板类", "腔体类"},
+}
+
+# 软不兼容：部分工序重叠但整体路线差异明显，轻度降权
+_CATEGORY_SOFT_INCOMPATIBLE: Dict[str, set] = {
+    "板类":   {"环类", "套类"},
+    "腔体类": {"环类", "套类"},
+    "轴类":   {"支架类", "环类"},
     "盘类":   {"板类", "腔体类", "支架类"},
     "套类":   {"板类", "腔体类", "支架类"},
     "支架类": {"轴类", "套类", "环类"},
-    "环类":   {"板类", "腔体类", "支架类", "套类"},
+    "环类":   {"支架类", "套类"},
 }
 
-# 降权系数（相似度乘以此系数）
-_CATEGORY_MISMATCH_PENALTY = 0.55
+_PENALTY_HARD = 0.45   # 硬不兼容：相似度乘以 0.45
+_PENALTY_SOFT = 0.75   # 软不兼容：相似度乘以 0.75
+
+
+def _get_category_penalty(query_cat: str, candidate_cat: str) -> float:
+    """返回候选类别相对于查询类别的降权系数（1.0 = 不降权）。"""
+    if candidate_cat in _CATEGORY_HARD_INCOMPATIBLE.get(query_cat, set()):
+        return _PENALTY_HARD
+    if candidate_cat in _CATEGORY_SOFT_INCOMPATIBLE.get(query_cat, set()):
+        return _PENALTY_SOFT
+    return 1.0
 
 
 def classify_part_category(features: Dict) -> str:
@@ -1401,7 +1418,12 @@ def query_by_vector_similarity(
             print("[RAG] ERROR: EMBEDDING_API_KEY not set")
             return []
 
-        key_text = fused_description[:2000]
+        # 原始 VLM 输出含【】字段时，提取标准化特征文本再向量化，
+        # 与数据库构建时的 embedding 方式保持一致，提升检索精度
+        if '【' in fused_description:
+            key_text = extract_key_features_text(fused_description) or fused_description[:4000]
+        else:
+            key_text = fused_description[:4000]
         print(f"[RAG] Query text: {key_text[:100]}...")
 
         headers = {
@@ -1961,31 +1983,31 @@ def query_by_fused_text(
     _log(f"🏷️ 查询零件类别: {query_category}")
 
     if query_category != "未知":
-        incompatible_cats = _CATEGORY_INCOMPATIBLE.get(query_category, set())
-        if incompatible_cats:
-            for r in all_results:
-                # prefix精确匹配豁免降权
-                if "prefix" in r.get("matched", []) or r.get("match_type") == "prefix_exact":
-                    r["part_category"] = query_category
-                    continue
-                rec = index["records"].get(r["drawing_id"])
-                rec_category = classify_part_category(rec.get("key_features", {}) if rec else {})
-                r["part_category"] = rec_category
-                if rec_category in incompatible_cats:
-                    old_sim = r.get("similarity", 0)
-                    r["similarity"] = old_sim * _CATEGORY_MISMATCH_PENALTY
-                    if "vector_similarity" in r:
-                        r["vector_similarity"] *= _CATEGORY_MISMATCH_PENALTY
-                    _log(
-                        f"   ⚠️ {r['drawing_id']} 类别({rec_category})与查询({query_category})不符"
-                        f"，相似度降权 {old_sim:.1%} → {r['similarity']:.1%}"
-                    )
+        for r in all_results:
+            # prefix精确匹配豁免降权
+            if "prefix" in r.get("matched", []) or r.get("match_type") == "prefix_exact":
+                r["part_category"] = query_category
+                continue
+            rec = index["records"].get(r["drawing_id"])
+            rec_category = classify_part_category(rec.get("key_features", {}) if rec else {})
+            r["part_category"] = rec_category
+            penalty = _get_category_penalty(query_category, rec_category)
+            if penalty < 1.0:
+                old_sim = r.get("similarity", 0)
+                r["similarity"] = old_sim * penalty
+                if "vector_similarity" in r:
+                    r["vector_similarity"] *= penalty
+                level = "硬" if penalty == _PENALTY_HARD else "软"
+                _log(
+                    f"   ⚠️ {r['drawing_id']} [{level}不兼容] 类别({rec_category})≠查询({query_category})"
+                    f"，相似度 {old_sim:.1%} → {r['similarity']:.1%}"
+                )
 
-            # 降权后重新按相似度排序（prefix精确匹配已在首位，跳过它）
-            prefix_head = [r for r in all_results if "prefix" in r.get("matched", []) or r.get("match_type") == "prefix_exact"]
-            rest = [r for r in all_results if r not in prefix_head]
-            rest.sort(key=lambda x: x.get("similarity", 0), reverse=True)
-            all_results = prefix_head + rest
+        # 降权后重新按相似度排序（prefix精确匹配已在首位，跳过它）
+        prefix_head = [r for r in all_results if "prefix" in r.get("matched", []) or r.get("match_type") == "prefix_exact"]
+        rest = [r for r in all_results if r not in prefix_head]
+        rest.sort(key=lambda x: x.get("similarity", 0), reverse=True)
+        all_results = prefix_head + rest
 
     # 显示top结果
     _log(f"✅ 检索完成！找到 {len(all_results)} 个候选工艺：")
