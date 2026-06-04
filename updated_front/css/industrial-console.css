@@ -1848,7 +1848,7 @@
     }
 
     #view-process .result-scroll {
-      overflow: visible;
+      overflow-y: auto;
       padding-right: 0;
     }
 
@@ -1896,7 +1896,7 @@
     }
 
     .result-panel .process-block {
-      min-height: 820px;
+      min-height: 0;
     }
 
     .process-toolbar {
@@ -4758,4 +4758,33 @@ body {
 .generate-workspace .workbench {
   flex: 1;
   min-height: 0;
+}
+
+/* ── 方案 A：工艺生成页填满视口，不出现页面级滚动条 ── */
+.content-scroll:has(#page-generate.active) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#page-generate.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+#page-generate .generate-workspace {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 审阅操作按钮底部 footer */
+.review-board-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid #e8edf5;
 }

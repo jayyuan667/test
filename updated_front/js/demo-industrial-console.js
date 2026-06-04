@@ -2199,22 +2199,18 @@
                   <col class="col-step-no" />
                   <col class="col-step-trade" />
                   <col />
-                  <col class="col-step-op" />
                 </colgroup>
                 <thead>
                   <tr>
                     <th>工序号</th>
                     <th>工种</th>
                     <th>工序名称及内容</th>
-                    <th class="th-op">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${rows.map((row) => {
                     const normalized = normalizeProcessRow(row);
-                    const trade = normalized.tradeType || '';
-                    const badgeClass = PROCESS_TRADE_COLOR[trade] || 'blue';
-                    return `<tr data-process-row="${escapeHtml(normalized.code || '')}" data-trade="${escapeHtml(trade)}" data-content="${escapeHtml(normalized.content || '')}"><td class="step-no">${escapeHtml(normalized.code || '----')}</td><td class="step-trade"><span class="trade-badge trade-badge-${badgeClass}">${escapeHtml(trade)}</span></td><td class="step-content-cell"><div class="step-content" data-process-content contenteditable="true" spellcheck="false">${formatContentHtml(normalized.content)}</div></td><td class="step-op"><button class="step-edit-btn" data-process-edit="${escapeHtml(normalized.code || '')}">编辑</button></td></tr>`;
+                    return `<tr data-process-row="${escapeHtml(normalized.code || '')}"><td class="step-no">${escapeHtml(normalized.code || '----')}</td><td class="step-trade" data-step-trade>${escapeHtml(normalized.tradeType || '')}</td><td class="step-content-cell"><div class="step-content" data-process-content contenteditable="true" spellcheck="false">${formatContentHtml(normalized.content)}</div></td></tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -3115,7 +3111,7 @@
             loadZipLibraryList();
           }
           const hasPrt = (report.summary?.prt_count || 0) > 0;
-          setZipImportState('知识库解析中', `已解析 ${hasPrt ? `PRT×${report.summary.prt_count} + ` : ''}${report.zip_name || files[0].name}，正在整理匹配关系...`);
+          setZipImportState('知识库解析中', `已解析 ${hasPrt ? `图纸×${report.summary.prt_count} + ` : ''}${report.zip_name || files[0].name}，正在整理匹配关系...`);
           await sleep(600);
           renderZipReport(report);
           setZipImportState('知识库入库中', `批次 ${report.batch_id || '-'} 已匹配 ${report.summary?.matched_pairs || 0} 组，正在写入目标库...`);
@@ -3226,7 +3222,7 @@
               <div class="match-head">
                 <div>
                   <div class="match-title">${escapeHtml(pair.prefix || '未命名模型')}</div>
-                <div class="match-sub">PRT：${escapeHtml(prtNames || '无')} · PDF：${escapeHtml(pdfSrcNames || '无')}</div>
+                <div class="match-sub">图纸：${escapeHtml(prtNames || '无')} · 工艺：${escapeHtml(pdfSrcNames || '无')}</div>
                 </div>
                 <span class="status-badge ${pair.status === 'skipped' ? 'warn' : 'success'}">${escapeHtml(pair.status || 'imported')}</span>
               </div>
@@ -3271,9 +3267,9 @@
 
       const logLines = [
         `接收到 ZIP 批次 ${report.zip_name || '工艺包.zip'}。`,
-        `PRT ${summary.prt_count || 0} 个，PDF ${summary.pdf_count || 0} 个。`,
+        `图纸 ${summary.prt_count || 0} 个，PDF ${summary.pdf_count || 0} 个。`,
         `已匹配 ${summary.matched_pairs || 0} 组，导入 ${summary.imported_count || 0} 条。`,
-        `未匹配 PRT ${unmatchedPrts.length} 项，未匹配 PDF ${unmatchedPdfs.length} 项。`,
+        `未匹配图纸 ${unmatchedPrts.length} 项，未匹配 PDF ${unmatchedPdfs.length} 项。`,
         ...errors.slice(0, 3).map((err) => `错误：${err.prefix || err.pdf_name || err.prt_name || '批次项'} - ${err.error || err.message || '解析失败'}`),
       ];
       const _logBase = new Date();

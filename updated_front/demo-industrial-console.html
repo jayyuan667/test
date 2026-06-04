@@ -121,10 +121,6 @@
                           <div>
                             <div class="section-label">特征审阅</div>
                           </div>
-                        <div class="toolbar-actions">
-                          <button class="button secondary" id="reviewContinueBtn" disabled>确认特征并继续</button>
-                          <button class="button primary" id="reviewRerunBtn" disabled>修改后重新生成</button>
-                        </div>
                       </div>
 
                       <div id="reviewEmptyState" class="review-empty-state">
@@ -133,6 +129,10 @@
                         <div class="review-empty-copy">AI 将自动识别尺寸公差、粗糙度、形位公差等关键特征，逐条列出供你确认或修改。</div>
                       </div>
                       <div class="review-table-shell" id="reviewTableHost"></div>
+                      <div class="review-board-footer">
+                        <button class="button secondary" id="reviewContinueBtn" disabled>确认特征并继续</button>
+                        <button class="button primary" id="reviewRerunBtn" disabled>修改后重新生成</button>
+                      </div>
                     </div>
                   </div>
 
@@ -532,18 +532,11 @@
                   <div class="match-columns">
                     <div class="match-pane">
                       <h4>其他文件</h4>
-                      <div class="pill-stack">
-                        <span class="chip">UNMATCHED-AX99.pdf</span>
-                        <span class="chip">QZ-07-441.pdf</span>
-                      </div>
+                      <div class="pill-stack"></div>
                     </div>
                     <div class="match-pane">
                       <h4>未匹配 PDF</h4>
-                      <div class="pill-stack">
-                        <span class="chip">UNMATCHED-BB99.pdf</span>
-                        <span class="chip">GJ-2024-001.pdf</span>
-                        <span class="chip">D125A-181200A003.pdf</span>
-                      </div>
+                      <div class="pill-stack"></div>
                     </div>
                   </div>
                 </div>
