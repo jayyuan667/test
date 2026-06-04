@@ -346,10 +346,10 @@ class ProcessGenerator:
         matched = exact_result["matches"][0]
         vec_sim = self._get_vector_sim_for_drawing(matched["drawing_id"], rag_results)
 
-        if vec_sim >= 0.70:
+        if vec_sim >= 0.75:
             if log_callback:
                 log_callback(
-                    f"📎 图号精确匹配 + 余弦相似度 {vec_sim:.1%} ≥ 70%，直接采用蓝本工艺（跳过LLM）..."
+                    f"📎 图号精确匹配 + 余弦相似度 {vec_sim:.1%} ≥ 75%，直接采用蓝本工艺（跳过LLM）..."
                 )
             return True, "", exact_result
 
@@ -394,8 +394,8 @@ class ProcessGenerator:
                 fused_future = executor.submit(
                     self.query_by_fused_text,
                     fused_description,
-                    top_k=3,
-                    min_similarity=0.25,
+                    top_k=5,
+                    min_similarity=0.20,
                     prefix_hint=effective_prefix,
                     log_callback=log_callback,
                     library_key=library_key,
@@ -416,11 +416,11 @@ class ProcessGenerator:
             # 非公共库匹配度不足时，补充公共库检索
             if library_key and library_key != "public" and rag_results:
                 best_sim = rag_results["matches"][0].get("similarity", 0) if rag_results.get("matches") else 0
-                if best_sim < 0.3:
+                if best_sim < 0.25:
                     public_results = self.query_by_fused_text(
                         fused_description,
-                        top_k=3,
-                        min_similarity=0.25,
+                        top_k=5,
+                        min_similarity=0.20,
                         prefix_hint=effective_prefix,
                         log_callback=log_callback,
                         library_key="public",
