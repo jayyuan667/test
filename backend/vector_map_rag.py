@@ -1877,13 +1877,23 @@ def query_by_fused_text(
                 "process_reference": structured_data.get("process_reference", ""),
                 "structured_filter": structured_data.get("structured_filter", {}),
             }
-        first_record = list(index["records"].values())[0]
+        # 兜底：按零件类别选最近邻，而不是随机取字典第一条
+        query_category_fb = classify_part_category(extracted_features)
+        candidate_records = list(index["records"].values())
+        if query_category_fb != "未知":
+            same_cat = [r for r in candidate_records
+                        if classify_part_category(r.get("key_features", {})) == query_category_fb]
+            if same_cat:
+                candidate_records = same_cat
+        # 从候选中选工序数最多的（工序数多 = 数据更完整）
+        best_fallback = max(candidate_records, key=lambda r: len(r.get("process_list", [])))
+        _log(f"⚠️ 无检索命中，兜底使用同类 [{query_category_fb}] 蓝本: {best_fallback['drawing_id']}")
         all_results = [
             {
-                "drawing_id": first_record["drawing_id"],
+                "drawing_id": best_fallback["drawing_id"],
                 "similarity": 0.1,
                 "matched": ["fallback"],
-                "process_list": first_record["process_list"],
+                "process_list": best_fallback["process_list"],
                 "match_type": "fallback",
             }
         ]

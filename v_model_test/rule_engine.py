@@ -129,7 +129,13 @@ class DrawingRuleEngine:
                         skip = True
                         break
                 if not skip and not any(c in t for c in '：:；;'):
-                    if any(k in t for k in ['加工', '零件', '轴', '法兰', '箱体', '齿轮', '盘', '盖']):
+                    if any(k in t for k in [
+                        '加工', '零件', '轴', '法兰', '箱体', '齿轮', '盘', '盖',
+                        '支架', '壳体', '套筒', '衬套', '叶轮', '阀体',
+                        '泵体', '缸体', '连杆', '环形', '底座', '端盖',
+                        '座体', '基座', '托架', '导套', '蜗杆', '蜗轮',
+                        '活塞', '曲轴', '凸轮', '皮带轮', '涡轮', '叶片',
+                    ]):
                         return t
         return ''
 
