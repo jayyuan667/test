@@ -511,6 +511,7 @@
       twCurrentTr: null,
       twDoneFlag: false,
       twAllDoneHandled: false,
+      pendingPollResult: null,
       workflowLiveEntries: [],
       resultByTaskId: {},
       historyPage: 1,
@@ -1763,6 +1764,7 @@
       backendState.twDoneFlag = false;
       backendState.twAllDoneHandled = false;
       backendState.streamingZoneActive = false;
+      backendState.pendingPollResult = null;
       const list = processResult?.querySelector('#processStepsList');
       if (list) {
         const typingTr = list.querySelector('.tw-typing-tr');
@@ -1969,6 +1971,16 @@
       setDemoStatusText('生成完成');
       if (processEmpty) processEmpty.style.display = 'none';
       if (processResult) processResult.style.display = 'block';
+
+      // poll 结果已经就绪（被暂存避免打断打字机），直接用它做最终渲染
+      if (backendState.pendingPollResult) {
+        const r = backendState.pendingPollResult;
+        backendState.pendingPollResult = null;
+        renderProcessFromResult(r);
+        renderReviewFromResult(r, { activate: false });
+        applyTaskDetail('spindle');
+        return;
+      }
 
       // Append any rows from processStreamText not yet typed — dedup by code
       const list = processResult?.querySelector('#processStepsList');
@@ -3347,14 +3359,6 @@
             taskData.spindle = backendState.taskMap.spindle;
             setWorkflowState('工艺生成完成', 100, false);
             renderTaskCards();
-            // Stop streaming before full render so replayed process_stream events don't overwrite it
-            backendState.streamingDone = true;
-            twDrainAll();
-            renderProcessFromResult(result);
-            renderReviewFromResult(result, { activate: false });
-            applyTaskDetail('spindle');
-            setDemoStatusText('生成完成');
-            setDemoResultChipText('工艺已生成');
             disconnectTaskEvents();
             if (backendState.taskPollTimer) {
               clearInterval(backendState.taskPollTimer);
@@ -3362,6 +3366,21 @@
             }
             backendState.taskPollSession = null;
             renderHistoryPage();
+
+            backendState.streamingDone = true;
+            // 若打字机动画还在进行中，暂存 result，等打字机自然结束后再渲染；
+            // 避免 poll 竞态直接 twDrainAll() 打断动画造成"直接输出"感
+            const twStillActive = backendState.twIsTyping || backendState.twRowQueue.length > 0;
+            if (twStillActive && !backendState.twAllDoneHandled) {
+              backendState.pendingPollResult = result;
+            } else {
+              twDrainAll();
+              renderProcessFromResult(result);
+              renderReviewFromResult(result, { activate: false });
+              applyTaskDetail('spindle');
+              setDemoStatusText('生成完成');
+              setDemoResultChipText('工艺已生成');
+            }
             return;
           }
           const nextProgress = Math.max(Number(result.progress || 0), backendState.taskProgress || 0);

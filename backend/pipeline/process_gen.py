@@ -256,7 +256,7 @@ class ProcessGenerator:
                     stream_callback(chunk)
                     if log_callback:
                         log_callback(chunk)
-                    time.sleep(0.01)
+                    time.sleep(0.06)  # 每行 60ms，10道工序约 0.6s，前端打字机可见
             return proc_raw, self._parse_markdown_process(proc_raw), rag_results
 
         if not rag_context:
@@ -596,10 +596,10 @@ class ProcessGenerator:
                 time.sleep(0.01)
 
         if stream_callback and final_text:
-            step = max(5, len(final_text) // 40)
-            for i in range(0, len(final_text), step):
-                stream_callback(final_text[i:i + step])
-                time.sleep(0.01)
+            # 按行切分，每行间隔 50ms，保证前端打字机有足够时间响应
+            for line in final_text.split("\n"):
+                stream_callback(line + "\n")
+                time.sleep(0.05)
 
         return final_text
 
