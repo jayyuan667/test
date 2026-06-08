@@ -20,7 +20,7 @@ cp .env.example .env
 
 `.env.example` 已包含可用的 API Key，复制后**无需修改**即可启动。
 
-如需切换 API 配置，编辑 `.env` 或运行 `switch_mode.bat`（Windows）。
+如需切换 API 配置，编辑 `.env` 即可。
 
 ---
 

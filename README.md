@@ -69,6 +69,10 @@ PDF 工程图纸上传
 │   ├── feature_report.py            # 特征报告构建
 │   ├── library_scope.py             # 多库隔离（kb_library_scopes 表）
 │   ├── history.py                   # 历史记录
+│   ├── models.py                    # 数据模型
+│   ├── prt_pipeline.py              # PRT 处理管线
+│   ├── task_store.py                # 任务状态存储
+│   ├── vision_utils.py              # 视觉工具函数
 │   ├── run.py                       # 生产入口脚本
 │   ├── api/
 │   │   ├── upload.py                # 上传主流程（PDF/PRT/批量）
@@ -81,7 +85,11 @@ PDF 工程图纸上传
 │   │   ├── history.py               # 历史记录接口
 │   │   ├── config.py                # 系统配置接口
 │   │   ├── health.py                # 健康检查
-│   │   └── image.py                 # 图片服务
+│   │   ├── status.py                # 状态接口
+│   │   ├── image.py                 # 图片服务
+│   │   ├── upload_handler.py        # 上传处理器
+│   │   ├── _response.py             # API 响应辅助
+│   │   └── _utils.py                # API 工具辅助
 │   ├── pipeline/
 │   │   ├── vision_analyzer.py       # 云端视觉分析（豆包 VL）
 │   │   ├── local_vision_analyzer.py # 本地视觉分析
@@ -108,6 +116,7 @@ PDF 工程图纸上传
 │   │   ├── demo-industrial-console.js
 │   │   ├── three-init.js            # Three.js 3D 查看器
 │   │   ├── GLTFLoader.js
+│   │   ├── BufferGeometryUtils.js   # Three.js 几何工具
 │   │   └── three.module.min.js
 │   └── css/
 │       └── industrial-console.css
