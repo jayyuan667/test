@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Upload endpoint for single PRT files."""
 
 import os
@@ -15,7 +15,7 @@ from flask import Blueprint, request, jsonify
 from PIL import Image
 
 from ..config import UPLOAD_FOLDER, OUTPUT_FOLDER, validate_vision_config
-from ..feature_report import build_feature_report, write_feature_report_json
+from ..feature_report import build_feature_report, write_feature_report_json, cleanup_feature_text
 from ..history import add_history_entry
 from ..prt_pipeline import prepare_prt_artifacts, export_gltf
 from ..pipeline.vlm_feature import build_vlm_feature_text
@@ -108,180 +108,6 @@ def _build_preview_urls(task_id: str, png_paths: list[str]):
         urls.append(f"/api/result/{task_id}/asset/{rel.replace(os.sep, '/')}")
     return urls
 
-
-REPORT_FIELD_ORDER = [
-    "图号",
-    "零件名称",
-    "毛坯类型",
-    "物料形态",
-    "外形尺寸",
-    "技术要求",
-    "形态",
-    "类型",
-    "关键尺寸",
-    "弧段与齿形",
-    "端面与平面",
-    "外圆与内孔",
-    "螺纹与螺孔",
-    "倒角",
-    "热处理与探伤",
-    "标识与检验",
-    "线切割",
-    "精度与检测特征",
-    "表面处理与镀层特征",
-    "过渡特征",
-    "其他特征",
-]
-
-FEATURE_SYNONYMS = {
-    "图纸编号": "图号",
-    "零件号": "图号",
-    "零件图号": "图号",
-    "产品名称": "零件名称",
-    "部件名称": "零件名称",
-    "毛坯": "毛坯类型",
-    "材料": "毛坯类型",
-    "技术条件": "技术要求",
-    "加工要求": "技术要求",
-    "外形": "形态",
-    "工件形态": "形态",
-    "类别": "类型",
-    "规格": "关键尺寸",
-    "尺寸": "关键尺寸",
-    "弧段": "弧段与齿形",
-    "齿形": "弧段与齿形",
-    "端面": "端面与平面",
-    "平面": "端面与平面",
-    "外圆": "外圆与内孔",
-    "内孔": "外圆与内孔",
-    "孔": "外圆与内孔",
-    "螺纹": "螺纹与螺孔",
-    "螺孔": "螺纹与螺孔",
-    "倒角要求": "倒角",
-    "热处理": "热处理与探伤",
-    "探伤": "热处理与探伤",
-    "标识": "标识与检验",
-    "检验": "标识与检验",
-    "线切": "线切割",
-    "线割": "线切割",
-    "精度": "精度与检测特征",
-    "检测": "精度与检测特征",
-    "表面处理": "表面处理与镀层特征",
-    "镀层": "表面处理与镀层特征",
-    "过渡": "过渡特征",
-}
-
-
-def _normalize_feature_label(label: str):
-    cleaned = re.sub(r"[\s\-—_（）()【】\[\]：:]+$", "", (label or "").strip())
-    cleaned = cleaned.replace(" ", "")
-    if cleaned in FEATURE_SYNONYMS:
-        return FEATURE_SYNONYMS[cleaned]
-    if cleaned.startswith("图号"):
-        return "图号"
-    if cleaned.startswith("零件名称") or cleaned.startswith("产品名称"):
-        return "零件名称"
-    return cleaned
-
-
-def _cleanup_feature_text(text: str):
-    cleaned = (text or "").strip().replace("\ufeff", "")
-    cleaned = re.sub(r"^\[Pasted", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\n[=\-]{10,}\n", "\n", cleaned)
-    cleaned = re.sub(r"^[=\-]{10,}\n", "", cleaned)
-    return cleaned.strip()
-
-
-def _extract_inline_feature_pairs(text: str):
-    cleaned = _cleanup_feature_text(text)
-    if not cleaned or "【" not in cleaned:
-        return []
-
-    pairs = []
-    token_pattern = re.compile(r"【([^】]+)】")
-    matches = list(token_pattern.finditer(cleaned))
-    if not matches:
-        return []
-
-    leading_text = cleaned[: matches[0].start()].strip(" ：:\n\r\t-—[]")
-    if leading_text:
-        pairs.append(("图号", leading_text))
-
-    for index, match in enumerate(matches):
-        start = match.end()
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(cleaned)
-        label = _normalize_feature_label((match.group(1) or "").strip())
-        value = cleaned[start:end].strip()
-        if label:
-            pairs.append((label, value))
-
-    return pairs
-
-
-def _extract_feature_pairs(text: str):
-    inline_pairs = _extract_inline_feature_pairs(text)
-    if inline_pairs:
-        return inline_pairs
-
-    pairs = []
-    for raw_line in _cleanup_feature_text(text).splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        match = re.match(r"^【([^】]+)】\s*(.*)$", line)
-        if not match:
-            match = re.match(r"^([^:：]{1,30})[：:]\s*(.*)$", line)
-        if not match:
-            continue
-        label = _normalize_feature_label((match.group(1) or "").strip())
-        value = (match.group(2) or "").strip()
-        if label:
-            pairs.append((label, value))
-    return pairs
-
-
-def _build_feature_review_report(descriptions, prefix_hint=None, total_pages=None):
-    page_count = len(descriptions or []) if total_pages is None else max(int(total_pages or 0), 0)
-    merged_fields = {}
-    page_summaries = []
-
-    for index, item in enumerate(descriptions or [], start=1):
-        raw_text = (item.get("description") or "").strip()
-        pairs = _extract_feature_pairs(raw_text)
-        page_number = int(item.get("_page_number") or index)
-
-        for label, value in pairs:
-            merged_fields.setdefault(label, [])
-            if value and value not in merged_fields[label]:
-                merged_fields[label].append(value)
-
-        if pairs:
-            summary_values = [f"{label}：{value or '未识别'}" for label, value in pairs[:6]]
-            page_summaries.append((page_number, "；".join(summary_values) if summary_values else raw_text.replace("\n", "；")))
-        else:
-            page_summaries.append((page_number, raw_text.replace("\n", "；") if raw_text else "未识别"))
-
-    lines = [
-        "【报告名称】多页特征提取报告",
-        f"【页数】{page_count}",
-        f"【图号】{prefix_hint or '无'}",
-    ]
-
-    for field in REPORT_FIELD_ORDER:
-        values = merged_fields.get(field, [])
-        lines.append(f"【{field}】{'；'.join(values) if values else ''}")
-
-    extra_fields = [
-        field for field in merged_fields.keys() if field not in REPORT_FIELD_ORDER
-    ]
-    for field in extra_fields:
-        values = merged_fields.get(field, [])
-        lines.append(f"【{field}】{'；'.join(values) if values else ''}")
-
-    for index, summary in page_summaries:
-        lines.append(f"【第{index}页摘要】{summary or '未识别'}")
-
-    return "\n".join(lines).strip()
 
 
 def _build_upload_mode_meta(file_count: int, page_count: int):
@@ -812,7 +638,7 @@ def upload():
                 parts.append(vlm_text)
             _fig_name = prefix_hint or PRT_FILE_RE.sub("", os.path.basename(file.filename))
             parts.append(f"【图号】{_fig_name}")
-            full_feature_text = _cleanup_feature_text("\n".join(parts))
+            full_feature_text = cleanup_feature_text("\n".join(parts))
 
             # Collect GLB result (should be done while VLM was running)
             _gltf_thread.join(timeout=320)  # _run_freecad_worker subprocess limit is 300s
@@ -1229,9 +1055,9 @@ def upload_drawing():
                     for i, d in enumerate(all_descriptions, 1)
                     if d.get("ok") and d.get("description", "").strip()
                 ]
-                feature_text = _build_feature_review_report(
+                feature_text = build_feature_report(
                     report_inputs, prefix_hint=prefix_hint, total_pages=len(png_paths)
-                )
+                )["report_text"]
                 task["review_text"] = feature_text
                 task["raw_review_text"] = feature_text
                 task["feature_report_json"] = {"report_text": feature_text, "pages": []}
