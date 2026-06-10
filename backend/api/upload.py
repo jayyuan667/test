@@ -1028,14 +1028,14 @@ def upload_drawing():
                 emit_log(task_id, event_data, event_locks, 2, "开始VLM特征提取...")
 
                 analyzer = _get_vision_analyzer()
-                all_descriptions = []
-                for i, png_path in enumerate(png_paths, start=1):
-                    emit_log(task_id, event_data, event_locks, 2, f"正在分析第 {i}/{len(png_paths)} 页...")
-                    result = analyzer.analyze_image(png_path)
-                    result["_page_number"] = i
-                    all_descriptions.append(result)
-                    if task.get("status") == "cancelled":
-                        return
+                emit_log(task_id, event_data, event_locks, 2,
+                         f"双模并行分析（共 {len(png_paths)} 页）...")
+                if task.get("status") == "cancelled":
+                    return
+                # analyze_drawing 发出两路并行 VLM 调用，返回合并后的单条结果
+                merged = analyzer.analyze_drawing(png_paths)
+                merged["_page_number"] = 1
+                all_descriptions = [merged]
 
                 successful = [d for d in all_descriptions if d.get("ok") and d.get("description", "").strip()]
                 failures = [d for d in all_descriptions if not d.get("ok") or not d.get("description", "").strip()]
