@@ -183,11 +183,15 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
     emit_log(task_id, event_data, event_locks, 3, "开始专家判断分析...")
 
     judge = ExpertJudge()
-    expert_judgment = judge.analyze(descriptions)
+    expert_judgment_obj = judge.analyze(descriptions)
+    # 序列化为结构化文本供 ProcessGenerator 消费（Step B 完成后改用结构化对象）
+    expert_judgment = ExpertJudge.to_str(expert_judgment_obj)
     emit_step_complete(task_id, event_data, event_locks, 3, "专家判断", "分析完成")
-    emit_log(task_id, event_data, event_locks, 3, "专家判断完成")
+    emit_log(task_id, event_data, event_locks, 3,
+             f"专家判断完成（置信度 {expert_judgment_obj.confidence:.2f}）")
     task["progress"] = 75
     task["expert_judgment"] = expert_judgment
+    task["expert_judgment_structured"] = expert_judgment_obj.model_dump()
 
     emit_step_start(
         task_id,
