@@ -705,7 +705,9 @@
       if (!retrievalLibraryBtn) return;
       const key = backendState.retrievalLibraryKey || getSessionRetrievalScopeKey() || 'public';
       const label = resolveLibraryScopeLabel(key);
-      retrievalLibraryBtn.textContent = `◉ 检索库：${label}`;
+      const fullSpan = retrievalLibraryBtn.querySelector('.btn-full');
+      if (fullSpan) fullSpan.textContent = `◉ 检索库：${label}`;
+      else retrievalLibraryBtn.textContent = `◉ 检索库：${label}`;
       if (retrievalLibraryInfo) {
         retrievalLibraryInfo.textContent = `${label}｜${key}`;
       }
@@ -4317,7 +4319,9 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
     if (featureCacheToggleBtn) featureCacheToggleBtn.addEventListener('click', () => {
       backendState.featureCacheEnabled = !backendState.featureCacheEnabled;
       const on = backendState.featureCacheEnabled;
-      featureCacheToggleBtn.textContent = `⚡ 特征缓存：${on ? '开' : '关'}`;
+      const fullSpan = featureCacheToggleBtn.querySelector('.btn-full');
+      if (fullSpan) fullSpan.textContent = `⚡ 特征缓存：${on ? '开' : '关'}`;
+      else featureCacheToggleBtn.textContent = `⚡ 特征缓存：${on ? '开' : '关'}`;
       featureCacheToggleBtn.classList.toggle('is-active', on);
     });
     zipRunBtn.addEventListener('click', runZipFlow);
@@ -4555,6 +4559,10 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
       if (event.key === 'Escape') closeRetrievalLibraryModal();
       if (event.key === 'Escape') closeExportModal();
     });
+    if (window.innerWidth <= 1500 && workflowHudCard) {
+      workflowHudCard.classList.add('collapsed');
+      if (workflowHudToggleBtn) workflowHudToggleBtn.textContent = '展开';
+    }
     if (workflowHudToggleBtn) {
       workflowHudToggleBtn.addEventListener('click', () => {
         if (!workflowHudCard) return;
