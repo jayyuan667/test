@@ -34,3 +34,5 @@ def register_routes(app):
     app.register_blueprint(image_bp, url_prefix="/api")
     app.register_blueprint(library_bp, url_prefix="/api")
     app.register_blueprint(kb_import_bp, url_prefix="/api")
+    from .annotations import annotations_bp
+    app.register_blueprint(annotations_bp, url_prefix="/api")

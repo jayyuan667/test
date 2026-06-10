@@ -89,6 +89,13 @@ def dev_demo_industrial_console():
         f'href="/dev/css/industrial-console.css?v={css_mtime}"',
         1
     )
+    ann_js_path = os.path.join(BASE_DIR, "updated_front", "js", "annotation-tool.js")
+    ann_js_mtime = int(os.path.getmtime(ann_js_path)) if os.path.exists(ann_js_path) else 0
+    html = html.replace(
+        'src="js/annotation-tool.js"',
+        f'src="/dev/js/annotation-tool.js?v={ann_js_mtime}"',
+        1
+    )
 
     bootstrap = (
         "<script>"

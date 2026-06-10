@@ -92,6 +92,7 @@
               <div class="result-tabs">
                 <button class="result-tab active" data-result-view="view-review">特征审阅</button>
                 <button class="result-tab" data-result-view="view-process">工艺规程</button>
+                <button class="result-tab" data-result-view="view-annotate">✏ 标注工具</button>
               </div>
             </div>
 
@@ -153,6 +154,37 @@
                         <div class="process-steps" id="processStepsList"></div>
                       </div>
 
+                    </div>
+                  </div>
+
+                  <div class="result-view" id="view-annotate">
+                    <div class="annotate-toolbar">
+                      <span class="annotate-label-row" id="annotateLabelRow"></span>
+                      <button class="button secondary" id="annotateAddTypeBtn">+ 添加类型</button>
+                      <div style="flex:1"></div>
+                      <button class="button secondary" id="annotateExportBtn">↓ 导出 ZIP</button>
+                    </div>
+                    <div class="annotate-body">
+                      <div class="annotate-canvas-wrap" id="annotateCanvasWrap">
+                        <div class="annotate-empty-state" id="annotateEmptyState">
+                          <div class="glyph blue">✏</div>
+                          <div class="review-empty-title">上传图纸后开始标注</div>
+                          <div class="review-empty-copy">切换到此页后自动加载图纸，拖拽绘制框选，右键删除标注框。</div>
+                        </div>
+                        <img id="annotateImage" class="annotate-img" alt="标注图纸" style="display:none;" />
+                        <svg id="annotateSvg" class="annotate-svg"></svg>
+                      </div>
+                      <div class="annotate-list-panel" id="annotateListPanel">
+                        <div class="annotate-list-head">
+                          标注列表<span id="annotateCount" class="annotate-count"></span>
+                        </div>
+                        <div class="annotate-list-body" id="annotateListBody"></div>
+                        <div class="annotate-list-footer">
+                          <button class="button secondary task-preview-btn" id="annotatePagePrev">← 上页</button>
+                          <span id="annotatePageCounter" style="font-size:11px;color:var(--text-muted)"></span>
+                          <button class="button secondary task-preview-btn" id="annotatePageNext">下页 →</button>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -797,6 +829,7 @@
     </div>
   </div>
 
+  <script src="js/annotation-tool.js"></script>
   <script src="js/demo-industrial-console.js"></script>
 </body>
 </html>
