@@ -204,6 +204,7 @@ class ProcessGenerator:
         library_key: Optional[str] = None,
         geo_data: Optional[dict] = None,
         force_llm: bool = False,
+        confidence: float = 0.5,
     ) -> tuple[str, list[list[str]], dict | None]:
         """Generate process specifications with constraint-aware assembly."""
         fused_description = self._replace_placeholder_tokens(self._fuse_descriptions(descriptions))
@@ -212,8 +213,12 @@ class ProcessGenerator:
         # ── Step 1: Extract constraints from review/feature text ──
         constraints = self._extract_process_constraints(fused_description, geo_data=geo_data)
 
+        # 根据 ExpertJudge 置信度自适应调整 RAG 候选数
+        rag_top_k = 1 if confidence >= 0.8 else (2 if confidence >= 0.5 else 3)
+
         rag_results, rag_context, use_rag_only, exact_result = self._run_rag_lookup(
-            fused_description, descriptions, prefix_hint, log_callback, library_key
+            fused_description, descriptions, prefix_hint, log_callback, library_key,
+            top_k=rag_top_k,
         )
 
         # ── Step 2: 图号精确匹配 + 高相似度 → 直接返回蓝本工艺原文 ──
@@ -375,6 +380,7 @@ class ProcessGenerator:
         prefix_hint: Optional[str],
         log_callback,
         library_key: Optional[str],
+        top_k: int = 5,
     ) -> tuple[Optional[Dict], str, bool, Optional[Dict]]:
         """执行完整 RAG 检索。返回 (rag_results, rag_context, use_rag_only, exact_result)。
 
@@ -394,7 +400,7 @@ class ProcessGenerator:
                 fused_future = executor.submit(
                     self.query_by_fused_text,
                     fused_description,
-                    top_k=5,
+                    top_k=top_k,
                     min_similarity=0.20,
                     prefix_hint=effective_prefix,
                     log_callback=log_callback,
@@ -419,7 +425,7 @@ class ProcessGenerator:
                 if best_sim < 0.25:
                     public_results = self.query_by_fused_text(
                         fused_description,
-                        top_k=5,
+                        top_k=top_k,
                         min_similarity=0.20,
                         prefix_hint=effective_prefix,
                         log_callback=log_callback,
@@ -1662,6 +1668,10 @@ class ProcessGenerator:
 
         以当前审阅特征为主约束源，蓝本仅提供流程框架。
         """
+        # ContextHarness: 槽位预算（约 4 字符/token）
+        expert_judgment = expert_judgment[:3200]   # ~800 tokens
+        rag_context = rag_context[:8000]           # ~2000 tokens
+
         # 候选信息（Plan C：注入结构维度）
         curr_t, curr_area = self._parse_structural_dims(fused_description)
         struct_hint = ""

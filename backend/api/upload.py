@@ -234,6 +234,7 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
             library_key=library_key,
             geo_data=geo_data,
             force_llm=force_llm,
+            confidence=expert_judgment_obj.confidence,
         )
 
     emit_log(task_id, event_data, event_locks, 4, "工艺生成完成，正在保存...")
