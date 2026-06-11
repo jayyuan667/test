@@ -4545,6 +4545,14 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
       return host;
     }
 
+    // Safety net: if the user reloads / closes the tab while annotating, flush
+    // their current state synchronously via sendBeacon (HTTP fetch dies on unload).
+    window.addEventListener('beforeunload', () => {
+      if (_annotateActive && _annotateTool && typeof _annotateTool.sendBeaconSave === 'function') {
+        try { _annotateTool.sendBeaconSave(); } catch (_) { /* noop */ }
+      }
+    });
+
     function enterAnnotateMode() {
       if (_annotateActive) return;
       _annotateActive = true;
@@ -4567,13 +4575,32 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
       }
     }
 
-    function exitAnnotateMode() {
+    async function exitAnnotateMode() {
       if (!_annotateActive) return;
       _annotateActive = false;
-      if (_annotateTool) _annotateTool.deactivate();
+
+      // Visual feedback while we wait for the final save to complete.
+      const exitBtn = document.getElementById('annotateFsExitBtn');
+      let originalText = null;
+      if (exitBtn) {
+        originalText = exitBtn.textContent;
+        exitBtn.disabled = true;
+        exitBtn.textContent = '保存中…';
+      }
+
+      if (_annotateTool) {
+        try { await _annotateTool.deactivate(); }
+        catch (e) { console.warn('[exitAnnotateMode] save failed:', e); }
+      }
+
       const host = document.getElementById('annotateFullscreen');
       if (host) host.classList.remove('open');
       document.body.style.overflow = '';
+
+      if (exitBtn) {
+        exitBtn.disabled = false;
+        if (originalText) exitBtn.textContent = originalText;
+      }
     }
 
     function renderAnnotationPendingPanel() {

@@ -74,7 +74,9 @@
     }
 
     deactivate() {
-      this._autoSaveNow();
+      // Kick off a final save and capture its promise so callers can await.
+      // SVG/state cleanup is safe to run immediately — they're not used by the save.
+      const savePromise = this._autoSaveNow();
       if (this._svg) {
         this._svg.removeEventListener('mousedown',   this._boundMouseDown);
         this._svg.removeEventListener('mousemove',   this._boundMouseMove);
@@ -87,6 +89,29 @@
       this._drawState.isDrawing = false;
       this._draftRect = null;
       clearTimeout(this._saveTimer);
+      return Promise.resolve(savePromise);
+    }
+
+    /** Synchronous best-effort save for page-unload paths. Uses sendBeacon
+     *  which the browser guarantees to send even after the document unloads. */
+    sendBeaconSave() {
+      if (!this._taskId || !this._img) return;
+      if (typeof navigator === 'undefined' || !navigator.sendBeacon) return;
+      const imgSrc = this._img.src || '';
+      const payload = {
+        page:        this._pageIndex + 1,
+        shapes:      this._annotations.map((a) => ({ label: a.label, points: a.points })),
+        imageWidth:  this._img.naturalWidth  || 0,
+        imageHeight: this._img.naturalHeight || 0,
+        imagePath:   imgSrc.split('/').pop().split('?')[0] || 'page_1.png',
+      };
+      try {
+        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+        navigator.sendBeacon(
+          `${this._apiBase}/annotations/${this._taskId}/save`,
+          blob,
+        );
+      } catch (_) { /* best-effort */ }
     }
 
     /* ── Controls wiring ────────────────────────────────────────────────── */
