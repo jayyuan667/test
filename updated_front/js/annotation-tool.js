@@ -11,6 +11,30 @@
   const EXTRA_COLORS = ['#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#06b6d4'];
   const NS = 'http://www.w3.org/2000/svg';
 
+  // localStorage key for user-added label types. Experiment scope:
+  // 不写后端 class_id 映射，纯前端缓存；后续整理数据集时再做正式映射。
+  const LS_CUSTOM_LABELS = 'annotate.customLabels.v1';
+
+  function loadCustomLabelsFromLS() {
+    try {
+      const raw = localStorage.getItem(LS_CUSTOM_LABELS);
+      const obj = raw ? JSON.parse(raw) : {};
+      return (obj && typeof obj === 'object') ? obj : {};
+    } catch (_) { return {}; }
+  }
+  function saveCustomLabelsToLS(map) {
+    try { localStorage.setItem(LS_CUSTOM_LABELS, JSON.stringify(map || {})); } catch (_) {}
+  }
+  // Expose so demo-industrial-console can render summary cards with custom colors/zh.
+  global.getAnnotationLabelMeta = function () {
+    const builtins = {};
+    Object.entries(LABEL_CONFIG).forEach(([k, v]) => { builtins[k] = { zh: v.zh, color: v.color }; });
+    const customs = loadCustomLabelsFromLS();
+    const merged = { ...builtins };
+    Object.entries(customs).forEach(([k, v]) => { merged[k] = { zh: v.zh || k, color: v.color || '#9ca3af' }; });
+    return merged;
+  };
+
   /* ── AnnotationTool ────────────────────────────────────────────────────── */
   class AnnotationTool {
     /**
@@ -27,7 +51,7 @@
       this._pageUrls     = [];
       this._annotations  = [];
       this._activeLabel  = 'chamfer';
-      this._customLabels = {};
+      this._customLabels = loadCustomLabelsFromLS();
 
       this._drawState = { isDrawing: false, startX: 0, startY: 0 };
       this._draftRect = null;
@@ -135,14 +159,16 @@
      *  across all pages the user has touched in this session. Used by the host
      *  app to refresh the awaiting_annotation summary card after exit. */
     getSummary() {
-      // Make sure the current page's in-memory state is reflected
+      // 保证当前页 in-memory 状态被算进去
       this._allPages[this._pageKey()] = this._annotations.slice();
+      // 内建三类先以 0 占位（即使没标注也要显示在卡片上）
       const sum = { chamfer: 0, threaded_hole: 0, circle_hole: 0 };
       let pages = 0;
       Object.values(this._allPages).forEach((shapes) => {
         pages += 1;
         (shapes || []).forEach((s) => {
-          if (sum[s.label] != null) sum[s.label] += 1;
+          if (!s || !s.label) return;
+          sum[s.label] = (sum[s.label] || 0) + 1;
         });
       });
       return { ...sum, pages };
@@ -258,15 +284,43 @@
     }
 
     addCustomLabel(zh) {
-      const key = zh.toLowerCase().replace(/\s+/g, '_') || `label_${Date.now()}`;
-      if (this._allLabels()[key]) return;
+      // 允许中文做 key — 避免 toLowerCase 把中文吃成空串
+      const safeKey = (s) => {
+        const k = String(s || '').trim().replace(/\s+/g, '_');
+        return k || `label_${Date.now()}`;
+      };
+      const key = safeKey(zh);
+      if (this._allLabels()[key]) {
+        this.setActiveLabel(key);
+        return;
+      }
       const idx = Object.keys(this._customLabels).length;
       this._customLabels[key] = {
         id: Object.keys(LABEL_CONFIG).length + idx,
         color: EXTRA_COLORS[idx % EXTRA_COLORS.length],
         dash: null,
-        zh,
+        zh: String(zh).trim(),
       };
+      saveCustomLabelsToLS(this._customLabels);
+      this._activeLabel = key;
+      this._renderToolbar();
+    }
+
+    removeCustomLabel(key) {
+      if (!this._customLabels[key]) return;
+      // 拒绝删除有标注引用的类型；让用户先把那些框清掉或改成别的类型，免得静默丢标签
+      let usedPages = 0;
+      this._allPages[this._pageKey()] = this._annotations.slice();
+      Object.values(this._allPages).forEach((shapes) => {
+        if ((shapes || []).some((s) => s.label === key)) usedPages += 1;
+      });
+      if (usedPages > 0) {
+        alert(`无法删除「${this._customLabels[key].zh}」：仍有 ${usedPages} 页存在此类型的标注框`);
+        return;
+      }
+      delete this._customLabels[key];
+      saveCustomLabelsToLS(this._customLabels);
+      if (this._activeLabel === key) this._activeLabel = 'chamfer';
       this._renderToolbar();
     }
 
@@ -277,14 +331,24 @@
       const row = this._controls.querySelector('#annotateFsLabelRow');
       if (!row) return;
       row.innerHTML = '';
+      const isCustom = (key) => Object.prototype.hasOwnProperty.call(this._customLabels, key);
       Object.entries(this._allLabels()).forEach(([key, cfg]) => {
         const btn = document.createElement('button');
         btn.className = 'annotate-label-btn' + (key === this._activeLabel ? ' active' : '');
-        btn.textContent = '● ' + cfg.zh;
+        btn.textContent = (isCustom(key) ? '◆ ' : '● ') + cfg.zh;
         btn.style.color       = cfg.color;
         btn.style.borderColor = cfg.color;
         btn.style.background  = cfg.color + '18';
+        btn.title = isCustom(key) ? `自定义类型 · 右键删除` : cfg.zh;
         btn.onclick = () => this.setActiveLabel(key);
+        if (isCustom(key)) {
+          btn.oncontextmenu = (e) => {
+            e.preventDefault();
+            if (confirm(`删除自定义类型「${cfg.zh}」？\n（若已被标注框使用将拒绝删除）`)) {
+              this.removeCustomLabel(key);
+            }
+          };
+        }
         row.appendChild(btn);
       });
     }

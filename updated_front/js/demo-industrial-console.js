@@ -3463,12 +3463,14 @@
               try {
                 const r = await fetch(`${API_BASE}/annotations/${encodeURIComponent(taskId)}`);
                 const data = await r.json();
+                // 内建三类先以 0 占位；自定义类按 label 动态累加（含从 LS 缓存的类型名）
                 const sum = { chamfer: 0, threaded_hole: 0, circle_hole: 0 };
                 let pageCount = 0;
                 Object.values(data.pages || {}).forEach((p) => {
                   pageCount += 1;
                   (p.shapes || []).forEach((s) => {
-                    if (sum[s.label] != null) sum[s.label] += 1;
+                    if (!s || !s.label) return;
+                    sum[s.label] = (sum[s.label] || 0) + 1;
                   });
                 });
                 backendState.annotationSummary = sum;
@@ -4644,14 +4646,11 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
       // (deletions / additions / class changes) instead of the original YOLO count.
       if (_annotateTool && typeof _annotateTool.getSummary === 'function') {
         const s = _annotateTool.getSummary();
-        backendState.annotationSummary = {
-          chamfer:       s.chamfer       || 0,
-          threaded_hole: s.threaded_hole || 0,
-          circle_hole:   s.circle_hole   || 0,
-        };
-        if (s.pages) backendState.annotationPages = s.pages;
+        // 完整透传 getSummary 的所有 label（含自定义类型），不再硬编码三类丢失自定义计数
+        const { pages: _pages, ...counts } = s;
+        backendState.annotationSummary = counts;
+        if (_pages) backendState.annotationPages = _pages;
         backendState.annotateVisitedOnce = true;
-        // Re-render the right-panel card (no-op if user isn't on the review view)
         try { renderAnnotationPendingPanel(); } catch (_) {}
       }
     }
@@ -4672,17 +4671,25 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         reviewRerunBtn.title = '请先完成标注核对';
       }
       const s = backendState.annotationSummary || {};
-      const total = (s.chamfer||0) + (s.threaded_hole||0) + (s.circle_hole||0);
+      // 自定义类型的颜色/中文名从 annotation-tool 暴露的元数据里取（来源：localStorage）
+      const meta = (typeof window.getAnnotationLabelMeta === 'function')
+        ? window.getAnnotationLabelMeta()
+        : { chamfer:{zh:'倒角',color:'#f59e0b'}, threaded_hole:{zh:'螺纹孔',color:'#6366f1'}, circle_hole:{zh:'圆孔',color:'#10b981'} };
+      // 内建三类即使为 0 也保留显示；自定义类必须 count>0 才出现，避免空类型常驻
+      const keys = new Set(['chamfer','threaded_hole','circle_hole']);
+      Object.keys(s).forEach((k) => { if ((s[k]||0) > 0) keys.add(k); });
+      let total = 0;
+      const rowsHtml = Array.from(keys).map((k) => {
+        const cnt = s[k] || 0; total += cnt;
+        const m   = meta[k] || { zh: k, color: '#9ca3af' };
+        return `<span style="display:inline-block;width:10px;height:10px;background:${m.color};border-radius:2px;margin-right:6px;"></span>${m.zh}  <b>${cnt}</b> 处<br>`;
+      }).join('');
       host.innerHTML = `
         <div class="annotation-pending-card">
           <div style="font-weight:600;font-size:14px;margin-bottom:12px;color:#1f2937;">
             ⓘ YOLO 已完成初步标注，请人工核对并补全
           </div>
-          <div style="line-height:1.9;font-size:13px;color:#374151;">
-            <span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-right:6px;"></span>倒角  <b>${s.chamfer || 0}</b> 处<br>
-            <span style="display:inline-block;width:10px;height:10px;background:#6366f1;border-radius:2px;margin-right:6px;"></span>螺纹孔 <b>${s.threaded_hole || 0}</b> 处<br>
-            <span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:6px;"></span>圆孔  <b>${s.circle_hole || 0}</b> 处
-          </div>
+          <div style="line-height:1.9;font-size:13px;color:#374151;">${rowsHtml}</div>
           <div style="margin-top:8px;font-size:11px;color:#6b7280;">共 ${total} 处预标注 · ${backendState.annotationPages || 0} 页</div>
           <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
             <button class="button primary" id="startAnnotateBtn">✏ 开始标注</button>
