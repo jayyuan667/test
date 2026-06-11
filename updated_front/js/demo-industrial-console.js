@@ -4698,6 +4698,12 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         </div>`;
       const startBtn = document.getElementById('startAnnotateBtn');
       const finBtn   = document.getElementById('finalizeAnnotateBtn');
+      // 进过一次标注页就解除禁用 —— 关键：exitAnnotateMode 会重新渲染本面板，
+      // 写死的 disabled 属性会把启用状态重置，所以这里要按状态位再覆盖一次
+      if (finBtn && backendState.annotateVisitedOnce) {
+        finBtn.disabled = false;
+        finBtn.title = '';
+      }
       if (startBtn) startBtn.addEventListener('click', () => {
         backendState.annotateVisitedOnce = true;
         if (finBtn) { finBtn.disabled = false; finBtn.title = ''; }
