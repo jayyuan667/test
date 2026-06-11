@@ -382,8 +382,8 @@ def verify_drawing_thickness(
     ocr_t = candidate["thickness"]
     vlm_rounded = int(round(vlm_t))
 
-    # 4a) Override: 若 VLM 厚度值本身就出现在 OCR 候选列表中，且 VLM 值明显小于 OCR 推荐值，
-    #     说明 OCR 把其他大尺寸标注误判为厚度，这时信任 VLM。
+    # 4a) Override: 若 VLM 厚度值本身就出现在 OCR 候选列表中，且 OCR 推荐值远大于 VLM 值
+    #     （>5×），说明 OCR 把其他大尺寸标注误判为厚度，这时信任 VLM。
     _ocr_candidates = candidate.get("candidates", [])
     if vlm_rounded in _ocr_candidates and ocr_t > vlm_rounded * 5:
         logger.info(
@@ -391,6 +391,17 @@ def verify_drawing_thickness(
             vlm_rounded, ocr_t, drawing_id,
         )
         return None
+
+    # 4b) 对称保护：若 VLM 厚度值也在 OCR 候选列表中，且 OCR 推荐了一个更小的值，
+    #     说明 OCR 分类器被小尺寸标注（倒角/小孔/粗糙度值）误导，gap 分析选错了。
+    #     此时若 VLM 值是合理板厚（< min(长,宽)/3），信任 VLM 的端视图判断。
+    if vlm_rounded in _ocr_candidates and ocr_t < vlm_rounded:
+        if vlm_l is not None and vlm_w is not None and vlm_rounded < min(vlm_l, vlm_w) / 3:
+            logger.info(
+                "[ocr_thickness] VLM=%d in OCR candidates, OCR=%d is smaller (likely chamfer/radius), VLM is reasonable plate thickness → trusting VLM  (cls=%s)",
+                vlm_rounded, ocr_t, drawing_id,
+            )
+            return None
 
     # 4) Compare
     diff = abs(vlm_t - ocr_t)
