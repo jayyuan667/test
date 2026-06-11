@@ -2838,7 +2838,8 @@
           backendState.currentReviewTaskId = taskId;
           // Always update latestReviewPayload so submitReview has the right task_id,
           // but skip re-rendering the table if user already confirmed this review.
-          if (!backendState.reviewSubmittedForTaskId || backendState.reviewSubmittedForTaskId !== taskId) {
+          const alreadySubmitted = backendState.reviewSubmittedForTaskId === taskId;
+          if (!alreadySubmitted) {
             backendState.latestReviewPayload = payload;
           }
           backendState.reviewRenderedForTask = taskId;
@@ -2852,7 +2853,7 @@
           dispose3DPreview();
           setTimeout(() => render3DPreview(payload.gltf_url || null, "model3DContainer"), 150);
           // Don't overwrite user edits if they've already submitted this review
-          if (backendState.reviewSubmittedForTaskId !== taskId) {
+          if (!alreadySubmitted) {
             renderReviewTable(payload);
           }
           renderHistoryPage();
@@ -2869,6 +2870,11 @@
           backendState.annotationSummary = payload.summary || {};
           backendState.annotationPages = payload.pages || 0;
           backendState.annotateVisitedOnce = false;
+          // 新任务进入标注阶段 → 清掉上一轮遗留的 review 状态
+          // 否则 poll 中 reviewRenderedForTask 残留会阻止 review table 渲染
+          backendState.reviewSubmittedForTaskId = null;
+          backendState.reviewRenderedForTask = '';
+          backendState.reviewDirty = false;
           setWorkflowState('等待人工补全标注', 35, false);
           setDemoStatusText('等待标注');
           setDemoResultChipText('YOLO 已预标注');
