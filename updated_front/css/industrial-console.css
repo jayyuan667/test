@@ -4976,6 +4976,10 @@ body { overflow-x: hidden; }
   font-size: 12px;
 }
 .annotate-list-item:hover { filter: brightness(0.95); }
+.annotate-list-item.selected {
+  box-shadow: 0 0 0 2px #1f2937;
+  font-weight: 600;
+}
 .annotate-list-item-coords {
   font-size: 10px;
   color: var(--text-muted, #9ca3af);

@@ -32,6 +32,7 @@
       this._drawState = { isDrawing: false, startX: 0, startY: 0 };
       this._draftRect = null;
       this._saveTimer = null;
+      this._selectedId = null;
 
       // Set by activate()
       this._img = null;   // <img> inside annotate-fs-img-wrap
@@ -349,18 +350,29 @@
         const w = Math.abs(dx2 - dx1);
         const h = Math.abs(dy2 - dy1);
 
+        const isSel = ann.id === this._selectedId;
         const rect = document.createElementNS(NS, 'rect');
+        rect.setAttribute('data-ann-id', String(ann.id));
         rect.setAttribute('x', x);  rect.setAttribute('y', y);
         rect.setAttribute('width', w); rect.setAttribute('height', h);
-        rect.setAttribute('fill',   cfg.color + '22');
+        rect.setAttribute('fill',   cfg.color + (isSel ? '44' : '22'));
         rect.setAttribute('stroke', cfg.color);
-        rect.setAttribute('stroke-width', '2');
+        rect.setAttribute('stroke-width', isSel ? '5' : '2');
         if (cfg.dash) rect.setAttribute('stroke-dasharray', cfg.dash);
         rect.style.cursor = 'pointer';
         // Native browser tooltip (no occlusion of drawing content)
         const title = document.createElementNS(NS, 'title');
         title.textContent = cfg.zh;
         rect.appendChild(title);
+        // Stop SVG-level mousedown (draw new box) from firing when clicking on a box
+        rect.addEventListener('mousedown', (ev) => {
+          if (ev.button === 0) ev.stopPropagation();
+        });
+        rect.addEventListener('click', (ev) => {
+          if (ev.button !== 0) return;
+          ev.stopPropagation();
+          this._selectAnnotation(ann.id, { fromCanvas: true });
+        });
         rect.addEventListener('contextmenu', (ev) => {
           ev.preventDefault();
           this._deleteAnnotation(ann.id);
@@ -369,8 +381,55 @@
       });
     }
 
+    /* ── Bi-directional selection ───────────────────────────────────────── */
+
+    _selectAnnotation(id, opts = {}) {
+      this._selectedId = id;
+      this.renderAll();
+      this._renderList();
+      // Scroll the OTHER side into view; don't fight the user's own click target
+      if (opts.fromCanvas) {
+        this._scrollListToAnnotation(id);
+      } else if (opts.fromList) {
+        this._scrollCanvasToAnnotation(id);
+      } else {
+        this._scrollListToAnnotation(id);
+        this._scrollCanvasToAnnotation(id);
+      }
+    }
+
+    _scrollCanvasToAnnotation(id) {
+      const ann = this._annotations.find((a) => a.id === id);
+      if (!ann || !this._svg) return;
+      const scroll = document.getElementById('annotateFsScroll');
+      if (!scroll) return;
+      const [[rx1, ry1], [rx2, ry2]] = ann.points;
+      const [dcx, dcy] = this._toDisplay((rx1 + rx2) / 2, (ry1 + ry2) / 2);
+      // dcx/dcy are inside the SVG (which sits inside .annotate-fs-img-wrap which
+      // sits inside .annotate-fs-scroll). Convert to scroll-container coords.
+      const svgRect    = this._svg.getBoundingClientRect();
+      const scrollRect = scroll.getBoundingClientRect();
+      const targetX = (svgRect.left - scrollRect.left) + scroll.scrollLeft + dcx - scroll.clientWidth  / 2;
+      const targetY = (svgRect.top  - scrollRect.top)  + scroll.scrollTop  + dcy - scroll.clientHeight / 2;
+      try {
+        scroll.scrollTo({ left: Math.max(0, targetX), top: Math.max(0, targetY), behavior: 'smooth' });
+      } catch (_) {
+        scroll.scrollLeft = Math.max(0, targetX);
+        scroll.scrollTop  = Math.max(0, targetY);
+      }
+    }
+
+    _scrollListToAnnotation(id) {
+      if (!this._controls) return;
+      const item = this._controls.querySelector(`#annotateFsListBody [data-ann-id="${id}"]`);
+      if (item && typeof item.scrollIntoView === 'function') {
+        item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+
     _deleteAnnotation(id) {
       this._annotations = this._annotations.filter((a) => a.id !== id);
+      if (this._selectedId === id) this._selectedId = null;
       this.renderAll();
       this._renderList();
       this._scheduleSave();
@@ -390,10 +449,13 @@
       this._annotations.forEach((ann, i) => {
         const cfg = this._labelCfg(ann.label);
         const [[x1, y1], [x2, y2]] = ann.points;
+        const isSel = ann.id === this._selectedId;
         const item = document.createElement('div');
-        item.className = 'annotate-list-item';
+        item.className = 'annotate-list-item' + (isSel ? ' selected' : '');
+        item.setAttribute('data-ann-id', String(ann.id));
         item.style.borderLeftColor = cfg.color;
-        item.style.background      = cfg.color + '18';
+        item.style.background      = cfg.color + (isSel ? '38' : '18');
+        item.style.cursor          = 'pointer';
         item.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center">
             <span style="color:${cfg.color}">${cfg.zh} #${i + 1}</span>
@@ -402,8 +464,12 @@
           <div class="annotate-list-item-coords">
             x:${Math.round(x1)} y:${Math.round(y1)} w:${Math.round(x2-x1)} h:${Math.round(y2-y1)}
           </div>`;
-        item.querySelector('.annotate-del-btn').addEventListener('click', () => {
+        item.querySelector('.annotate-del-btn').addEventListener('click', (ev) => {
+          ev.stopPropagation();
           this._deleteAnnotation(ann.id);
+        });
+        item.addEventListener('click', () => {
+          this._selectAnnotation(ann.id, { fromList: true });
         });
         body.appendChild(item);
       });
