@@ -2726,10 +2726,6 @@
 
     async function submitReview(action) {
       const taskId = backendState.latestReviewPayload?.task_id || backendState.currentReviewTaskId || backendState.latestTaskId;
-      activateResultView('view-process');
-      focusProcessWorkspace();
-      backendState.streamingDone = false;
-      resetProcessStreamState(taskId);
       if (!taskId) {
         setReviewFeedback('暂无可继续的任务', 'danger');
         return;
@@ -2751,12 +2747,21 @@
           ? '该任务已经完成工艺生成，请不要再提交旧审阅。'
           : `该任务当前状态为 ${currentStatus}，不是等待审阅状态。`;
         setReviewFeedback('任务不在待审阅状态', 'danger', detail);
+        // 校验不通过 → 将这条 task 从已提交标记中移除，避免后续 SSE 被阻塞
+        if (backendState.reviewSubmittedForTaskId === taskId) backendState.reviewSubmittedForTaskId = null;
         return;
       }
       if (action === 'rerun' && currentStatus && !['completed', 'error', 'processing', 'awaiting_review'].includes(currentStatus)) {
         setReviewFeedback('任务当前不可重新生成', 'danger', `后端状态为 ${currentStatus}，暂时不能执行重新生成。`);
+        if (backendState.reviewSubmittedForTaskId === taskId) backendState.reviewSubmittedForTaskId = null;
         return;
       }
+
+      // 所有校验通过后才切视图 — 之前放在最前面，校验失败时用户被卡在空白页
+      activateResultView('view-process');
+      focusProcessWorkspace();
+      backendState.streamingDone = false;
+      resetProcessStreamState(taskId);
 
       if (reviewContinueBtn) reviewContinueBtn.disabled = true;
       if (reviewRerunBtn) reviewRerunBtn.disabled = true;
