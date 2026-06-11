@@ -3447,9 +3447,39 @@
           }
           const phase = result.status === 'processing'
             ? '工艺生成中'
-            : (result.status === 'awaiting_review' ? '等待审阅' : '处理中');
-          setWorkflowState(phase, nextProgress, result.status !== 'awaiting_review');
+            : (result.status === 'awaiting_review' ? '等待审阅'
+            : (result.status === 'awaiting_annotation' ? '等待标注' : '处理中'));
+          setWorkflowState(phase, nextProgress, !['awaiting_review','awaiting_annotation'].includes(result.status));
           setDemoStatusText(result.status || '处理中');
+
+          // Restore awaiting_annotation UI (page refresh / browser reopen scenario)
+          if (result.status === 'awaiting_annotation' && !backendState.annotateRestoredFor) {
+            backendState.annotateRestoredFor = taskId;
+            backendState.currentReviewTaskId = taskId;
+            backendState.currentProcessTaskId = taskId;
+            backendState.latestTaskId = taskId;
+            // Re-derive summary from saved annotations
+            (async () => {
+              try {
+                const r = await fetch(`${API_BASE}/annotations/${encodeURIComponent(taskId)}`);
+                const data = await r.json();
+                const sum = { chamfer: 0, threaded_hole: 0, circle_hole: 0 };
+                let pageCount = 0;
+                Object.values(data.pages || {}).forEach((p) => {
+                  pageCount += 1;
+                  (p.shapes || []).forEach((s) => {
+                    if (sum[s.label] != null) sum[s.label] += 1;
+                  });
+                });
+                backendState.annotationSummary = sum;
+                backendState.annotationPages = pageCount;
+                backendState.annotateVisitedOnce = false;
+                renderAnnotationPendingPanel();
+                activateResultView('view-review');
+              } catch (e) { console.warn('[restore awaiting_annotation] failed', e); }
+            })();
+          }
+
           if (result.status === 'awaiting_review') {
             backendState.latestResult = {
               ...(backendState.latestResult || {}),
@@ -4579,19 +4609,20 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
       if (!_annotateActive) return;
       _annotateActive = false;
 
-      // Visual feedback while we wait for the final save to complete.
       const exitBtn = document.getElementById('annotateFsExitBtn');
-      let originalText = null;
+      const originalText = exitBtn ? exitBtn.textContent : null;
       if (exitBtn) {
-        originalText = exitBtn.textContent;
         exitBtn.disabled = true;
         exitBtn.textContent = '保存中…';
       }
 
-      if (_annotateTool) {
-        try { await _annotateTool.deactivate(); }
-        catch (e) { console.warn('[exitAnnotateMode] save failed:', e); }
-      }
+      // Wait for save to finish AND force a min 350ms hold so the user can
+      // actually see the "保存中…" state (fetch often completes in <100ms).
+      const minDelay = new Promise((r) => setTimeout(r, 350));
+      try {
+        if (_annotateTool) await _annotateTool.deactivate();
+      } catch (e) { console.warn('[exitAnnotateMode] save failed:', e); }
+      await minDelay;
 
       const host = document.getElementById('annotateFullscreen');
       if (host) host.classList.remove('open');

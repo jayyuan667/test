@@ -77,6 +77,7 @@ def restore_task_from_pending(task_id: str, tasks: dict, event_data: dict, event
         "progress": pending.get("progress", 50),
         "created_at": pending.get("created_at", ""),
         "review_event": threading.Event(),
+        "annotation_event": threading.Event(),
         "review_text": pending.get("review_text") or "",
         "raw_review_text": pending.get("raw_review_text") or "",
         "vision_descriptions": pending.get("vision_descriptions") or [],

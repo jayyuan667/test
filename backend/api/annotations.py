@@ -175,13 +175,23 @@ def finalize_annotations(task_id):
             "error": f"task in status {task.get('status')}, not awaiting_annotation",
         }), 409
 
+    # Distinguish in-flight (thread is alive on annotation_event.wait()) from
+    # restored (thread is gone — page refresh / server restart). Use the
+    # `restored_from_pending` marker set by restore_task_from_pending().
+    if task.get("restored_from_pending"):
+        threading.Thread(
+            target=_resume_from_annotation,
+            args=(task_id,),
+            daemon=True,
+        ).start()
+        return jsonify({"ok": True, "task_id": task_id, "mode": "resumed"})
+
     ann_event = task.get("annotation_event")
-    if ann_event and not ann_event.is_set():
-        # In-flight: wake the blocked pipeline thread
+    if ann_event:
         ann_event.set()
         return jsonify({"ok": True, "task_id": task_id, "mode": "inflight"})
 
-    # Restored: no live thread, resume on a new thread
+    # Unexpected: no event, no marker — fall back to resume
     threading.Thread(
         target=_resume_from_annotation,
         args=(task_id,),
