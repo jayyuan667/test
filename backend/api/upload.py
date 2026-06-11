@@ -353,7 +353,9 @@ def _resume_from_annotation(task_id):
     Only used when the original processing thread is gone (page refresh, restart).
     For in-flight tasks the annotation_event.set() in finalize_annotations is enough.
     """
-    from ..pipeline.annotation_renderer import render_annotation_text
+    from ..pipeline.annotation_renderer import (
+        render_annotation_text, render_annotated_images,
+    )
     task = tasks.get(task_id)
     if not task:
         return
@@ -361,12 +363,26 @@ def _resume_from_annotation(task_id):
         return
 
     output_dir = task.get("output_dir") or os.path.join(OUTPUT_FOLDER, task_id)
-    png_paths  = task.get("png_paths", []) or []
+    # Prefer the original png paths if we already swapped to annotated in a prior run
+    png_paths = task.get("original_png_paths") or task.get("png_paths", []) or []
     if not png_paths:
         emit_error(task_id, event_data, event_locks, "无法恢复：缺少 PNG 路径")
         return
 
-    annotation_text = render_annotation_text(os.path.join(output_dir, "annotations"))
+    ann_dir       = os.path.join(output_dir, "annotations")
+    annotated_dir = os.path.join(output_dir, "annotated_pages")
+    annotated_paths = render_annotated_images(ann_dir, png_paths, annotated_dir)
+    task["original_png_paths"] = list(png_paths)
+    task["png_paths"] = annotated_paths
+    png_paths = annotated_paths
+    preview_image_urls = _build_preview_urls(task_id, annotated_paths)
+    emit_custom(
+        task_id, event_data, event_locks,
+        "preview_updated",
+        {"preview_image_urls": preview_image_urls},
+    )
+
+    annotation_text = render_annotation_text(ann_dir)
     task["annotation_text"] = annotation_text
     task["status"]   = "processing"
     task["progress"] = 40
@@ -1173,9 +1189,25 @@ def upload_drawing():
             if task.get("status") == "cancelled":
                 return
 
-            # ── 加载人工核对后的标注 → VLM 文本 ───────────────────────
-            from ..pipeline.annotation_renderer import render_annotation_text
-            annotation_text = render_annotation_text(os.path.join(output_dir, "annotations"))
+            # ── 加载人工核对后的标注 → 渲染带框图 + VLM 文本 ─────────────
+            from ..pipeline.annotation_renderer import (
+                render_annotation_text, render_annotated_images,
+            )
+            ann_dir       = os.path.join(output_dir, "annotations")
+            annotated_dir = os.path.join(output_dir, "annotated_pages")
+            annotated_paths = render_annotated_images(ann_dir, png_paths, annotated_dir)
+            # Replace png_paths so VLM sees boxed images; preview URLs follow
+            task["original_png_paths"] = list(png_paths)
+            task["png_paths"] = annotated_paths
+            png_paths = annotated_paths
+            preview_image_urls = _build_preview_urls(task_id, annotated_paths)
+            emit_custom(
+                task_id, event_data, event_locks,
+                "preview_updated",
+                {"preview_image_urls": preview_image_urls},
+            )
+
+            annotation_text = render_annotation_text(ann_dir)
             task["annotation_text"] = annotation_text
             emit_log(task_id, event_data, event_locks, 2, "标注已确认，开始视觉分析")
             task["progress"] = 40

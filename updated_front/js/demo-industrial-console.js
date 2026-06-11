@@ -2883,6 +2883,23 @@
         } catch (e) { /* noop */ }
       });
 
+      source.addEventListener('preview_updated', (event) => {
+        try {
+          const p = JSON.parse(event.data || '{}');
+          const urls = p.preview_image_urls || [];
+          if (!urls.length) return;
+          backendState.previewImages = urls;
+          if (backendState.latestResult) {
+            backendState.latestResult.preview_image_urls = urls;
+          }
+          // Bust cache and refresh visible preview
+          const bust = '?v=' + Date.now();
+          backendState.previewImages = urls.map(u => u.includes('?') ? u : u + bust);
+          updateTaskPreviewSurface();
+          appendWorkflowLiveEntry('PREVIEW', '已加载带标注框的图纸视图', 'log');
+        } catch (e) { console.warn('[preview_updated] parse failed', e); }
+      });
+
       source.addEventListener('step_start', (event) => {
         try {
           const payload = JSON.parse(event.data || '{}');
