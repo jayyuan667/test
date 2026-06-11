@@ -2686,8 +2686,8 @@
         reviewSourceNote.textContent = payload.message || `已收到 ${fields.length} 项特征，内容可编辑，字段名固定。`;
       }
       backendState.reviewDirty = false;
-      if (reviewContinueBtn) reviewContinueBtn.disabled = false;
-      if (reviewRerunBtn) reviewRerunBtn.disabled = false;
+      if (reviewContinueBtn) { reviewContinueBtn.disabled = false; reviewContinueBtn.title = ''; }
+      if (reviewRerunBtn) { reviewRerunBtn.disabled = false; reviewRerunBtn.title = ''; }
       if (options.activate !== false) {
         activateResultView('view-review');
       }
@@ -4661,6 +4661,16 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
       const empty = document.getElementById('reviewEmptyState');
       if (empty) empty.style.display = 'none';
       if (!host) return;
+      // YOLO 审阅尚未完成 → 强制禁用「确认特征并继续 / 修改后重新生成」
+      // 否则用户点击会把任务推到 awaiting_review 分支，出 bug
+      if (reviewContinueBtn) {
+        reviewContinueBtn.disabled = true;
+        reviewContinueBtn.title = '请先完成标注核对';
+      }
+      if (reviewRerunBtn) {
+        reviewRerunBtn.disabled = true;
+        reviewRerunBtn.title = '请先完成标注核对';
+      }
       const s = backendState.annotationSummary || {};
       const total = (s.chamfer||0) + (s.threaded_hole||0) + (s.circle_hole||0);
       host.innerHTML = `
