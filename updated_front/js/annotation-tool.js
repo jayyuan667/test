@@ -33,6 +33,8 @@
       this._draftRect = null;
       this._saveTimer = null;
       this._selectedId = null;
+      this._zoom = 1.0;        // Current zoom factor: 1 = 100% pixel-perfect
+      this._fitZoom = 1.0;     // Last computed "fit" zoom for the loaded image
 
       // Set by activate()
       this._img = null;   // <img> inside annotate-fs-img-wrap
@@ -69,6 +71,38 @@
       this._svg.addEventListener('mouseleave',  this._boundMouseLeave);
       this._svg.addEventListener('contextmenu', this._boundContextMenu);
 
+      // Ctrl+wheel zoom centered on cursor; plain wheel still scrolls the container.
+      this._boundWheel = (ev) => {
+        if (!ev.ctrlKey && !ev.metaKey) return;
+        ev.preventDefault();
+        const scroll = document.getElementById('annotateFsScroll');
+        if (!scroll || !this._img || !this._img.naturalWidth) return;
+        const factor = ev.deltaY < 0 ? 1.15 : 1 / 1.15;
+        const newZoom = Math.max(0.05, Math.min(8.0, this._zoom * factor));
+        if (newZoom === this._zoom) return;
+
+        // Pixel under the cursor (natural coord) — keep it under cursor after zoom
+        const imgRect = this._img.getBoundingClientRect();
+        const sxOld   = imgRect.width / this._img.naturalWidth;
+        const pxNat   = (ev.clientX - imgRect.left) / sxOld;
+        const pyNat   = (ev.clientY - imgRect.top)  / sxOld;
+
+        this.setZoom(newZoom);
+
+        // After re-layout, scroll so that (pxNat, pyNat) is at cursor screen pos
+        const newImgRect = this._img.getBoundingClientRect();
+        const scrollRect = scroll.getBoundingClientRect();
+        const sxNew = newImgRect.width / this._img.naturalWidth;
+        const desiredScreenX = ev.clientX - scrollRect.left;
+        const desiredScreenY = ev.clientY - scrollRect.top;
+        const targetLeft = (newImgRect.left - scrollRect.left) + scroll.scrollLeft + pxNat * sxNew - desiredScreenX;
+        const targetTop  = (newImgRect.top  - scrollRect.top)  + scroll.scrollTop  + pyNat * sxNew - desiredScreenY;
+        scroll.scrollLeft = Math.max(0, targetLeft);
+        scroll.scrollTop  = Math.max(0, targetTop);
+      };
+      const scrollEl = document.getElementById('annotateFsScroll');
+      if (scrollEl) scrollEl.addEventListener('wheel', this._boundWheel, { passive: false });
+
       this._wireControls();
       this._loadPage(0);
       this._loadFromServer();
@@ -78,6 +112,10 @@
       // Kick off a final save and capture its promise so callers can await.
       // SVG/state cleanup is safe to run immediately — they're not used by the save.
       const savePromise = this._autoSaveNow();
+      const scrollEl = document.getElementById('annotateFsScroll');
+      if (scrollEl && this._boundWheel) {
+        scrollEl.removeEventListener('wheel', this._boundWheel);
+      }
       if (this._svg) {
         this._svg.removeEventListener('mousedown',   this._boundMouseDown);
         this._svg.removeEventListener('mousemove',   this._boundMouseMove);
@@ -153,6 +191,55 @@
         const zh = prompt('新标签名称（中文）：');
         if (zh && zh.trim()) this.addCustomLabel(zh.trim());
       };
+
+      const zIn  = this._controls.querySelector('#annotateFsZoomInBtn');
+      const zOut = this._controls.querySelector('#annotateFsZoomOutBtn');
+      const zFit = this._controls.querySelector('#annotateFsZoomFitBtn');
+      const zOne = this._controls.querySelector('#annotateFsZoomOneBtn');
+      if (zIn)  zIn.onclick  = () => this.setZoom(this._zoom * 1.25);
+      if (zOut) zOut.onclick = () => this.setZoom(this._zoom / 1.25);
+      if (zFit) zFit.onclick = () => this.fitToViewport();
+      if (zOne) zOne.onclick = () => this.setZoom(1.0);
+    }
+
+    /* ── Zoom ───────────────────────────────────────────────────────────── */
+
+    setZoom(z) {
+      z = Math.max(0.05, Math.min(8.0, z));
+      this._zoom = z;
+      this._applyZoom();
+      this.renderAll();          // re-render boxes — getBoundingClientRect picks up new sizes
+      this._updateZoomLabel();
+    }
+
+    fitToViewport() {
+      if (!this._img || !this._img.naturalWidth) return;
+      const scroll = document.getElementById('annotateFsScroll');
+      if (!scroll) return;
+      // .annotate-fs-scroll has padding: 28px (see CSS). Account for both sides.
+      const pad = 28;
+      const availW = scroll.clientWidth  - pad * 2;
+      const availH = scroll.clientHeight - pad * 2;
+      const sx = availW / this._img.naturalWidth;
+      const sy = availH / this._img.naturalHeight;
+      const fit = Math.min(sx, sy);
+      this._fitZoom = fit;
+      this.setZoom(fit);
+    }
+
+    _applyZoom() {
+      if (!this._img || !this._img.naturalWidth) return;
+      // Override CSS max-width/max-height — we control size directly now.
+      this._img.style.maxWidth  = 'none';
+      this._img.style.maxHeight = 'none';
+      this._img.style.width  = (this._img.naturalWidth  * this._zoom) + 'px';
+      this._img.style.height = (this._img.naturalHeight * this._zoom) + 'px';
+    }
+
+    _updateZoomLabel() {
+      if (!this._controls) return;
+      const el = this._controls.querySelector('#annotateFsZoomLabel');
+      if (el) el.textContent = Math.round(this._zoom * 100) + '%';
     }
 
     /* ── Label management ───────────────────────────────────────────────── */
@@ -221,11 +308,15 @@
 
       this._renderPageCounter();
 
-      const redraw = () => { this.renderAll(); this._renderList(); };
+      const onReady = () => {
+        // First fit the image to viewport (sets _zoom + img.width/height)
+        this.fitToViewport();
+        this._renderList();
+      };
       if (this._img && this._img.complete && this._img.naturalWidth) {
-        redraw();
+        onReady();
       } else if (this._img) {
-        this._img.addEventListener('load', redraw, { once: true });
+        this._img.addEventListener('load', onReady, { once: true });
       }
     }
 

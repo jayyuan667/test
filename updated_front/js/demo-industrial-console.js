@@ -4550,7 +4550,14 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
               <span class="section-label" style="font-size:13px;">标注工具</span>
               <button class="button secondary annotate-btn-sm" id="annotateFsExitBtn">✕ 退出</button>
             </div>
-            <div style="font-size:11px;color:#6b7280;padding:6px 14px 2px;">右键框删除 · 自动保存</div>
+            <div style="font-size:11px;color:#6b7280;padding:6px 14px 2px;">右键框删除 · 自动保存 · Ctrl+滚轮缩放</div>
+            <div class="annotate-fs-zoom-toolbar" style="display:flex;gap:4px;align-items:center;padding:6px 12px;border-top:1px solid #e8edf5;">
+              <button class="button secondary annotate-btn-sm" id="annotateFsZoomOutBtn">−</button>
+              <span id="annotateFsZoomLabel" style="font-size:11px;min-width:46px;text-align:center;color:#374151;">100%</span>
+              <button class="button secondary annotate-btn-sm" id="annotateFsZoomInBtn">+</button>
+              <button class="button secondary annotate-btn-sm" id="annotateFsZoomFitBtn">适配</button>
+              <button class="button secondary annotate-btn-sm" id="annotateFsZoomOneBtn">1:1</button>
+            </div>
             <div class="annotate-toolbar" style="border-top:1px solid #e8edf5;">
               <div class="annotate-label-row" id="annotateFsLabelRow"></div>
               <button class="button secondary annotate-btn-sm" id="annotateFsAddTypeBtn">+ 类型</button>
