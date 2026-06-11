@@ -3466,7 +3466,6 @@
     }
 
     function resetGenerateWorkspace() {
-      window._annotationTool = null;
       backendState.currentReviewTaskId = '';
       backendState.currentProcessTaskId = '';
       backendState.latestReviewPayload = null;
@@ -3532,26 +3531,6 @@
     function activateResultView(viewId) {
       resultTabs.forEach(tab => tab.classList.toggle('active', tab.dataset.resultView === viewId));
       resultViews.forEach(view => view.classList.toggle('active', view.id === viewId));
-      if (viewId === 'view-annotate') _initAnnotationToolIfReady();
-    }
-
-    function _initAnnotationToolIfReady() {
-      const result = backendState.latestResult;
-      const taskId = backendState.currentProcessTaskId || backendState.latestTaskId || result?.task_id;
-      if (!taskId || !result) return;
-      const previewUrls = Array.isArray(result.preview_image_urls) ? result.preview_image_urls : [];
-      if (previewUrls.length === 0) return;
-      const baseUrl = API_BASE.replace(/\/api$/, '');
-      const container = document.getElementById('view-annotate');
-      if (!container) return;
-      const emptyState = document.getElementById('annotateEmptyState');
-      const img = document.getElementById('annotateImage');
-      if (emptyState) emptyState.style.display = 'none';
-      if (img) img.style.display = 'block';
-      if (!window._annotationTool) {
-        window._annotationTool = new AnnotationTool(container, API_BASE);
-      }
-      window._annotationTool.init(taskId, previewUrls, baseUrl);
     }
 
     function activateZipView(viewId) {
