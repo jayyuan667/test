@@ -341,8 +341,27 @@
         if (c !== this._draftRect) c.remove();
       });
 
+      // Per-label sequence counter — every annotation gets "倒角 N" / "螺纹孔 N"
+      const seqCounters = {};
+
+      // Render selected LAST so its highlight is on top of other rects
+      const order = this._annotations.slice().sort((a, b) => {
+        const aSel = a.id === this._selectedId ? 1 : 0;
+        const bSel = b.id === this._selectedId ? 1 : 0;
+        return aSel - bSel;
+      });
+
+      // First pass: assign per-label seq numbers in the ORIGINAL order so the
+      // SVG label "螺纹孔 3" matches the right-panel list "螺纹孔 3"
+      const seqById = new Map();
       this._annotations.forEach((ann) => {
+        seqCounters[ann.label] = (seqCounters[ann.label] || 0) + 1;
+        seqById.set(ann.id, seqCounters[ann.label]);
+      });
+
+      order.forEach((ann) => {
         const cfg = this._labelCfg(ann.label);
+        const seq = seqById.get(ann.id) || 1;
         const [dx1, dy1] = this._toDisplay(ann.points[0][0], ann.points[0][1]);
         const [dx2, dy2] = this._toDisplay(ann.points[1][0], ann.points[1][1]);
         const x = Math.min(dx1, dx2);
@@ -351,20 +370,49 @@
         const h = Math.abs(dy2 - dy1);
 
         const isSel = ann.id === this._selectedId;
+
+        // ── Selection halo: white outline rect just behind the colored rect ──
+        if (isSel) {
+          const halo = document.createElementNS(NS, 'rect');
+          const pad = 6;
+          halo.setAttribute('x', x - pad);
+          halo.setAttribute('y', y - pad);
+          halo.setAttribute('width',  w + 2 * pad);
+          halo.setAttribute('height', h + 2 * pad);
+          halo.setAttribute('fill', 'none');
+          halo.setAttribute('stroke', '#ffffff');
+          halo.setAttribute('stroke-width', '6');
+          halo.setAttribute('pointer-events', 'none');
+          halo.setAttribute('rx', '4');
+          this._svg.appendChild(halo);
+
+          const ring = document.createElementNS(NS, 'rect');
+          ring.setAttribute('x', x - pad);
+          ring.setAttribute('y', y - pad);
+          ring.setAttribute('width',  w + 2 * pad);
+          ring.setAttribute('height', h + 2 * pad);
+          ring.setAttribute('fill', 'none');
+          ring.setAttribute('stroke', '#111827');
+          ring.setAttribute('stroke-width', '2.5');
+          ring.setAttribute('stroke-dasharray', '6 4');
+          ring.setAttribute('pointer-events', 'none');
+          ring.setAttribute('rx', '4');
+          this._svg.appendChild(ring);
+        }
+
+        // ── The actual labeled rect ──
         const rect = document.createElementNS(NS, 'rect');
         rect.setAttribute('data-ann-id', String(ann.id));
         rect.setAttribute('x', x);  rect.setAttribute('y', y);
         rect.setAttribute('width', w); rect.setAttribute('height', h);
-        rect.setAttribute('fill',   cfg.color + (isSel ? '44' : '22'));
+        rect.setAttribute('fill',   cfg.color + (isSel ? '55' : '22'));
         rect.setAttribute('stroke', cfg.color);
-        rect.setAttribute('stroke-width', isSel ? '5' : '2');
+        rect.setAttribute('stroke-width', isSel ? '4' : '2');
         if (cfg.dash) rect.setAttribute('stroke-dasharray', cfg.dash);
         rect.style.cursor = 'pointer';
-        // Native browser tooltip (no occlusion of drawing content)
         const title = document.createElementNS(NS, 'title');
-        title.textContent = cfg.zh;
+        title.textContent = `${cfg.zh} ${seq}`;
         rect.appendChild(title);
-        // Stop SVG-level mousedown (draw new box) from firing when clicking on a box
         rect.addEventListener('mousedown', (ev) => {
           if (ev.button === 0) ev.stopPropagation();
         });
@@ -378,6 +426,39 @@
           this._deleteAnnotation(ann.id);
         });
         this._svg.appendChild(rect);
+
+        // ── Selected-only floating label "螺纹孔 3" ──
+        // Placed above the box; only drawn when selected so unselected boxes
+        // never have label occlusion. Background pill for readability.
+        if (isSel) {
+          const labelText = `${cfg.zh} ${seq}`;
+          const tagH = 22;
+          const tagW = Math.max(60, labelText.length * 12 + 14);
+          const tagX = x;
+          const tagY = Math.max(y - tagH - 6, 4);
+
+          const tagBg = document.createElementNS(NS, 'rect');
+          tagBg.setAttribute('x', tagX);
+          tagBg.setAttribute('y', tagY);
+          tagBg.setAttribute('width',  tagW);
+          tagBg.setAttribute('height', tagH);
+          tagBg.setAttribute('rx', '4');
+          tagBg.setAttribute('fill', cfg.color);
+          tagBg.setAttribute('pointer-events', 'none');
+          this._svg.appendChild(tagBg);
+
+          const tagTxt = document.createElementNS(NS, 'text');
+          tagTxt.setAttribute('x', tagX + tagW / 2);
+          tagTxt.setAttribute('y', tagY + tagH / 2 + 5);
+          tagTxt.setAttribute('text-anchor', 'middle');
+          tagTxt.setAttribute('fill', '#ffffff');
+          tagTxt.setAttribute('font-size', '13');
+          tagTxt.setAttribute('font-weight', '700');
+          tagTxt.setAttribute('font-family', 'sans-serif');
+          tagTxt.setAttribute('pointer-events', 'none');
+          tagTxt.textContent = labelText;
+          this._svg.appendChild(tagTxt);
+        }
       });
     }
 
@@ -446,19 +527,24 @@
       if (count) count.textContent = `(${this._annotations.length})`;
       body.innerHTML = '';
 
-      this._annotations.forEach((ann, i) => {
+      // Per-label sequence: "螺纹孔 1, 2, 3..." instead of global "#17, #18..."
+      const seqCounters = {};
+
+      this._annotations.forEach((ann) => {
         const cfg = this._labelCfg(ann.label);
         const [[x1, y1], [x2, y2]] = ann.points;
+        seqCounters[ann.label] = (seqCounters[ann.label] || 0) + 1;
+        const seq = seqCounters[ann.label];
         const isSel = ann.id === this._selectedId;
         const item = document.createElement('div');
         item.className = 'annotate-list-item' + (isSel ? ' selected' : '');
         item.setAttribute('data-ann-id', String(ann.id));
         item.style.borderLeftColor = cfg.color;
-        item.style.background      = cfg.color + (isSel ? '38' : '18');
+        item.style.background      = cfg.color + (isSel ? '55' : '18');
         item.style.cursor          = 'pointer';
         item.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="color:${cfg.color}">${cfg.zh} #${i + 1}</span>
+            <span style="color:${cfg.color};font-weight:${isSel ? 700 : 600}">${cfg.zh} ${seq}</span>
             <span class="annotate-del-btn" style="color:#6b7280;cursor:pointer;font-size:11px">× 删除</span>
           </div>
           <div class="annotate-list-item-coords">
