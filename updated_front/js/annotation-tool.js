@@ -376,7 +376,7 @@
 
     _autoSaveNow() {
       clearTimeout(this._saveTimer);
-      if (!this._taskId || !this._img) return;
+      if (!this._taskId || !this._img) return Promise.resolve();
       const imgSrc      = this._img.src || '';
       const imgFilename = imgSrc.split('/').pop().split('?')[0] || 'page_1.png';
       const payload = {
@@ -386,11 +386,20 @@
         imageHeight: this._img.naturalHeight || 0,
         imagePath:   imgFilename,
       };
-      fetch(`${this._apiBase}/annotations/${this._taskId}/save`, {
+      this._lastSavePromise = fetch(`${this._apiBase}/annotations/${this._taskId}/save`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
       }).catch((err) => console.warn('[annotation-tool] save failed:', err));
+      return this._lastSavePromise;
+    }
+
+    /** Public: force-flush any pending save and wait for it to finish.
+     *  Returns a Promise that resolves when the backend has the latest state.
+     *  Safe to call after deactivate() — uses cached _img/_taskId. */
+    flushSave() {
+      return Promise.resolve(this._autoSaveNow())
+        .then(() => this._lastSavePromise || null);
     }
 
     _loadFromServer() {

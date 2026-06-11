@@ -4613,7 +4613,15 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
       const taskId = backendState.currentReviewTaskId || backendState.currentProcessTaskId || backendState.latestTaskId;
       if (!taskId) return;
       const btn = document.getElementById('finalizeAnnotateBtn');
-      if (btn) { btn.disabled = true; btn.textContent = '已确认，等待视觉分析…'; }
+      if (btn) { btn.disabled = true; btn.textContent = '保存最新标注…'; }
+      // CRITICAL: flush any pending/in-flight save so the backend has the latest
+      // shapes (including manually added boxes) before it renders the boxed PNG.
+      try {
+        if (_annotateTool && typeof _annotateTool.flushSave === 'function') {
+          await _annotateTool.flushSave();
+        }
+      } catch (e) { console.warn('[finalizeAnnotation] flush save failed:', e); }
+      if (btn) btn.textContent = '已确认，等待视觉分析…';
       try {
         const r = await fetch(`${API_BASE}/annotations/${encodeURIComponent(taskId)}/finalize`, { method: 'POST' });
         if (!r.ok) {
