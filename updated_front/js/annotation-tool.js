@@ -92,6 +92,23 @@
       return Promise.resolve(savePromise);
     }
 
+    /** Return aggregate counts {chamfer, threaded_hole, circle_hole, pages}
+     *  across all pages the user has touched in this session. Used by the host
+     *  app to refresh the awaiting_annotation summary card after exit. */
+    getSummary() {
+      // Make sure the current page's in-memory state is reflected
+      this._allPages[this._pageKey()] = this._annotations.slice();
+      const sum = { chamfer: 0, threaded_hole: 0, circle_hole: 0 };
+      let pages = 0;
+      Object.values(this._allPages).forEach((shapes) => {
+        pages += 1;
+        (shapes || []).forEach((s) => {
+          if (sum[s.label] != null) sum[s.label] += 1;
+        });
+      });
+      return { ...sum, pages };
+    }
+
     /** Synchronous best-effort save for page-unload paths. Uses sendBeacon
      *  which the browser guarantees to send even after the document unloads. */
     sendBeaconSave() {

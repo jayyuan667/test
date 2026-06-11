@@ -26,23 +26,40 @@ def _ann_dir(task_id: str) -> str:
 
 @annotations_bp.route("/annotations/<task_id>", methods=["GET"])
 def get_annotations(task_id):
-    """Return all saved annotation JSON files for a task, keyed by page number."""
+    """Return all saved annotation JSON files for a task, keyed by page number.
+
+    Defensive: if multiple JSONs map to the same page (legacy filename variants),
+    pick the most recently modified one — that's the user's latest save.
+    """
     ann_dir = _ann_dir(task_id)
     if not os.path.isdir(ann_dir):
         return jsonify({"task_id": task_id, "pages": {}})
 
-    pages = {}
-    for fname in sorted(os.listdir(ann_dir)):
+    # Collect candidates: page_n -> [(mtime, path), ...]
+    candidates: dict[str, list] = {}
+    for fname in os.listdir(ann_dir):
         if not fname.endswith(".json"):
             continue
         parts = fname.rsplit("_page_", 1)
         page_n = parts[1].replace(".json", "") if len(parts) == 2 else "1"
         fpath = os.path.join(ann_dir, fname)
-        with open(fpath, encoding="utf-8") as fh:
+        try:
+            mtime = os.path.getmtime(fpath)
+        except OSError:
+            continue
+        candidates.setdefault(page_n, []).append((mtime, fpath))
+
+    pages = {}
+    for page_n, entries in candidates.items():
+        # Latest-modified wins; ensures the user's most recent save isn't shadowed
+        entries.sort(key=lambda e: e[0], reverse=True)
+        for _mtime, fpath in entries:
             try:
-                pages[page_n] = json.load(fh)
-            except json.JSONDecodeError:
-                pass
+                with open(fpath, encoding="utf-8") as fh:
+                    pages[page_n] = json.load(fh)
+                break
+            except (OSError, json.JSONDecodeError):
+                continue
 
     return jsonify({"task_id": task_id, "pages": pages})
 
@@ -57,12 +74,36 @@ def save_annotations(task_id):
     shapes = data.get("shapes", [])
     img_w = int(data.get("imageWidth", 0))
     img_h = int(data.get("imageHeight", 0))
-    img_path = data.get("imagePath", f"page_{data.get('page', 1)}.png")
+    page = int(data.get("page", 1))
+    img_path = data.get("imagePath", f"page_{page}.png")
 
     stem = os.path.splitext(img_path)[0]
+    # Strip "_annotated" suffix so saves on the boxed preview still match the
+    # canonical pre-finalize stem (avoids creating yet another filename variant).
+    if stem.endswith("_annotated"):
+        stem = stem[: -len("_annotated")]
 
     ann_dir = _ann_dir(task_id)
     os.makedirs(ann_dir, exist_ok=True)
+
+    # Canonical filename: <stem>_page_<n>.json — matches YOLO writer in
+    # yolo_to_labelme so GET /annotations finds exactly one file per page.
+    canonical_json = os.path.join(ann_dir, f"{stem}_page_{page}.json")
+    canonical_txt  = os.path.join(ann_dir, f"{stem}_page_{page}.txt")
+
+    # Remove legacy / variant files that could shadow the canonical version
+    # when get_annotations() sorts the directory:
+    #   <stem>.json (pre-YOLO format), and any stale alt-name we might have written
+    for legacy in (
+        os.path.join(ann_dir, f"{stem}.json"),
+        os.path.join(ann_dir, f"{stem}.txt"),
+    ):
+        if os.path.exists(legacy) and os.path.abspath(legacy) != os.path.abspath(canonical_json) \
+                and os.path.abspath(legacy) != os.path.abspath(canonical_txt):
+            try:
+                os.remove(legacy)
+            except OSError:
+                pass
 
     # ── labelme JSON ──────────────────────────────────────────────────────────
     labelme = {
@@ -79,14 +120,13 @@ def save_annotations(task_id):
             }
             for s in shapes
         ],
-        "imagePath": img_path,
+        "imagePath": f"{stem}.png",
         "imageData": None,
         "imageHeight": img_h,
         "imageWidth": img_w,
         "text": "",
     }
-    json_path = os.path.join(ann_dir, f"{stem}.json")
-    with open(json_path, "w", encoding="utf-8") as fh:
+    with open(canonical_json, "w", encoding="utf-8") as fh:
         json.dump(labelme, fh, ensure_ascii=False, indent=2)
 
     # ── YOLO TXT ──────────────────────────────────────────────────────────────
@@ -98,7 +138,6 @@ def save_annotations(task_id):
             cy = (y1 + y2) / 2 / img_h
             bw = abs(x2 - x1) / img_w
             bh = abs(y2 - y1) / img_h
-            # Clamp to [0, 1]
             cx = max(0.0, min(1.0, cx))
             cy = max(0.0, min(1.0, cy))
             bw = max(0.0, min(1.0, bw))
@@ -106,11 +145,10 @@ def save_annotations(task_id):
             cls_id = LABEL_TO_ID.get(s["label"], len(LABEL_TO_ID))
             txt_lines.append(f"{cls_id} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}")
 
-    txt_path = os.path.join(ann_dir, f"{stem}.txt")
-    with open(txt_path, "w", encoding="utf-8") as fh:
+    with open(canonical_txt, "w", encoding="utf-8") as fh:
         fh.write("\n".join(txt_lines))
 
-    return jsonify({"ok": True, "json_path": json_path, "txt_path": txt_path})
+    return jsonify({"ok": True, "json_path": canonical_json, "txt_path": canonical_txt})
 
 
 @annotations_bp.route("/annotations/<task_id>/export", methods=["GET"])

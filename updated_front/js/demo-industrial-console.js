@@ -4632,6 +4632,21 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         exitBtn.disabled = false;
         if (originalText) exitBtn.textContent = originalText;
       }
+
+      // Refresh awaiting_annotation card so summary reflects user's edits
+      // (deletions / additions / class changes) instead of the original YOLO count.
+      if (_annotateTool && typeof _annotateTool.getSummary === 'function') {
+        const s = _annotateTool.getSummary();
+        backendState.annotationSummary = {
+          chamfer:       s.chamfer       || 0,
+          threaded_hole: s.threaded_hole || 0,
+          circle_hole:   s.circle_hole   || 0,
+        };
+        if (s.pages) backendState.annotationPages = s.pages;
+        backendState.annotateVisitedOnce = true;
+        // Re-render the right-panel card (no-op if user isn't on the review view)
+        try { renderAnnotationPendingPanel(); } catch (_) {}
+      }
     }
 
     function renderAnnotationPendingPanel() {
