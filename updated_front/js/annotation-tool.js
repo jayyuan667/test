@@ -5,50 +5,111 @@
   const LABEL_CONFIG = {
     chamfer:       { id: 2, color: '#f59e0b', dash: null,  zh: '倒角'  },
     threaded_hole: { id: 0, color: '#6366f1', dash: '6,3', zh: '螺纹孔' },
-    circle_hole:   { id: 1, color: '#10b981', dash: null,  zh: '光孔'  },
+    circle_hole:   { id: 1, color: '#10b981', dash: null,  zh: '圆孔'  },
   };
 
   const EXTRA_COLORS = ['#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#06b6d4'];
-
   const NS = 'http://www.w3.org/2000/svg';
 
   /* ── AnnotationTool ────────────────────────────────────────────────────── */
   class AnnotationTool {
-    constructor(container, apiBase) {
-      this._container = container;
-      this._apiBase   = apiBase;
+    /**
+     * @param {Element} controlsEl  Right-sidebar controls container
+     * @param {string}  apiBase     API base URL, e.g. "/api"
+     */
+    constructor(controlsEl, apiBase) {
+      this._controls = controlsEl;
+      this._apiBase  = apiBase;
 
-      this._taskId     = null;
-      this._imageStem  = 'page_1';
-      this._allPages   = {};   // pageKey → shapes[]
-      this._pageIndex  = 0;   // 0-based index into _pageUrls
-      this._pageUrls   = [];  // ordered list of full image URLs
-
-      this._annotations = [];  // current page shapes
-      this._activeLabel = 'chamfer';
-      this._customLabels = {};  // key → {id, color, zh}
+      this._taskId       = null;
+      this._allPages     = {};
+      this._pageIndex    = 0;
+      this._pageUrls     = [];
+      this._annotations  = [];
+      this._activeLabel  = 'chamfer';
+      this._customLabels = {};
 
       this._drawState = { isDrawing: false, startX: 0, startY: 0 };
       this._draftRect = null;
       this._saveTimer = null;
 
-      this._img = null;
-      this._svg = null;
+      // Set by activate()
+      this._img = null;   // <img> inside annotate-fs-img-wrap
+      this._svg = null;   // <svg> sibling of img (same wrapper)
+
+      this._boundMouseDown   = this._onMouseDown.bind(this);
+      this._boundMouseMove   = this._onMouseMove.bind(this);
+      this._boundMouseUp     = this._onMouseUp.bind(this);
+      this._boundMouseLeave  = (e) => { if (this._drawState.isDrawing) this._onMouseUp(e); };
+      this._boundContextMenu = (e) => e.preventDefault();
     }
 
-    /* ── Public API ─────────────────────────────────────────────────────── */
+    /* ── activate / deactivate ──────────────────────────────────────────── */
 
-    init(taskId, previewImageUrls, baseUrl) {
-      this._taskId   = taskId;
-      this._baseUrl  = baseUrl || '';
-      this._pageUrls = Array.isArray(previewImageUrls) ? previewImageUrls : [];
+    /**
+     * Start annotation mode.
+     * @param {string}   taskId          Backend task ID
+     * @param {string[]} previewImageUrls Server-relative URLs for each page
+     * @param {HTMLImageElement} imgEl   The <img> to draw annotations on
+     * @param {SVGSVGElement}    svgEl   SVG sibling positioned over imgEl
+     */
+    activate(taskId, previewImageUrls, imgEl, svgEl) {
+      this._taskId    = taskId;
+      this._img       = imgEl;
+      this._svg       = svgEl;
+      this._pageUrls  = Array.isArray(previewImageUrls) ? previewImageUrls : [];
       this._pageIndex = 0;
       this._allPages  = {};
+      this._annotations = [];
 
-      this._renderToolbar();
-      this._renderCanvas();
-      this._renderList();
+      this._svg.addEventListener('mousedown',   this._boundMouseDown);
+      this._svg.addEventListener('mousemove',   this._boundMouseMove);
+      this._svg.addEventListener('mouseup',     this._boundMouseUp);
+      this._svg.addEventListener('mouseleave',  this._boundMouseLeave);
+      this._svg.addEventListener('contextmenu', this._boundContextMenu);
+
+      this._wireControls();
+      this._loadPage(0);
       this._loadFromServer();
+    }
+
+    deactivate() {
+      this._autoSaveNow();
+      if (this._svg) {
+        this._svg.removeEventListener('mousedown',   this._boundMouseDown);
+        this._svg.removeEventListener('mousemove',   this._boundMouseMove);
+        this._svg.removeEventListener('mouseup',     this._boundMouseUp);
+        this._svg.removeEventListener('mouseleave',  this._boundMouseLeave);
+        this._svg.removeEventListener('contextmenu', this._boundContextMenu);
+        this._svg.innerHTML = '';
+        this._svg = null;
+      }
+      this._drawState.isDrawing = false;
+      this._draftRect = null;
+      clearTimeout(this._saveTimer);
+    }
+
+    /* ── Controls wiring ────────────────────────────────────────────────── */
+
+    _wireControls() {
+      if (!this._controls) return;
+      this._renderToolbar();
+      this._renderList();
+      this._renderPageCounter();
+
+      const prev = this._controls.querySelector('#annotateFsPagePrev');
+      const next = this._controls.querySelector('#annotateFsPageNext');
+      if (prev) prev.onclick = () => this._goPage(this._pageIndex - 1);
+      if (next) next.onclick = () => this._goPage(this._pageIndex + 1);
+
+      const exp = this._controls.querySelector('#annotateFsExportBtn');
+      if (exp) exp.onclick = () => this._exportZip();
+
+      const add = this._controls.querySelector('#annotateFsAddTypeBtn');
+      if (add) add.onclick = () => {
+        const zh = prompt('新标签名称（中文）：');
+        if (zh && zh.trim()) this.addCustomLabel(zh.trim());
+      };
     }
 
     /* ── Label management ───────────────────────────────────────────────── */
@@ -79,73 +140,50 @@
       this._renderToolbar();
     }
 
-    /* ── DOM construction ───────────────────────────────────────────────── */
+    /* ── Toolbar ────────────────────────────────────────────────────────── */
 
     _renderToolbar() {
-      const row = this._container.querySelector('#annotateLabelRow');
+      if (!this._controls) return;
+      const row = this._controls.querySelector('#annotateFsLabelRow');
       if (!row) return;
       row.innerHTML = '';
       Object.entries(this._allLabels()).forEach(([key, cfg]) => {
         const btn = document.createElement('button');
         btn.className = 'annotate-label-btn' + (key === this._activeLabel ? ' active' : '');
         btn.textContent = '● ' + cfg.zh;
-        btn.style.color        = cfg.color;
-        btn.style.borderColor  = cfg.color;
-        btn.style.background   = cfg.color + '18';
-        btn.addEventListener('click', () => this.setActiveLabel(key));
+        btn.style.color       = cfg.color;
+        btn.style.borderColor = cfg.color;
+        btn.style.background  = cfg.color + '18';
+        btn.onclick = () => this.setActiveLabel(key);
         row.appendChild(btn);
       });
     }
 
-    _renderCanvas() {
-      this._img = this._container.querySelector('#annotateImage');
-      this._svg = this._container.querySelector('#annotateSvg');
-      if (!this._img || !this._svg) return;
-
-      this._loadPage(this._pageIndex);
-
-      // ── SVG mouse events ──────────────────────────────────────────────
-      this._svg.addEventListener('mousedown', (e) => this._onMouseDown(e));
-      this._svg.addEventListener('mousemove', (e) => this._onMouseMove(e));
-      this._svg.addEventListener('mouseup',   (e) => this._onMouseUp(e));
-      this._svg.addEventListener('mouseleave',(e) => {
-        if (this._drawState.isDrawing) this._onMouseUp(e);
-      });
-      this._svg.addEventListener('contextmenu', (e) => e.preventDefault());
-
-      // ── Page nav buttons ──────────────────────────────────────────────
-      const prev = this._container.querySelector('#annotatePagePrev');
-      const next = this._container.querySelector('#annotatePageNext');
-      if (prev) prev.addEventListener('click', () => this._goPage(this._pageIndex - 1));
-      if (next) next.addEventListener('click', () => this._goPage(this._pageIndex + 1));
-
-      // ── Export button ─────────────────────────────────────────────────
-      const exp = this._container.querySelector('#annotateExportBtn');
-      if (exp) exp.addEventListener('click', () => this._exportZip());
-
-      // ── Add type button ───────────────────────────────────────────────
-      const add = this._container.querySelector('#annotateAddTypeBtn');
-      if (add) add.addEventListener('click', () => {
-        const zh = prompt('新标签名称（中文）：');
-        if (zh && zh.trim()) this.addCustomLabel(zh.trim());
-      });
-    }
+    /* ── Page handling ──────────────────────────────────────────────────── */
 
     _loadPage(idx) {
       if (idx < 0 || (this._pageUrls.length > 0 && idx >= this._pageUrls.length)) return;
-      this._pageIndex = idx;
 
-      // persist current page annotations
       this._allPages[this._pageKey()] = this._annotations.slice();
-
+      this._pageIndex   = idx;
       this._annotations = this._allPages[this._pageKey()] || [];
 
-      const url = this._pageUrls[idx] ? this._baseUrl + this._pageUrls[idx] : '';
-      if (this._img) {
-        this._img.onload = () => { this.renderAll(); this._renderList(); };
-        this._img.src = url || '';
+      const relUrl = this._pageUrls[idx] || '';
+      if (this._img && relUrl) {
+        if (this._img.getAttribute('src') !== relUrl) {
+          this._img.src = relUrl;
+        }
+        this._img.style.display = 'block';
       }
+
       this._renderPageCounter();
+
+      const redraw = () => { this.renderAll(); this._renderList(); };
+      if (this._img && this._img.complete && this._img.naturalWidth) {
+        redraw();
+      } else if (this._img) {
+        this._img.addEventListener('load', redraw, { once: true });
+      }
     }
 
     _goPage(idx) {
@@ -153,67 +191,57 @@
       this._loadPage(idx);
     }
 
-    _pageKey() {
-      return String(this._pageIndex + 1);
-    }
+    _pageKey() { return String(this._pageIndex + 1); }
 
     _renderPageCounter() {
-      const el = this._container.querySelector('#annotatePageCounter');
+      if (!this._controls) return;
+      const el = this._controls.querySelector('#annotateFsPageCounter');
       if (!el) return;
-      const total = this._pageUrls.length || 1;
-      el.textContent = `页 ${this._pageIndex + 1} / ${total}`;
+      el.textContent = `${this._pageIndex + 1} / ${this._pageUrls.length || 1}`;
     }
 
-    /* ── Scale helpers ──────────────────────────────────────────────────── */
+    /* ── Coordinate math ────────────────────────────────────────────────── */
+    // SVG is position:absolute; inset:0 inside the same inline-block wrapper as
+    // the image. getBoundingClientRect() of both should be nearly identical (dx≈0,
+    // dy≈0). Using getBoundingClientRect() instead of clientWidth so that any CSS
+    // transform on a parent doesn't break the math.
 
-    _scaleX() {
-      if (!this._img || !this._img.naturalWidth) return 1;
-      const rect = this._img.getBoundingClientRect();
-      const rendered = this._img.offsetWidth || rect.width;
-      // account for object-fit: contain letterboxing
-      const scale = rendered / this._img.naturalWidth;
-      const scaledH = this._img.naturalHeight * scale;
-      const containerH = this._img.offsetHeight || rect.height;
-      this._offsetX = 0;
-      this._offsetY = Math.max(0, (containerH - scaledH) / 2);
-      return scale;
+    _imgOffset() {
+      if (!this._img || !this._svg) return { dx: 0, dy: 0, sx: 1, sy: 1 };
+      const ir = this._img.getBoundingClientRect();
+      const sr = this._svg.getBoundingClientRect();
+      return {
+        dx: ir.left - sr.left,
+        dy: ir.top  - sr.top,
+        sx: ir.width  / (this._img.naturalWidth  || 1),
+        sy: ir.height / (this._img.naturalHeight || 1),
+      };
     }
 
-    _scaleY() {
-      if (!this._img || !this._img.naturalHeight) return 1;
-      const rect = this._img.getBoundingClientRect();
-      const rendered = this._img.offsetWidth || rect.width;
-      return (rendered / this._img.naturalWidth);
-    }
-
-    _toReal(displayX, displayY) {
-      const sx = this._scaleX();
-      const ox = this._offsetX || 0;
-      const oy = this._offsetY || 0;
-      return [(displayX - ox) / sx, (displayY - oy) / sx];
+    _toReal(svgX, svgY) {
+      const { dx, dy, sx, sy } = this._imgOffset();
+      return [(svgX - dx) / sx, (svgY - dy) / sy];
     }
 
     _toDisplay(realX, realY) {
-      const sx = this._scaleX();
-      const ox = this._offsetX || 0;
-      const oy = this._offsetY || 0;
-      return [realX * sx + ox, realY * sx + oy];
+      const { dx, dy, sx, sy } = this._imgOffset();
+      return [realX * sx + dx, realY * sy + dy];
     }
 
     /* ── Drawing ────────────────────────────────────────────────────────── */
 
     _onMouseDown(e) {
       if (e.button !== 0) return;
-      const svgRect = this._svg.getBoundingClientRect();
+      const sr = this._svg.getBoundingClientRect();
       this._drawState = {
         isDrawing: true,
-        startX: e.clientX - svgRect.left,
-        startY: e.clientY - svgRect.top,
+        startX: e.clientX - sr.left,
+        startY: e.clientY - sr.top,
       };
       this._draftRect = document.createElementNS(NS, 'rect');
       const cfg = this._labelCfg(this._activeLabel);
-      this._draftRect.setAttribute('fill', cfg.color + '22');
-      this._draftRect.setAttribute('stroke', cfg.color);
+      this._draftRect.setAttribute('fill',         cfg.color + '22');
+      this._draftRect.setAttribute('stroke',       cfg.color);
       this._draftRect.setAttribute('stroke-width', '2');
       if (cfg.dash) this._draftRect.setAttribute('stroke-dasharray', cfg.dash);
       this._draftRect.setAttribute('pointer-events', 'none');
@@ -222,23 +250,23 @@
 
     _onMouseMove(e) {
       if (!this._drawState.isDrawing || !this._draftRect) return;
-      const svgRect = this._svg.getBoundingClientRect();
-      const curX = e.clientX - svgRect.left;
-      const curY = e.clientY - svgRect.top;
+      const sr = this._svg.getBoundingClientRect();
+      const cx = e.clientX - sr.left;
+      const cy = e.clientY - sr.top;
       const { startX, startY } = this._drawState;
-      this._draftRect.setAttribute('x',      Math.min(startX, curX));
-      this._draftRect.setAttribute('y',      Math.min(startY, curY));
-      this._draftRect.setAttribute('width',  Math.abs(curX - startX));
-      this._draftRect.setAttribute('height', Math.abs(curY - startY));
+      this._draftRect.setAttribute('x',      Math.min(startX, cx));
+      this._draftRect.setAttribute('y',      Math.min(startY, cy));
+      this._draftRect.setAttribute('width',  Math.abs(cx - startX));
+      this._draftRect.setAttribute('height', Math.abs(cy - startY));
     }
 
     _onMouseUp(e) {
       if (!this._drawState.isDrawing) return;
       this._drawState.isDrawing = false;
 
-      const svgRect = this._svg.getBoundingClientRect();
-      const endX = e.clientX - svgRect.left;
-      const endY = e.clientY - svgRect.top;
+      const sr = this._svg.getBoundingClientRect();
+      const ex = e.clientX - sr.left;
+      const ey = e.clientY - sr.top;
       const { startX, startY } = this._drawState;
 
       if (this._draftRect) {
@@ -246,11 +274,10 @@
         this._draftRect = null;
       }
 
-      // Ignore tiny accidental clicks
-      if (Math.abs(endX - startX) < 6 || Math.abs(endY - startY) < 6) return;
+      if (Math.abs(ex - startX) < 6 || Math.abs(ey - startY) < 6) return;
 
-      const [rx1, ry1] = this._toReal(Math.min(startX, endX), Math.min(startY, endY));
-      const [rx2, ry2] = this._toReal(Math.max(startX, endX), Math.max(startY, endY));
+      const [rx1, ry1] = this._toReal(Math.min(startX, ex), Math.min(startY, ey));
+      const [rx2, ry2] = this._toReal(Math.max(startX, ex), Math.max(startY, ey));
 
       this._annotations.push({
         id:     Date.now(),
@@ -263,11 +290,13 @@
       this._scheduleSave();
     }
 
-    /* ── Render all annotations ─────────────────────────────────────────── */
+    /* ── Render ─────────────────────────────────────────────────────────── */
 
     renderAll() {
       if (!this._svg) return;
-      this._svg.innerHTML = '';
+      Array.from(this._svg.childNodes).forEach((c) => {
+        if (c !== this._draftRect) c.remove();
+      });
 
       this._annotations.forEach((ann) => {
         const cfg = this._labelCfg(ann.label);
@@ -278,33 +307,23 @@
         const w = Math.abs(dx2 - dx1);
         const h = Math.abs(dy2 - dy1);
 
-        // Box
         const rect = document.createElementNS(NS, 'rect');
-        rect.setAttribute('x',      x);
-        rect.setAttribute('y',      y);
-        rect.setAttribute('width',  w);
-        rect.setAttribute('height', h);
+        rect.setAttribute('x', x);  rect.setAttribute('y', y);
+        rect.setAttribute('width', w); rect.setAttribute('height', h);
         rect.setAttribute('fill',   cfg.color + '22');
         rect.setAttribute('stroke', cfg.color);
         rect.setAttribute('stroke-width', '2');
         if (cfg.dash) rect.setAttribute('stroke-dasharray', cfg.dash);
         rect.style.cursor = 'pointer';
-        rect.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
+        // Native browser tooltip (no occlusion of drawing content)
+        const title = document.createElementNS(NS, 'title');
+        title.textContent = cfg.zh;
+        rect.appendChild(title);
+        rect.addEventListener('contextmenu', (ev) => {
+          ev.preventDefault();
           this._deleteAnnotation(ann.id);
         });
         this._svg.appendChild(rect);
-
-        // Label text
-        const txt = document.createElementNS(NS, 'text');
-        txt.setAttribute('x', x + 2);
-        txt.setAttribute('y', Math.max(y - 4, 12));
-        txt.setAttribute('fill', cfg.color);
-        txt.setAttribute('font-size', '11');
-        txt.setAttribute('font-family', 'sans-serif');
-        txt.setAttribute('pointer-events', 'none');
-        txt.textContent = cfg.zh;
-        this._svg.appendChild(txt);
       });
     }
 
@@ -315,31 +334,31 @@
       this._scheduleSave();
     }
 
-    /* ── Right panel list ───────────────────────────────────────────────── */
+    /* ── List ───────────────────────────────────────────────────────────── */
 
     _renderList() {
-      const body = this._container.querySelector('#annotateListBody');
-      const count = this._container.querySelector('#annotateCount');
+      if (!this._controls) return;
+      const body  = this._controls.querySelector('#annotateFsListBody');
+      const count = this._controls.querySelector('#annotateFsCount');
       if (!body) return;
 
       if (count) count.textContent = `(${this._annotations.length})`;
-
       body.innerHTML = '';
+
       this._annotations.forEach((ann, i) => {
         const cfg = this._labelCfg(ann.label);
         const [[x1, y1], [x2, y2]] = ann.points;
-
         const item = document.createElement('div');
         item.className = 'annotate-list-item';
         item.style.borderLeftColor = cfg.color;
-        item.style.background = cfg.color + '18';
+        item.style.background      = cfg.color + '18';
         item.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center">
             <span style="color:${cfg.color}">${cfg.zh} #${i + 1}</span>
             <span class="annotate-del-btn" style="color:#6b7280;cursor:pointer;font-size:11px">× 删除</span>
           </div>
           <div class="annotate-list-item-coords">
-            x:${Math.round(x1)} y:${Math.round(y1)} w:${Math.round(x2 - x1)} h:${Math.round(y2 - y1)}
+            x:${Math.round(x1)} y:${Math.round(y1)} w:${Math.round(x2-x1)} h:${Math.round(y2-y1)}
           </div>`;
         item.querySelector('.annotate-del-btn').addEventListener('click', () => {
           this._deleteAnnotation(ann.id);
@@ -358,9 +377,8 @@
     _autoSaveNow() {
       clearTimeout(this._saveTimer);
       if (!this._taskId || !this._img) return;
-      const imgSrc = this._img.src || '';
+      const imgSrc      = this._img.src || '';
       const imgFilename = imgSrc.split('/').pop().split('?')[0] || 'page_1.png';
-
       const payload = {
         page:        this._pageIndex + 1,
         shapes:      this._annotations.map((a) => ({ label: a.label, points: a.points })),
@@ -368,7 +386,6 @@
         imageHeight: this._img.naturalHeight || 0,
         imagePath:   imgFilename,
       };
-
       fetch(`${this._apiBase}/annotations/${this._taskId}/save`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -383,14 +400,12 @@
         .then((data) => {
           if (!data.pages) return;
           Object.entries(data.pages).forEach(([pageN, labelme]) => {
-            const shapes = (labelme.shapes || []).map((s) => ({
+            this._allPages[pageN] = (labelme.shapes || []).map((s) => ({
               id:     Date.now() + Math.random(),
               label:  s.label,
               points: s.points,
             }));
-            this._allPages[pageN] = shapes;
           });
-          // Load current page shapes
           this._annotations = this._allPages[this._pageKey()] || [];
           this.renderAll();
           this._renderList();
@@ -401,10 +416,9 @@
     _exportZip() {
       if (!this._taskId) return;
       this._autoSaveNow();
-      // short delay to let save complete before export
       setTimeout(() => {
         const a = document.createElement('a');
-        a.href = `${this._apiBase}/annotations/${this._taskId}/export`;
+        a.href     = `${this._apiBase}/annotations/${this._taskId}/export`;
         a.download = `annotations_${this._taskId}.zip`;
         document.body.appendChild(a);
         a.click();

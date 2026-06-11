@@ -370,17 +370,25 @@ class VisionAnalyzer:
         )
         return response.choices[0].message.content
 
-    def analyze_drawing(self, image_paths: List[str]) -> Dict[str, Any]:
+    def analyze_drawing(self, image_paths: List[str],
+                        annotation_text: str = "") -> Dict[str, Any]:
         """双模并行调用：文字读取 + 视觉分析，合并为单条结果。
 
         替代逐页串行的 analyze_image() 循环，速度提升 2–4 倍。
         返回格式与 analyze_image() 兼容（含 image_path / description / ok）。
+
+        annotation_text: 可选，由 YOLO + 人工核对后的特征框生成的中文文本，
+                         非空时拼到视觉分析 prompt 之前作为已知特征位置提示。
+                         文字识别 prompt 不受影响（文字识别与框无关）。
         """
         print(f"[Vision] 双模并行分析，共 {len(image_paths)} 页")
+        visual_prompt = _PROMPT_VISUAL_ANALYSIS
+        if annotation_text.strip():
+            visual_prompt = annotation_text + "\n\n" + _PROMPT_VISUAL_ANALYSIS
         try:
             with ThreadPoolExecutor(max_workers=2) as ex:
                 f_text = ex.submit(self._call_vlm_batch, _PROMPT_TEXT_EXTRACTION, image_paths)
-                f_visual = ex.submit(self._call_vlm_batch, _PROMPT_VISUAL_ANALYSIS, image_paths)
+                f_visual = ex.submit(self._call_vlm_batch, visual_prompt, image_paths)
                 text_result = f_text.result()
                 visual_result = f_visual.result()
             # 视觉分析结果追加在后，同名字段以视觉结果为准（_parse_structured_fields 后者覆盖前者）

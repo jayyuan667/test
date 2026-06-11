@@ -172,6 +172,13 @@ KB_PREVIEW_FOLDER = os.path.join(BASE_DIR, "db_data", "kb_previews")
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024
 MAX_HISTORY_COUNT = 50
 
+# ============ YOLO 预标注配置 ============
+YOLO_WEIGHT_PATH = os.getenv("YOLO_WEIGHT_PATH", r"F:/小桌面/yolo/v3_weight/best.pt")
+YOLO_CONF        = float(os.getenv("YOLO_CONF", "0.25"))
+YOLO_IOU         = float(os.getenv("YOLO_IOU",  "0.45"))
+YOLO_IMG_SIZE    = int(os.getenv("YOLO_IMG_SIZE", "1280"))
+YOLO_DEVICE      = os.getenv("YOLO_DEVICE", "cpu")
+
 # ============ FreeCAD / OnShape 配置 ============
 
 def get_freecad_paths() -> list[str]:

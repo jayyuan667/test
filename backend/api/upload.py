@@ -227,14 +227,13 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
     with time_block("process_generation"):
         process_flow_raw, process_data, rag_results = generator.generate(
             descriptions,
-            expert_judgment,
+            expert_judgment_obj,
             prefix_hint=prefix_hint,
             log_callback=rag_log_callback,
             stream_callback=stream_callback,
             library_key=library_key,
             geo_data=geo_data,
             force_llm=force_llm,
-            confidence=expert_judgment_obj.confidence,
         )
 
     emit_log(task_id, event_data, event_locks, 4, "工艺生成完成，正在保存...")
@@ -292,6 +291,146 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
         progress=100,
         created_at=task.get("created_at", ""),
     )
+
+
+def _run_yolo_prelabel(task_id: str, png_paths: list, output_dir: str) -> dict:
+    """Run YOLO on every PNG page and write labelme JSON pre-annotations.
+
+    Returns aggregate detection counts {chamfer, threaded_hole, circle_hole}.
+    Degrades gracefully if the weight file is missing / model fails to load:
+    writes empty-shapes JSON so the frontend can still load the page; the
+    user just does all annotation manually.
+    """
+    from ..pipeline.yolo_to_labelme import write_labelme
+    ann_dir = os.path.join(output_dir, "annotations")
+    summary = {"threaded_hole": 0, "circle_hole": 0, "chamfer": 0}
+
+    detector = None
+    try:
+        from ..pipeline.yolo_detector import YOLODetector
+        detector = YOLODetector.get()
+    except Exception as e:
+        logger.warning("[%s] YOLO 不可用: %s", task_id, e)
+        emit_log(task_id, event_data, event_locks, 2,
+                 f"YOLO 不可用 ({e})，请全手动标注")
+        for i, p in enumerate(png_paths, 1):
+            stem = os.path.splitext(os.path.basename(p))[0]
+            try:
+                write_labelme(p, [], os.path.join(ann_dir, f"{stem}_page_{i}.json"))
+            except Exception as we:
+                logger.warning("[%s] write empty labelme failed for page %d: %s", task_id, i, we)
+        return summary
+
+    total = len(png_paths)
+    for i, p in enumerate(png_paths, 1):
+        try:
+            dets = detector.detect(p)
+        except Exception as e:
+            logger.warning("[%s] YOLO 第 %d 页推理失败: %s", task_id, i, e)
+            dets = []
+        page_count = {"threaded_hole": 0, "circle_hole": 0, "chamfer": 0}
+        for d in dets:
+            page_count[d["cls_name"]] = page_count.get(d["cls_name"], 0) + 1
+            summary[d["cls_name"]] = summary.get(d["cls_name"], 0) + 1
+        stem = os.path.splitext(os.path.basename(p))[0]
+        try:
+            write_labelme(p, dets, os.path.join(ann_dir, f"{stem}_page_{i}.json"))
+        except Exception as we:
+            logger.warning("[%s] write labelme failed for page %d: %s", task_id, i, we)
+        emit_custom(task_id, event_data, event_locks, "yolo_progress",
+                    {"page": i, "total": total, "detections": page_count})
+
+    emit_step_complete(
+        task_id, event_data, event_locks, 2, "YOLO 检测",
+        f"{summary['chamfer']}倒角 / {summary['threaded_hole']}螺纹孔 / {summary['circle_hole']}圆孔",
+    )
+    return summary
+
+
+def _resume_from_annotation(task_id):
+    """Resume a restored-from-pending task that paused at awaiting_annotation.
+
+    Only used when the original processing thread is gone (page refresh, restart).
+    For in-flight tasks the annotation_event.set() in finalize_annotations is enough.
+    """
+    from ..pipeline.annotation_renderer import render_annotation_text
+    task = tasks.get(task_id)
+    if not task:
+        return
+    if task.get("status") == "cancelled":
+        return
+
+    output_dir = task.get("output_dir") or os.path.join(OUTPUT_FOLDER, task_id)
+    png_paths  = task.get("png_paths", []) or []
+    if not png_paths:
+        emit_error(task_id, event_data, event_locks, "无法恢复：缺少 PNG 路径")
+        return
+
+    annotation_text = render_annotation_text(os.path.join(output_dir, "annotations"))
+    task["annotation_text"] = annotation_text
+    task["status"]   = "processing"
+    task["progress"] = 40
+    update_task_status(task_id, "processing", 40)
+    emit_log(task_id, event_data, event_locks, 2, "标注已确认，开始视觉分析（恢复任务）")
+
+    # Run VLM + feature extract + review pause inline. We mirror the original
+    # _process_uploaded_file_task body from the cache-check section onward.
+    try:
+        analyzer = _get_vision_analyzer()
+        emit_step_start(task_id, event_data, event_locks, 2, "特征提取", "正在分析图纸特征")
+        merged = analyzer.analyze_drawing(png_paths, annotation_text)
+        merged["_page_number"] = 1
+        all_descriptions = [merged]
+        successful = [d for d in all_descriptions if d.get("ok") and d.get("description", "").strip()]
+        failures   = [d for d in all_descriptions if not d.get("ok") or not d.get("description", "").strip()]
+        if not successful:
+            raise RuntimeError("所有页面视觉分析均失败，无法继续处理")
+
+        vision_descriptions = [
+            {"description": d.get("description", ""), "_page_number": d.get("_page_number", i)}
+            for i, d in enumerate(all_descriptions, 1)
+        ]
+        task["vision_descriptions"] = vision_descriptions
+        task["vision_failures"] = [d.get("image_path", "") for d in failures]
+
+        report_inputs = [
+            {"description": d.get("description", ""), "_page_number": d.get("_page_number", i)}
+            for i, d in enumerate(all_descriptions, 1)
+            if d.get("ok") and d.get("description", "").strip()
+        ]
+        feature_text = build_feature_report(
+            report_inputs,
+            prefix_hint=task.get("prefix_hint", ""),
+            total_pages=len(png_paths),
+        )["report_text"]
+        task["review_text"] = feature_text
+        task["raw_review_text"] = feature_text
+        task["feature_report_json"] = {"report_text": feature_text, "pages": []}
+        task["feature_report_text"] = feature_text
+
+        emit_step_complete(task_id, event_data, event_locks, 2, "特征提取",
+                           f"{len(successful)} 页提取成功")
+        task["status"] = "awaiting_review"
+        task["progress"] = 50
+        update_task_status(task_id, "awaiting_review", 50)
+        persist_review_payload(task)
+        emit_custom(
+            task_id, event_data, event_locks,
+            "review_required",
+            {
+                "step": 2, "title": "图纸特征报告",
+                "content": feature_text, "raw_content": feature_text,
+                "failures": task["vision_failures"], "can_continue": True,
+                "gltf_url": "",
+                "message": _build_review_message(len(successful), len(failures)),
+            },
+        )
+    except Exception as e:
+        logger.exception("[%s] resume_from_annotation failed", task_id)
+        task["status"] = "error"
+        task["error"] = f"恢复任务视觉分析失败: {e}"
+        emit_error(task_id, event_data, event_locks, task["error"])
+        update_task_status(task_id, "error", task.get("progress", 0), task["error"])
 
 
 def _resume_from_review(task_id):
@@ -932,6 +1071,7 @@ def upload_drawing():
         "progress": 0,
         "created_at": datetime.now().isoformat(),
         "review_event": threading.Event(),
+        "annotation_event": threading.Event(),
         "review_text": None,
         "vision_descriptions": None,
         "vision_failures": [],
@@ -1002,6 +1142,45 @@ def upload_drawing():
             if task.get("status") == "cancelled":
                 return
 
+            # ── Step 1.5: YOLO 预标注 + 暂停等人工补全 ────────────────
+            emit_step_start(task_id, event_data, event_locks, 2, "YOLO 检测", "正在自动标注特征")
+            yolo_summary = _run_yolo_prelabel(task_id, png_paths, output_dir)
+            task["progress"] = 35
+            task["yolo_summary"] = yolo_summary
+
+            task["status"] = "awaiting_annotation"
+            update_task_status(task_id, "awaiting_annotation", 35)
+            persist_review_payload(task)
+            emit_custom(
+                task_id, event_data, event_locks,
+                "annotation_required",
+                {
+                    "task_id": task_id,
+                    "summary": yolo_summary,
+                    "pages":   len(png_paths),
+                },
+            )
+            annotation_event = task.get("annotation_event")
+            if annotation_event:
+                confirmed = annotation_event.wait(timeout=1800)
+                if not confirmed:
+                    task["status"] = "error"
+                    task["error"] = "标注等待超时（30分钟无操作），任务已终止"
+                    emit_error(task_id, event_data, event_locks, task["error"])
+                    update_task_status(task_id, "error", task.get("progress", 0), task["error"])
+                    return
+
+            if task.get("status") == "cancelled":
+                return
+
+            # ── 加载人工核对后的标注 → VLM 文本 ───────────────────────
+            from ..pipeline.annotation_renderer import render_annotation_text
+            annotation_text = render_annotation_text(os.path.join(output_dir, "annotations"))
+            task["annotation_text"] = annotation_text
+            emit_log(task_id, event_data, event_locks, 2, "标注已确认，开始视觉分析")
+            task["progress"] = 40
+            update_task_status(task_id, "processing", 40)
+
             # ── Feature cache check ─────────────────────────────────────
             _cache_entry = None
             if use_cache and file_hash:
@@ -1038,7 +1217,7 @@ def upload_drawing():
                 if task.get("status") == "cancelled":
                     return
                 # analyze_drawing 发出两路并行 VLM 调用，返回合并后的单条结果
-                merged = analyzer.analyze_drawing(png_paths)
+                merged = analyzer.analyze_drawing(png_paths, task.get("annotation_text", ""))
                 merged["_page_number"] = 1
                 all_descriptions = [merged]
 

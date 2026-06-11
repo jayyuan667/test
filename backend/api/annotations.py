@@ -4,6 +4,7 @@
 import io
 import json
 import os
+import threading
 import zipfile
 
 from flask import Blueprint, jsonify, request, send_file
@@ -114,16 +115,33 @@ def save_annotations(task_id):
 
 @annotations_bp.route("/annotations/<task_id>/export", methods=["GET"])
 def export_annotations(task_id):
-    """Return all annotation files for a task as a ZIP download."""
-    ann_dir = _ann_dir(task_id)
+    """Return annotation files + source images for a task as a ZIP download."""
+    ann_dir  = _ann_dir(task_id)
+    task_dir = os.path.join(OUTPUT_FOLDER, task_id)
     buf = io.BytesIO()
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # annotation JSON + TXT
         if os.path.isdir(ann_dir):
             for fname in sorted(os.listdir(ann_dir)):
                 fpath = os.path.join(ann_dir, fname)
                 if os.path.isfile(fpath):
                     zf.write(fpath, fname)
+
+        # source PNG/JPG images (walk task dir, exclude annotations sub-dir)
+        if os.path.isdir(task_dir):
+            for dirpath, _dirs, fnames in os.walk(task_dir):
+                # skip the annotations folder itself
+                rel_dir = os.path.relpath(dirpath, task_dir)
+                if rel_dir.startswith("annotations"):
+                    continue
+                for fname in sorted(fnames):
+                    if not fname.lower().endswith((".png", ".jpg", ".jpeg")):
+                        continue
+                    fpath = os.path.join(dirpath, fname)
+                    parts = [] if rel_dir == "." else [rel_dir]
+                    arc_name = "/".join(["images"] + parts + [fname])
+                    zf.write(fpath, arc_name)
 
     buf.seek(0)
     return send_file(
@@ -132,3 +150,41 @@ def export_annotations(task_id):
         as_attachment=True,
         download_name=f"annotations_{task_id}.zip",
     )
+
+
+@annotations_bp.route("/annotations/<task_id>/finalize", methods=["POST"])
+def finalize_annotations(task_id):
+    """User confirmed manual annotation; resume the pipeline.
+
+    Two cases:
+    - In-flight task: a background thread is blocked on annotation_event.wait();
+      we just set the event and the thread continues.
+    - Restored task (page refresh / server restart): no live thread. Spawn one
+      that runs _resume_from_annotation() — mirrors how /api/review handles
+      restored_from_pending tasks.
+    """
+    # 延迟导入避免循环依赖
+    from .upload import tasks, _resume_from_annotation
+
+    task = tasks.get(task_id)
+    if not task:
+        return jsonify({"ok": False, "error": "task not found"}), 404
+    if task.get("status") != "awaiting_annotation":
+        return jsonify({
+            "ok": False,
+            "error": f"task in status {task.get('status')}, not awaiting_annotation",
+        }), 409
+
+    ann_event = task.get("annotation_event")
+    if ann_event and not ann_event.is_set():
+        # In-flight: wake the blocked pipeline thread
+        ann_event.set()
+        return jsonify({"ok": True, "task_id": task_id, "mode": "inflight"})
+
+    # Restored: no live thread, resume on a new thread
+    threading.Thread(
+        target=_resume_from_annotation,
+        args=(task_id,),
+        daemon=True,
+    ).start()
+    return jsonify({"ok": True, "task_id": task_id, "mode": "resumed"})

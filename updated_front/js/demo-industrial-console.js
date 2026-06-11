@@ -50,6 +50,8 @@
     const reviewStepLabel = document.getElementById('reviewStepLabel');
     const reviewContinueBtn = document.getElementById('reviewContinueBtn');
     const reviewRerunBtn = document.getElementById('reviewRerunBtn');
+    let _annotateTool = null;
+    let _annotateActive = false;
     const retrievalLibraryBtn = document.getElementById('retrievalLibraryBtn');
     const featureCacheToggleBtn = document.getElementById('featureCacheToggleBtn');
     const retrievalLibraryModal = document.getElementById('retrievalLibraryModal');
@@ -2854,6 +2856,33 @@
         }
       });
 
+      source.addEventListener('annotation_required', (event) => {
+        try {
+          const payload = JSON.parse(event.data || '{}');
+          backendState.latestTaskId = taskId;
+          backendState.currentReviewTaskId = taskId;
+          backendState.annotationSummary = payload.summary || {};
+          backendState.annotationPages = payload.pages || 0;
+          backendState.annotateVisitedOnce = false;
+          setWorkflowState('等待人工补全标注', 35, false);
+          setDemoStatusText('等待标注');
+          setDemoResultChipText('YOLO 已预标注');
+          appendWorkflowLiveEntry('ANNOTATE', `YOLO 检出 ${(payload.summary?.chamfer||0)+(payload.summary?.threaded_hole||0)+(payload.summary?.circle_hole||0)} 处，请人工核对`, 'step');
+          renderUploadedPreviewFromResult({ task_id: taskId, pdf_name: payload.title || taskId });
+          renderAnnotationPendingPanel();
+          activateResultView('view-review');
+        } catch (error) {
+          console.warn('[demo] annotation_required parse failed:', error);
+        }
+      });
+
+      source.addEventListener('yolo_progress', (event) => {
+        try {
+          const p = JSON.parse(event.data || '{}');
+          appendWorkflowLiveEntry('YOLO', `第 ${p.page}/${p.total} 页：${p.detections?.chamfer||0}倒角 / ${p.detections?.threaded_hole||0}螺纹孔 / ${p.detections?.circle_hole||0}圆孔`, 'log');
+        } catch (e) { /* noop */ }
+      });
+
       source.addEventListener('step_start', (event) => {
         try {
           const payload = JSON.parse(event.data || '{}');
@@ -3486,6 +3515,7 @@
       backendState.reviewSubmittedForTaskId = '';
       backendState.streamingDone = false;
       backendState.pollFailCount = 0;
+      exitAnnotateMode();
       dispose3DPreview();
       backendState.taskBusy = false;
       backendState.taskProgress = 0;
@@ -4453,6 +4483,135 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
     if (reviewRerunBtn) {
       reviewRerunBtn.addEventListener('click', () => submitReview('rerun').catch((error) => console.error(error)));
     }
+
+    function ensureAnnotateFullscreen() {
+      let host = document.getElementById('annotateFullscreen');
+      if (host) return host;
+      host = document.createElement('div');
+      host.id = 'annotateFullscreen';
+      host.className = 'annotate-fullscreen';
+      host.innerHTML = `
+        <div class="annotate-fs-layout">
+          <div class="annotate-fs-scroll" id="annotateFsScroll">
+            <div class="annotate-fs-img-wrap" id="annotateFsImgWrap">
+              <img id="annotateFsImage" class="annotate-fs-image" alt="标注图纸" draggable="false" />
+              <svg id="annotateFsSvg" class="annotate-fs-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+          </div>
+          <div class="annotate-fs-sidebar" id="annotateFsSidebar">
+            <div class="annotate-fs-head">
+              <span class="section-label" style="font-size:13px;">标注工具</span>
+              <button class="button secondary annotate-btn-sm" id="annotateFsExitBtn">✕ 退出</button>
+            </div>
+            <div style="font-size:11px;color:#6b7280;padding:6px 14px 2px;">右键框删除 · 自动保存</div>
+            <div class="annotate-toolbar" style="border-top:1px solid #e8edf5;">
+              <div class="annotate-label-row" id="annotateFsLabelRow"></div>
+              <button class="button secondary annotate-btn-sm" id="annotateFsAddTypeBtn">+ 类型</button>
+            </div>
+            <div class="annotate-list-head" style="border-top:1px solid #e8edf5;">
+              标注列表 <span id="annotateFsCount">(0)</span>
+            </div>
+            <div class="annotate-list-body" id="annotateFsListBody"></div>
+            <div class="annotate-fs-footer">
+              <button class="button secondary annotate-btn-sm" id="annotateFsPagePrev">← 上页</button>
+              <span id="annotateFsPageCounter" style="font-size:12px;color:#6b7280;">1/1</span>
+              <button class="button secondary annotate-btn-sm" id="annotateFsPageNext">下页 →</button>
+              <button class="button secondary" id="annotateFsExportBtn" style="width:100%;margin-top:8px;">↓ 下载标注包</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(host);
+
+      const exitBtn = host.querySelector('#annotateFsExitBtn');
+      if (exitBtn) exitBtn.addEventListener('click', exitAnnotateMode);
+
+      return host;
+    }
+
+    function enterAnnotateMode() {
+      if (_annotateActive) return;
+      _annotateActive = true;
+
+      const host    = ensureAnnotateFullscreen();
+      const imgEl   = host.querySelector('#annotateFsImage');
+      const svgEl   = host.querySelector('#annotateFsSvg');
+      const sidebar = host.querySelector('#annotateFsSidebar');
+
+      host.classList.add('open');
+      document.body.style.overflow = 'hidden';
+
+      if (typeof AnnotationTool !== 'undefined') {
+        if (!_annotateTool) _annotateTool = new AnnotationTool(sidebar, window.__API_BASE__ || '/api');
+        const taskId = backendState.currentProcessTaskId || backendState.latestResult?.task_id || backendState.latestTaskId || '';
+        const urls   = (backendState.previewImages && backendState.previewImages.length)
+                         ? backendState.previewImages
+                         : (backendState.latestResult && backendState.latestResult.preview_image_urls) || [];
+        _annotateTool.activate(taskId, urls, imgEl, svgEl);
+      }
+    }
+
+    function exitAnnotateMode() {
+      if (!_annotateActive) return;
+      _annotateActive = false;
+      if (_annotateTool) _annotateTool.deactivate();
+      const host = document.getElementById('annotateFullscreen');
+      if (host) host.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    function renderAnnotationPendingPanel() {
+      const host = document.getElementById('reviewTableHost');
+      const empty = document.getElementById('reviewEmptyState');
+      if (empty) empty.style.display = 'none';
+      if (!host) return;
+      const s = backendState.annotationSummary || {};
+      const total = (s.chamfer||0) + (s.threaded_hole||0) + (s.circle_hole||0);
+      host.innerHTML = `
+        <div class="annotation-pending-card">
+          <div style="font-weight:600;font-size:14px;margin-bottom:12px;color:#1f2937;">
+            ⓘ YOLO 已完成初步标注，请人工核对并补全
+          </div>
+          <div style="line-height:1.9;font-size:13px;color:#374151;">
+            <span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-right:6px;"></span>倒角  <b>${s.chamfer || 0}</b> 处<br>
+            <span style="display:inline-block;width:10px;height:10px;background:#6366f1;border-radius:2px;margin-right:6px;"></span>螺纹孔 <b>${s.threaded_hole || 0}</b> 处<br>
+            <span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-right:6px;"></span>圆孔  <b>${s.circle_hole || 0}</b> 处
+          </div>
+          <div style="margin-top:8px;font-size:11px;color:#6b7280;">共 ${total} 处预标注 · ${backendState.annotationPages || 0} 页</div>
+          <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="button primary" id="startAnnotateBtn">✏ 开始标注</button>
+            <button class="button secondary" id="finalizeAnnotateBtn" disabled title="请先进入标注页核对">✓ 完成标注 → 继续</button>
+          </div>
+        </div>`;
+      const startBtn = document.getElementById('startAnnotateBtn');
+      const finBtn   = document.getElementById('finalizeAnnotateBtn');
+      if (startBtn) startBtn.addEventListener('click', () => {
+        backendState.annotateVisitedOnce = true;
+        if (finBtn) { finBtn.disabled = false; finBtn.title = ''; }
+        enterAnnotateMode();
+      });
+      if (finBtn) finBtn.addEventListener('click', finalizeAnnotation);
+    }
+
+    async function finalizeAnnotation() {
+      const taskId = backendState.currentReviewTaskId || backendState.currentProcessTaskId || backendState.latestTaskId;
+      if (!taskId) return;
+      const btn = document.getElementById('finalizeAnnotateBtn');
+      if (btn) { btn.disabled = true; btn.textContent = '已确认，等待视觉分析…'; }
+      try {
+        const r = await fetch(`${API_BASE}/annotations/${encodeURIComponent(taskId)}/finalize`, { method: 'POST' });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        setWorkflowState('视觉分析中', 45, true);
+        appendWorkflowLiveEntry('ANNOTATE', '标注已确认，开始视觉分析', 'step');
+      } catch (e) {
+        console.error('[finalizeAnnotation] failed:', e);
+        if (btn) { btn.disabled = false; btn.textContent = '✓ 完成标注 → 继续（重试）'; }
+        appendWorkflowLiveEntry('ANNOTATE', `提交失败：${e.message}`, 'log');
+      }
+    }
+
     if (retrievalLibraryBtn) {
       retrievalLibraryBtn.addEventListener('click', openRetrievalLibraryModal);
     }
