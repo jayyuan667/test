@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import gsap from 'gsap'
 import { LABEL_DISPLAY_NAMES } from '../../types/annotate'
 
 interface AnnotationBox {
@@ -22,6 +23,20 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
   const [index, setIndex] = useState(startIndex)
   const [zoom, setZoom] = useState(1)
   const stageRef = useRef<HTMLDivElement>(null)
+  const backdropRef = useRef<HTMLDivElement>(null)
+  const shellRef = useRef<HTMLDivElement>(null)
+
+  // GSAP: Entrance animation
+  useEffect(() => {
+    const tl = gsap.timeline()
+    if (backdropRef.current) {
+      tl.fromTo(backdropRef.current, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' })
+    }
+    if (shellRef.current) {
+      tl.fromTo(shellRef.current, { opacity: 0, scale: 0.95, y: 20 }, { opacity: 1, scale: 1, y: 0, duration: 0.4, ease: 'power3.out' }, '-=0.15')
+    }
+    return () => { tl.kill() }
+  }, [])
 
   // Reset zoom on page change
   useEffect(() => { setZoom(1) }, [index])
@@ -73,12 +88,13 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
 
   return (
     <div
+      ref={backdropRef}
       className="fixed inset-0 z-[3000] flex items-center justify-center"
       style={{ background: 'rgba(11, 19, 31, 0.78)', backdropFilter: 'blur(10px)' }}
       onClick={handleBackdropClick}
     >
       {/* Shell */}
-      <div className="relative flex flex-col" style={{ width: '96vw', height: '92vh', maxWidth: 1500, maxHeight: 1100, borderRadius: 22, background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)' }}>
+      <div ref={shellRef} className="relative flex flex-col" style={{ width: '96vw', height: '92vh', maxWidth: 1500, maxHeight: 1100, borderRadius: 22, background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)' }}>
         {/* Close */}
         <button
           onClick={onClose}

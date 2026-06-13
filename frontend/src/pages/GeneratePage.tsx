@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { batchUpload, connectSSE, finalizeAnnotation, getAnnotations, getAssetUrl, getResult, submitReview, uploadDrawing, uploadFile } from '../api/client'
 import type { TaskResult } from '../types'
 import { WorkflowHUD } from '../components/generate/WorkflowHUD'
@@ -39,6 +39,8 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
   const [imgNaturalSize, setImgNaturalSize] = useState({ w: 0, h: 0 })
 
   const annotationRef = useRef<AnnotationPanelHandle>(null)
+  const tabContentRef = useRef<HTMLDivElement>(null)
+  const annotationOverlayRef = useRef<HTMLDivElement>(null)
 
   // Load natural image size from first preview
   useEffect(() => {
@@ -89,6 +91,26 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
   const isAnnotating = status === 'awaiting_annotation'
 
   useEffect(() => { return () => { esRef.current?.close() } }, [])
+
+  // GSAP: Tab content transition
+  useEffect(() => {
+    if (tabContentRef.current) {
+      gsap.fromTo(tabContentRef.current,
+        { opacity: 0, x: 12 },
+        { opacity: 1, x: 0, duration: 0.3, ease: 'power2.out' }
+      )
+    }
+  }, [activeTab, isAnnotating])
+
+  // GSAP: Annotation overlay entrance
+  useEffect(() => {
+    if (annotateOpen && annotationOverlayRef.current) {
+      gsap.fromTo(annotationOverlayRef.current,
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.35, ease: 'power3.out' }
+      )
+    }
+  }, [annotateOpen])
 
   // GSAP: Page load animation
   useEffect(() => {
@@ -498,7 +520,7 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
 
             {/* Right: Review / Process / Annotation Pending */}
             <div className="card-solid flex flex-col min-h-0 overflow-hidden">
-              <div className="flex-1 min-h-0 p-4 flex flex-col transition-opacity duration-200">
+              <div ref={tabContentRef} className="flex-1 min-h-0 p-4 flex flex-col">
                 {isAnnotating ? (
                   /* ── Annotation Pending Card ── */
                   <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
@@ -578,7 +600,7 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
 
       {/* ── Annotation Fullscreen Overlay ── */}
       {annotateOpen && taskId && (
-        <div className="fixed inset-0 z-[2000] flex flex-col bg-white">
+        <div ref={annotationOverlayRef} className="fixed inset-0 z-[2000] flex flex-col bg-white">
           {/* Top ribbon */}
           <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-200">
             <span className="text-[13px] font-bold text-slate-700">标注工具</span>

@@ -55,15 +55,15 @@ export function UploadPanel({ onFileSelected, disabled, previewUrls, onFullscree
     }
   }, [dragOver])
 
-  // GSAP: Image page transition
+  // GSAP: Image page transition & initial load
   useEffect(() => {
     if (imageRef.current) {
       gsap.fromTo(imageRef.current,
-        { opacity: 0.5, scale: 0.95 },
-        { opacity: 1, scale: 1, duration: 0.3, ease: 'power2.out' }
+        { opacity: 0, scale: 0.97 },
+        { opacity: 1, scale: 1, duration: 0.4, ease: 'power2.out' }
       )
     }
-  }, [pageIdx])
+  }, [pageIdx, previewUrls])
 
   // Native wheel handler for Ctrl+zoom with cursor anchoring
   useEffect(() => {
