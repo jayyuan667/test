@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { batchUpload, connectSSE, finalizeAnnotation, getAssetUrl, getResult, submitReview, uploadDrawing, uploadFile } from '../api/client'
+import { batchUpload, connectSSE, finalizeAnnotation, getAnnotations, getAssetUrl, getResult, submitReview, uploadDrawing, uploadFile } from '../api/client'
 import type { TaskResult } from '../types'
 import { WorkflowHUD } from '../components/generate/WorkflowHUD'
 import { UploadPanel } from '../components/generate/UploadPanel'
@@ -35,8 +35,48 @@ export function GeneratePage({ onError }: { onError: (msg: string) => void }) {
   const [annotateOpen, setAnnotateOpen] = useState(false)
   const [annotateVisited, setAnnotateVisited] = useState(false)
   const [annotateSummary, setAnnotateSummary] = useState<Record<string, number>>({})
+  const [annotateShapes, setAnnotateShapes] = useState<Record<number, { label: string; x: number; y: number; width: number; height: number }[]>>({})
+  const [imgNaturalSize, setImgNaturalSize] = useState({ w: 0, h: 0 })
 
   const annotationRef = useRef<AnnotationPanelHandle>(null)
+
+  // Load natural image size from first preview
+  useEffect(() => {
+    if (!previewUrls.length) return
+    const img = new Image()
+    img.onload = () => setImgNaturalSize({ w: img.naturalWidth, h: img.naturalHeight })
+    img.src = previewUrls[0]
+  }, [previewUrls])
+
+  // Load annotations for preview overlay
+  useEffect(() => {
+    if (!taskId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await getAnnotations(taskId)
+        if (cancelled) return
+        const shapes: typeof annotateShapes = {}
+        const counts: Record<string, number> = {}
+        for (const [pg, ann] of Object.entries(data)) {
+          const pageNum = Number(pg)
+          shapes[pageNum] = (ann.shapes || []).map(s => ({
+            label: s.label,
+            x: s.points[0][0],
+            y: s.points[0][1],
+            width: s.points[1][0] - s.points[0][0],
+            height: s.points[1][1] - s.points[0][1],
+          }))
+          for (const s of shapes[pageNum]) {
+            counts[s.label] = (counts[s.label] || 0) + 1
+          }
+        }
+        setAnnotateShapes(shapes)
+        if (Object.keys(counts).length > 0) setAnnotateSummary(counts)
+      } catch { /* no annotations yet */ }
+    })()
+    return () => { cancelled = true }
+  }, [taskId, annotateOpen]) // re-load when annotation panel closes
 
   // Refs for GSAP animations
   const hudRef = useRef<HTMLDivElement>(null)
@@ -449,6 +489,8 @@ export function GeneratePage({ onError }: { onError: (msg: string) => void }) {
                 disabled={busy}
                 previewUrls={previewUrls.length ? previewUrls : undefined}
                 onFullscreen={previewUrls.length ? () => setShowFullscreen(true) : undefined}
+                annotationShapes={Object.keys(annotateShapes).length > 0 ? annotateShapes : undefined}
+                imageNaturalSize={imgNaturalSize.w > 0 ? imgNaturalSize : undefined}
               />
             </div>
 
