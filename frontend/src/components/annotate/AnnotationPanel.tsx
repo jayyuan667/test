@@ -157,6 +157,8 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
   useEffect(() => {
     if (!imgNatural.w || !imgNatural.h) return
     if (debouncedShapes.length === 0 && (!currentPage || currentPage.shapes.length > 0)) return
+    const raw = previewImages[pageNumber - 1] || `page_${pageNumber}.png`
+    const imagePath = raw.split('/').pop() || raw
     saveAnnotation(taskId, {
       page: pageNumber,
       shapes: debouncedShapes.map(s => ({
@@ -166,8 +168,8 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
       })),
       imageWidth: imgNatural.w,
       imageHeight: imgNatural.h,
-      imagePath: previewImages[pageNumber - 1] || `page_${pageNumber}.png`,
-    }).catch(() => {/* save failed silently */})
+      imagePath,
+    }).catch((err) => { console.warn('[auto-save] failed:', err.message) })
   }, [debouncedShapes, pageNumber, imgNatural, currentPage, taskId, previewImages])
 
   // Notify parent when shapes change (for real-time preview update)
@@ -200,7 +202,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
         })),
         imageWidth: page.imageWidth,
         imageHeight: page.imageHeight,
-        imagePath: previewImages[pg - 1] || `page_${pg}.png`,
+        imagePath: (previewImages[pg - 1] || `page_${pg}.png`).split('/').pop() || `page_${pg}.png`,
       })
     }
     onSuccess?.('标注已保存')

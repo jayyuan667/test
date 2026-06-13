@@ -70,6 +70,15 @@ def save_annotations(task_id):
 
     Body: {page, shapes, imageWidth, imageHeight, imagePath}
     """
+    try:
+        return _save_annotations_impl(task_id)
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+def _save_annotations_impl(task_id):
     data = request.get_json(force=True)
     shapes = data.get("shapes", [])
     img_w = int(data.get("imageWidth", 0))
@@ -77,7 +86,7 @@ def save_annotations(task_id):
     page = int(data.get("page", 1))
     img_path = data.get("imagePath", f"page_{page}.png")
 
-    stem = os.path.splitext(img_path)[0]
+    stem = os.path.splitext(os.path.basename(img_path))[0]
     # Strip "_annotated" suffix so saves on the boxed preview still match the
     # canonical pre-finalize stem (avoids creating yet another filename variant).
     if stem.endswith("_annotated"):

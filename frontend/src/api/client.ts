@@ -454,11 +454,17 @@ export async function saveAnnotation(taskId: string, payload: {
   imageHeight: number
   imagePath: string
 }): Promise<{ ok: boolean; json_path?: string; txt_path?: string }> {
-  return request(`/annotations/${taskId}/save`, {
+  const res = await fetch(`${BASE}/annotations/${taskId}/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error(`[saveAnnotation] ${res.status}:`, body, 'payload:', JSON.stringify(payload).slice(0, 500))
+    throw new Error(body || `Save failed: ${res.status}`)
+  }
+  return res.json()
 }
 
 export async function finalizeAnnotation(taskId: string): Promise<{ ok: boolean; task_id: string; mode: string }> {
