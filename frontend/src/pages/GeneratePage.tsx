@@ -570,6 +570,9 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
           urls={previewUrls}
           startIndex={fullscreenIndex}
           onClose={() => setShowFullscreen(false)}
+          annotationShapes={Object.keys(annotateShapes).length > 0 ? annotateShapes : undefined}
+          imageNaturalSize={imgNaturalSize.w > 0 ? imgNaturalSize : undefined}
+          labelColors={labelColors}
         />
       )}
 

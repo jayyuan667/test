@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { LABEL_DISPLAY_NAMES } from '../../types/annotate'
+
+interface AnnotationBox {
+  label: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 interface Props {
   urls: string[]
   startIndex: number
   onClose: () => void
+  annotationShapes?: Record<number, AnnotationBox[]>
+  imageNaturalSize?: { w: number; h: number }
+  labelColors?: Record<string, string>
 }
 
-export function FullscreenPreview({ urls, startIndex, onClose }: Props) {
+export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes, imageNaturalSize, labelColors }: Props) {
   const [index, setIndex] = useState(startIndex)
   const [zoom, setZoom] = useState(1)
   const stageRef = useRef<HTMLDivElement>(null)
@@ -105,19 +117,53 @@ export function FullscreenPreview({ urls, startIndex, onClose }: Props) {
           className="flex-1 overflow-auto flex items-center justify-center"
           style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}
         >
-          <img
-            src={urls[index]}
-            alt={`Page ${index + 1}`}
-            className="block object-contain transition-none select-none"
-            draggable={false}
-            style={{
-              width: `${zoom * 100}%`,
-              height: 'auto',
-              minWidth: '100%',
-              minHeight: '100%',
-              maxWidth: 'none',
-            }}
-          />
+          <div className="relative inline-block" style={{ width: `${zoom * 100}%`, minWidth: '100%', minHeight: '100%' }}>
+            <img
+              src={urls[index]}
+              alt={`Page ${index + 1}`}
+              className="block w-full h-auto transition-none select-none"
+              draggable={false}
+              style={{ maxWidth: 'none' }}
+            />
+            {annotationShapes && annotationShapes[index + 1] && imageNaturalSize && imageNaturalSize.w > 0 && (
+              <svg
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                viewBox={`0 0 ${imageNaturalSize.w} ${imageNaturalSize.h}`}
+                preserveAspectRatio="xMidYMid meet"
+              >
+                {annotationShapes[index + 1].map((shape, i) => {
+                  const displayName = LABEL_DISPLAY_NAMES[shape.label] || shape.label
+                  const color = labelColors?.[shape.label] || '#f97316'
+                  const prev = annotationShapes[index + 1].slice(0, i).filter(s => s.label === shape.label)
+                  const seq = prev.length + 1
+                  const tagText = `${displayName} ${seq}`
+                  const tagH = 16
+                  const tagW = Math.max(40, tagText.length * 7 + 10)
+                  return (
+                    <g key={i}>
+                      <rect
+                        x={shape.x} y={shape.y}
+                        width={shape.width} height={shape.height}
+                        fill={`${color}1a`} stroke={color} strokeWidth={2}
+                        rx={3}
+                      />
+                      <rect
+                        x={shape.x} y={Math.max(shape.y - tagH - 2, 0)}
+                        width={tagW} height={tagH}
+                        fill={color} rx={3}
+                      />
+                      <text
+                        x={shape.x + 5} y={Math.max(shape.y - 4, tagH - 2)}
+                        fill="white" fontSize={10} fontWeight="bold"
+                      >
+                        {tagText}
+                      </text>
+                    </g>
+                  )
+                })}
+              </svg>
+            )}
+          </div>
         </div>
       </div>
     </div>
