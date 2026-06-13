@@ -102,7 +102,9 @@ export function GeneratePage({ onError }: { onError: (msg: string) => void }) {
   }, [])
 
   const handleCloseAnnotate = useCallback(async () => {
-    await annotationRef.current?.saveAndClose()
+    try {
+      await annotationRef.current?.saveNow()
+    } catch { /* save failed, still close */ }
     setAnnotateOpen(false)
   }, [])
 

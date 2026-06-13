@@ -341,6 +341,14 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
             {hasFinalResult ? `${finalRows.length} 道工序` : isStreaming ? `工艺生成中... ${displayedRows.length} 道工序` : '等待生成...'}
           </p>
         </div>
+        {hasFinalResult && (
+          <button
+            onClick={() => setShowCommitModal(true)}
+            className="px-5 py-2 rounded-xl bg-gradient-to-r from-flame-500 to-orange-500 text-white text-[13px] font-semibold shadow-sm hover:shadow-md transition-shadow"
+          >
+            入库
+          </button>
+        )}
       </div>
 
       {/* Process table */}
@@ -467,24 +475,6 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
           </div>
         )}
       </div>
-
-      {/* Action buttons */}
-      {hasFinalResult && (
-        <div className="shrink-0 pt-2 flex gap-2">
-          <button
-            onClick={handleAddRow}
-            className="flex-1 py-2 rounded-xl border-2 border-dashed border-slate-200 text-[13px] font-medium text-slate-400 hover:text-flame-500 hover:border-flame-300 hover:bg-flame-50/30 transition-colors"
-          >
-            + 添加工序
-          </button>
-          <button
-            onClick={() => setShowCommitModal(true)}
-            className="px-5 py-2 rounded-xl bg-gradient-to-r from-flame-500 to-orange-500 text-white text-[13px] font-semibold shadow-sm hover:shadow-md transition-shadow"
-          >
-            入库
-          </button>
-        </div>
-      )}
 
       {showCommitModal && (
         <CommitToLibraryModal

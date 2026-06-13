@@ -16,6 +16,7 @@ interface Props {
 
 export interface AnnotationPanelHandle {
   saveAndClose: () => Promise<void>
+  saveNow: () => Promise<void>
 }
 
 const CUSTOM_LABELS_KEY = 'annotate.customLabels.v1'
@@ -89,6 +90,12 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose }, ref) {
   const currentPage = allPages[pageNumber]
   const debouncedShapes = useDebounce(currentPage?.shapes || [], 1000)
 
+  // Ref to track latest pages for save-on-close
+  const allPagesRef = useRef(allPages)
+  useEffect(() => { allPagesRef.current = allPages }, [allPages])
+  const pageNumberRef = useRef(pageNumber)
+  useEffect(() => { pageNumberRef.current = pageNumber }, [pageNumber])
+
   // Current shapes helper
   const shapes = currentPage?.shapes || []
 
@@ -161,28 +168,34 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose }, ref) {
   }, [debouncedShapes, pageNumber, imgNatural, currentPage, taskId, previewImages])
 
   // Save-and-close handler (called by parent via ref on exit)
-  const handleSaveAndClose = useCallback(async () => {
-    if (currentPage && currentPage.shapes.length > 0) {
-      try {
-        await saveAnnotation(taskId, {
-          page: pageNumber,
-          shapes: currentPage.shapes.map(s => ({
-            label: s.label,
-            points: [[s.x, s.y], [s.x + s.width, s.y + s.height]],
-            shape_type: 'rectangle',
-          })),
-          imageWidth: currentPage.imageWidth,
-          imageHeight: currentPage.imageHeight,
-          imagePath: previewImages[pageNumber - 1] || `page_${pageNumber}.png`,
-        })
-      } catch { /* save failed, still close */ }
+  const handleSaveNow = useCallback(async () => {
+    const pages = allPagesRef.current
+    const pg = pageNumberRef.current
+    const page = pages[pg]
+    if (page && page.shapes.length > 0) {
+      await saveAnnotation(taskId, {
+        page: pg,
+        shapes: page.shapes.map(s => ({
+          label: s.label,
+          points: [[s.x, s.y], [s.x + s.width, s.y + s.height]],
+          shape_type: 'rectangle',
+        })),
+        imageWidth: page.imageWidth,
+        imageHeight: page.imageHeight,
+        imagePath: previewImages[pg - 1] || `page_${pg}.png`,
+      })
     }
+  }, [taskId, previewImages])
+
+  const handleSaveAndClose = useCallback(async () => {
+    await handleSaveNow()
     onClose?.()
-  }, [taskId, currentPage, pageNumber, previewImages, onClose])
+  }, [handleSaveNow, onClose])
 
   useImperativeHandle(ref, () => ({
     saveAndClose: handleSaveAndClose,
-  }), [handleSaveAndClose])
+    saveNow: handleSaveNow,
+  }), [handleSaveAndClose, handleSaveNow])
 
   // Image load handler
   const handleImageLoad = useCallback(() => {
