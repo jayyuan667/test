@@ -12,6 +12,8 @@ interface Props {
   previewImages: string[]
   getAssetUrl: (filename: string) => string
   onClose?: () => void
+  onSuccess?: (msg: string) => void
+  onShapesChanged?: (shapes: Record<number, { label: string; x: number; y: number; width: number; height: number }[]>) => void
 }
 
 export interface AnnotationPanelHandle {
@@ -24,7 +26,7 @@ const CUSTOM_LABELS_KEY = 'annotate.customLabels.v1'
 const MIN_SHAPE_SIZE = 6
 
 export const AnnotationPanel = forwardRef<AnnotationPanelHandle, Props>(
-function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose }, ref) {
+function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSuccess, onShapesChanged }, ref) {
   // Labels
   const [customLabels, setCustomLabels] = useState<AnnotationLabel[]>(() => {
     try {
@@ -168,12 +170,26 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose }, ref) {
     }).catch(() => {/* save failed silently */})
   }, [debouncedShapes, pageNumber, imgNatural, currentPage, taskId, previewImages])
 
+  // Notify parent when shapes change (for real-time preview update)
+  useEffect(() => {
+    if (!onShapesChanged) return
+    const shapes: Record<number, { label: string; x: number; y: number; width: number; height: number }[]> = {}
+    for (const [pg, page] of Object.entries(allPages)) {
+      if (page.shapes.length > 0) {
+        shapes[Number(pg)] = page.shapes.map(s => ({
+          label: s.label, x: s.x, y: s.y, width: s.width, height: s.height,
+        }))
+      }
+    }
+    onShapesChanged(shapes)
+  }, [allPages, onShapesChanged])
+
   // Save-and-close handler (called by parent via ref on exit)
   const handleSaveNow = useCallback(async () => {
     const pages = allPagesRef.current
-    const pg = pageNumberRef.current
-    const page = pages[pg]
-    if (page && page.shapes.length > 0) {
+    for (const [pgStr, page] of Object.entries(pages)) {
+      if (page.shapes.length === 0) continue
+      const pg = Number(pgStr)
       await saveAnnotation(taskId, {
         page: pg,
         shapes: page.shapes.map(s => ({
@@ -186,7 +202,8 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose }, ref) {
         imagePath: previewImages[pg - 1] || `page_${pg}.png`,
       })
     }
-  }, [taskId, previewImages])
+    onSuccess?.('标注已保存')
+  }, [taskId, previewImages, onSuccess])
 
   const handleSaveAndClose = useCallback(async () => {
     await handleSaveNow()
@@ -211,10 +228,22 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose }, ref) {
   }), [handleSaveAndClose, handleSaveNow, getShapeCounts])
 
   // Image load handler
+  const fitOnFirstLoadRef = useRef(true)
   const handleImageLoad = useCallback(() => {
     const img = imgRef.current
     if (img) {
       setImgNatural({ w: img.naturalWidth, h: img.naturalHeight })
+      // Auto-fit zoom on first image load
+      if (fitOnFirstLoadRef.current) {
+        fitOnFirstLoadRef.current = false
+        requestAnimationFrame(() => {
+          const scroll = scrollRef.current
+          if (!scroll || !img.naturalWidth) return
+          const fitW = (scroll.clientWidth - 32) / img.naturalWidth
+          const fitH = (scroll.clientHeight - 32) / img.naturalHeight
+          setZoom(Math.min(fitW, fitH))
+        })
+      }
     }
   }, [])
 

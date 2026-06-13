@@ -9,11 +9,36 @@ import {
   getAssetUrl,
 } from '../api/client'
 import type { LibraryRecord, LibraryRecordsResponse, LibraryScope } from '../api/client'
+import type { PageId } from '../types'
 import gsap from 'gsap'
 
 type ViewMode = 'list' | 'detail' | 'edit'
 
-export function DbPage() {
+function LockShell({ onNavigate }: { onNavigate: (id: PageId) => void }) {
+  return (
+    <div className="flex items-center justify-center h-full">
+      <div className="card-solid max-w-md text-center p-8">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-100 flex items-center justify-center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-400">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+        </div>
+        <h3 className="text-[15px] font-bold text-slate-700 mb-2">数据库未解锁</h3>
+        <p className="text-[12px] text-slate-400 mb-5">请先完成知识库导入操作后再浏览数据库</p>
+        <div className="flex items-center justify-center gap-3">
+          <button className="btn btn-primary !text-[12px]" onClick={() => onNavigate('zip')}>前往导入</button>
+          <button className="btn btn-secondary !text-[12px]" onClick={() => {
+            sessionStorage.setItem('zip_unlocked', 'true')
+            onNavigate('db')
+          }}>查看公共库</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
   const [ready, setReady] = useState<boolean | null>(null)
   const [browseOnly, setBrowseOnly] = useState(false)
   const [scopes, setScopes] = useState<LibraryScope[]>([])
@@ -25,6 +50,7 @@ export function DbPage() {
   const [total, setTotal] = useState(0)
   const [productTypes, setProductTypes] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const [zipUnlocked, setZipUnlocked] = useState(sessionStorage.getItem('zip_unlocked') === 'true')
 
   // Filters
   const [query, setQuery] = useState('')
@@ -77,6 +103,15 @@ export function DbPage() {
     })()
   }, [])
 
+  // Safely parse a value that might be a JSON string into an array
+  const ensureArray = useCallback((val: unknown): unknown[] => {
+    if (Array.isArray(val)) return val
+    if (typeof val === 'string' && val.trim()) {
+      try { const parsed = JSON.parse(val); if (Array.isArray(parsed)) return parsed } catch { /* not JSON */ }
+    }
+    return []
+  }, [])
+
   // Load records
   const loadRecords = useCallback(async () => {
     if (ready === false) return
@@ -89,7 +124,11 @@ export function DbPage() {
         product_type: filterProductType || undefined,
         library_key: filterScope || undefined,
       })
-      setRecords(data.items || [])
+      setRecords((data.items || []).map((r: LibraryRecord) => {
+        r.process_list = ensureArray(r.process_list) as string[]
+        r.trades = ensureArray(r.trades) as string[]
+        return r
+      }))
       setTotalPages(data.total_pages || 1)
       setTotal(data.total || 0)
       setProductTypes(data.product_types || [])
@@ -231,9 +270,13 @@ export function DbPage() {
   const handleSelectRecord = useCallback(async (record: LibraryRecord) => {
     try {
       const full = await getLibraryRecord(record.id, filterScope || undefined)
+      full.process_list = ensureArray(full.process_list) as string[]
+      full.trades = ensureArray(full.trades) as string[]
       setSelectedRecord(full)
       setViewMode('detail')
     } catch {
+      record.process_list = ensureArray(record.process_list) as string[]
+      record.trades = ensureArray(record.trades) as string[]
       setSelectedRecord(record)
       setViewMode('detail')
     }
@@ -312,7 +355,9 @@ export function DbPage() {
     } catch { /* ignore */ }
     const taskId = record.preview_task_id || record.source_task_id
     if (taskId && urls.length) {
-      setSnapshotPreview({ taskId, urls, page: 0, zoom: 1 })
+      // URLs from backend may be full paths (/api/result/.../asset/...) or just filenames
+      const normalized = urls.map(u => u.startsWith('/api') ? u : getAssetUrl(taskId, u))
+      setSnapshotPreview({ taskId, urls: normalized, page: 0, zoom: 1 })
     }
   }
 
@@ -357,6 +402,22 @@ export function DbPage() {
     const set = new Set(records.map(r => getSourceLabel(r)).filter(Boolean))
     return Array.from(set)
   }, [records])
+
+  // Poll sessionStorage for unlock changes (handles in-page "查看公共库" click)
+  useEffect(() => {
+    if (zipUnlocked) return
+    const interval = setInterval(() => {
+      if (sessionStorage.getItem('zip_unlocked') === 'true') {
+        setZipUnlocked(true)
+        clearInterval(interval)
+      }
+    }, 200)
+    return () => clearInterval(interval)
+  }, [zipUnlocked])
+
+  if (!zipUnlocked) {
+    return <LockShell onNavigate={onNavigate} />
+  }
 
   // Stat card data
   const statCards = [
@@ -908,7 +969,7 @@ export function DbPage() {
                 <div className="text-[11px] text-slate-400 mb-2 shrink-0">{selectedRecord?.prefix || ''} · {selectedRecord ? getSourceLabel(selectedRecord) : ''}</div>
                 <div className="flex-1 min-h-0 flex items-center justify-center overflow-auto w-full">
                   <img
-                    src={getAssetUrl(snapshotPreview.taskId, snapshotPreview.urls[snapshotPreview.page])}
+                    src={snapshotPreview.urls[snapshotPreview.page]}
                     alt="快照"
                     className="max-w-full max-h-[55vh] object-contain transition-transform duration-200"
                     style={{ transform: `scale(${snapshotPreview.zoom})` }}

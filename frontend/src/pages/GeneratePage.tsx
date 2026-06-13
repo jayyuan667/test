@@ -13,7 +13,7 @@ import gsap from 'gsap'
 
 type ActiveTab = 'review' | 'process'
 
-export function GeneratePage({ onError }: { onError: (msg: string) => void }) {
+export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) => void; onSuccess?: (msg: string) => void }) {
   const [taskId, setTaskId] = useState<string | null>(null)
   const [status, setStatus] = useState<string>('idle')
   const [progress, setProgress] = useState(0)
@@ -581,7 +581,9 @@ export function GeneratePage({ onError }: { onError: (msg: string) => void }) {
               <button
                 className="btn btn-ghost !text-[11px] !py-1.5 !px-3 text-slate-500 hover:text-flame-600"
                 onClick={async () => {
-                  try { await annotationRef.current?.saveNow() } catch {}
+                  try {
+                    await annotationRef.current?.saveNow()
+                  } catch { onSuccess?.('保存失败') }
                   const counts = annotationRef.current?.getShapeCounts()
                   if (counts) setAnnotateSummary(counts)
                 }}
@@ -607,6 +609,8 @@ export function GeneratePage({ onError }: { onError: (msg: string) => void }) {
               })}
               getAssetUrl={(filename) => getAssetUrl(taskId, filename)}
               onClose={() => setAnnotateOpen(false)}
+              onSuccess={onSuccess}
+              onShapesChanged={setAnnotateShapes}
             />
           </div>
         </div>
