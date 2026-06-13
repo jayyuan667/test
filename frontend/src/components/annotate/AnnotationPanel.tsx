@@ -496,7 +496,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose }, ref) {
                 ref={imgRef}
                 src={currentImageUrl}
                 alt={`Page ${pageNumber}`}
-                style={{ width: displayW, height: displayH }}
+                style={{ width: displayW, height: displayH, maxWidth: 'none' }}
                 onLoad={handleImageLoad}
                 draggable={false}
               />
