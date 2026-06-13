@@ -189,6 +189,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
     const pages = allPagesRef.current
     for (const [pgStr, page] of Object.entries(pages)) {
       if (page.shapes.length === 0) continue
+      if (!page.imageWidth || !page.imageHeight) continue
       const pg = Number(pgStr)
       await saveAnnotation(taskId, {
         page: pg,
