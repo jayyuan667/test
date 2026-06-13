@@ -103,13 +103,23 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
     const rows = editRows.length > 0 ? editRows : finalRows
     const content = rows.map(r => `${r.code}\t${r.trade}\t${r.content}`).join('\n')
     const processSummary = rows.map(r => `${r.code} ${r.trade} ${r.content}`).join('; ')
+
+    // Parse prefix from feature_report_text (【零件名称】xxx)
+    let prefix = ''
+    if (result?.feature_report_text) {
+      const m = result.feature_report_text.match(/【零件名称】\s*(.+)/)
+      if (m) prefix = m[1].trim()
+    }
+    if (!prefix && result?.source_name) prefix = result.source_name
+    if (!prefix && result?.pdf_name) prefix = result.pdf_name.replace(/\.\w+$/, '')
+
     return {
-      prefix: '',
+      prefix,
       content,
       process_summary: processSummary,
-      feature_report: '',
+      feature_report: result?.feature_report_text || '',
     }
-  }, [editRows, finalRows])
+  }, [editRows, finalRows, result])
 
   // Sync editRows when result changes
   useEffect(() => {

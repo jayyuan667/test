@@ -278,6 +278,21 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose }, ref) {
     setSelectedId(id)
   }, [])
 
+  // Scroll to center a shape in the viewport (called from sidebar)
+  const scrollToShape = useCallback((id: string) => {
+    const shape = shapes.find(s => s.id === id)
+    if (!shape || !scrollRef.current) return
+    setSelectedId(id)
+    const el = scrollRef.current
+    const cx = (shape.x + shape.width / 2) * zoom
+    const cy = (shape.y + shape.height / 2) * zoom
+    el.scrollTo({
+      left: Math.max(0, cx - el.clientWidth / 2),
+      top: Math.max(0, cy - el.clientHeight / 2),
+      behavior: 'smooth',
+    })
+  }, [shapes, zoom])
+
   const handleDeleteShape = useCallback((id: string) => {
     setAllPages(prev => {
       const page = prev[pageNumber]
@@ -665,7 +680,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose }, ref) {
                 shapes={shapes}
                 labels={allLabels}
                 selectedId={selectedId}
-                onSelect={setSelectedId}
+                onSelect={scrollToShape}
                 onDelete={handleDeleteShape}
                 onRename={handleRenameShape}
               />

@@ -532,12 +532,20 @@ export function GeneratePage({ onError }: { onError: (msg: string) => void }) {
           {/* Top ribbon */}
           <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-200">
             <span className="text-[13px] font-bold text-slate-700">标注工具</span>
-            <button
-              className="btn btn-ghost !text-[11px] !py-1.5 !px-3 text-slate-500 hover:text-slate-700"
-              onClick={handleCloseAnnotate}
-            >
-              退出标注
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                className="btn btn-ghost !text-[11px] !py-1.5 !px-3 text-slate-500 hover:text-flame-600"
+                onClick={async () => { try { await annotationRef.current?.saveNow() } catch {} }}
+              >
+                保存修改
+              </button>
+              <button
+                className="btn btn-ghost !text-[11px] !py-1.5 !px-3 text-slate-500 hover:text-slate-700"
+                onClick={handleCloseAnnotate}
+              >
+                退出标注
+              </button>
+            </div>
           </div>
           {/* Annotation panel body */}
           <div className="flex-1 min-h-0">

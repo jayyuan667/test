@@ -66,7 +66,7 @@ export function FullscreenPreview({ urls, startIndex, onClose }: Props) {
       onClick={handleBackdropClick}
     >
       {/* Shell */}
-      <div className="relative flex flex-col" style={{ width: '96vw', height: '92vh', maxWidth: 1500, maxHeight: 1100, borderRadius: 22, background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+      <div className="relative flex flex-col" style={{ width: '96vw', height: '92vh', maxWidth: 1500, maxHeight: 1100, borderRadius: 22, background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)' }}>
         {/* Close */}
         <button
           onClick={onClose}
