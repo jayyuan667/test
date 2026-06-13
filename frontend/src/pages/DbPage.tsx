@@ -509,7 +509,7 @@ export function DbPage() {
       )}
 
       {/* Stat strip */}
-      <div ref={statsRef} className="grid grid-cols-3 gap-3 shrink-0">
+      <div ref={statsRef} className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
         {statCards.map((stat) => (
           <div
             key={stat.label}
@@ -706,7 +706,7 @@ export function DbPage() {
               {viewMode === 'detail' ? (
                 <div className="flex flex-col gap-4">
                   {/* Info grid */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 p-3">
                       <div className="text-[11px] font-bold text-slate-500 mb-1">产品类型</div>
                       <div className="text-[13px] text-slate-700">{selectedRecord.product_type || '-'}</div>
@@ -767,7 +767,7 @@ export function DbPage() {
                 <div className="flex flex-col gap-4">
                   <div className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-1">编辑记录 <span className="font-normal text-slate-400 normal-case tracking-normal ml-1">保存后自动同步到数据库</span></div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1">
                       <label className="text-[11px] font-semibold text-slate-500">产品类型</label>
                       <input
