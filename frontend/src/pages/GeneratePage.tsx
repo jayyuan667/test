@@ -8,7 +8,7 @@ import { ProcessPanel } from '../components/generate/ProcessPanel'
 import { AnnotationPanel, type AnnotationPanelHandle } from '../components/annotate/AnnotationPanel'
 import { ExportModal } from '../components/shared/ExportModal'
 import { FullscreenPreview } from '../components/generate/FullscreenPreview'
-import { LABEL_DISPLAY_NAMES } from '../types/annotate'
+import { LABEL_DISPLAY_NAMES, BUILT_IN_LABELS } from '../types/annotate'
 import gsap from 'gsap'
 
 type ActiveTab = 'review' | 'process'
@@ -419,6 +419,7 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
   // Annotation summary label counts
   const summaryEntries = Object.entries(annotateSummary).filter(([, v]) => v > 0)
   const summaryLabels = LABEL_DISPLAY_NAMES
+  const labelColors = Object.fromEntries(BUILT_IN_LABELS.map(l => [l.name, l.color]))
 
   return (
     <div className="flex flex-col gap-0 h-full min-h-0">
@@ -491,6 +492,7 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
                 onFullscreen={previewUrls.length ? () => setShowFullscreen(true) : undefined}
                 annotationShapes={Object.keys(annotateShapes).length > 0 ? annotateShapes : undefined}
                 imageNaturalSize={imgNaturalSize.w > 0 ? imgNaturalSize : undefined}
+                labelColors={labelColors}
               />
             </div>
 

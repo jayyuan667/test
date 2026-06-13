@@ -17,9 +17,10 @@ interface Props {
   onFullscreen?: () => void
   annotationShapes?: Record<number, AnnotationBox[]>
   imageNaturalSize?: { w: number; h: number }
+  labelColors?: Record<string, string>
 }
 
-export function UploadPanel({ onFileSelected, disabled, previewUrls, onFullscreen, annotationShapes, imageNaturalSize }: Props) {
+export function UploadPanel({ onFileSelected, disabled, previewUrls, onFullscreen, annotationShapes, imageNaturalSize, labelColors }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
   const [zoom, setZoom] = useState(1)
@@ -195,6 +196,7 @@ export function UploadPanel({ onFileSelected, disabled, previewUrls, onFullscree
               >
                 {annotationShapes[pageIdx + 1].map((shape, i) => {
                   const displayName = LABEL_DISPLAY_NAMES[shape.label] || shape.label
+                  const color = labelColors?.[shape.label] || '#f97316'
                   // Compute seq
                   const prev = annotationShapes[pageIdx + 1].slice(0, i).filter(s => s.label === shape.label)
                   const seq = prev.length + 1
@@ -206,13 +208,13 @@ export function UploadPanel({ onFileSelected, disabled, previewUrls, onFullscree
                       <rect
                         x={shape.x} y={shape.y}
                         width={shape.width} height={shape.height}
-                        fill="rgba(249,115,22,0.1)" stroke="#f97316" strokeWidth={2}
+                        fill={`${color}1a`} stroke={color} strokeWidth={2}
                         rx={3}
                       />
                       <rect
                         x={shape.x} y={Math.max(shape.y - tagH - 2, 0)}
                         width={tagW} height={tagH}
-                        fill="#f97316" rx={3}
+                        fill={color} rx={3}
                       />
                       <text
                         x={shape.x + 5} y={Math.max(shape.y - 4, tagH - 2)}
