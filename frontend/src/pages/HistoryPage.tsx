@@ -490,9 +490,9 @@ export function HistoryPage() {
             </div>
 
             {/* Body */}
-            <div className="flex-1 min-h-0 overflow-auto flex">
+            <div className="flex-1 min-h-0 overflow-auto flex flex-col md:flex-row">
               {/* Left: Image preview */}
-              <div className="flex-1 min-w-0 border-r border-slate-200 flex flex-col items-center justify-center p-4 bg-slate-50">
+              <div className="flex-1 min-w-0 md:border-r border-slate-200 flex flex-col items-center justify-center p-4 bg-slate-50">
                 {snapshotLoading ? (
                   <div className="text-slate-400 text-[13px]">加载中...</div>
                 ) : snapshotUrls.length === 0 && !has3D ? (
@@ -530,7 +530,7 @@ export function HistoryPage() {
               </div>
 
               {/* Right: Details */}
-              <div className="w-[320px] shrink-0 overflow-auto p-4 flex flex-col gap-4">
+              <div className="w-full md:w-[320px] shrink-0 overflow-auto p-4 flex flex-col gap-4 border-t md:border-t-0 md:border-l border-slate-200">
                 {/* Feature review */}
                 <div>
                   <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">特征审阅</div>
