@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import type { TaskResult } from '../../types'
+import { CommitToLibraryModal } from './CommitToLibraryModal'
+import type { CommitDraft } from '../../api/client'
 import gsap from 'gsap'
 
 interface ProcessRow {
@@ -79,6 +81,7 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
   // Editable rows & row management
   const [editRows, setEditRows] = useState<ProcessRow[]>([])
   const [hoveredRow, setHoveredRow] = useState<number | null>(null)
+  const [showCommitModal, setShowCommitModal] = useState(false)
 
   // Final result rows
   const finalRows = useMemo(() => {
@@ -94,6 +97,19 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
       return { code: '', trade: '', content: String(row || '') }
     })
   }, [result])
+
+  // Computed draft for commit-to-library
+  const commitDraft: CommitDraft = useMemo(() => {
+    const rows = editRows.length > 0 ? editRows : finalRows
+    const content = rows.map(r => `${r.code}\t${r.trade}\t${r.content}`).join('\n')
+    const processSummary = rows.map(r => `${r.code} ${r.trade} ${r.content}`).join('; ')
+    return {
+      prefix: '',
+      content,
+      process_summary: processSummary,
+      feature_report: '',
+    }
+  }, [editRows, finalRows])
 
   // Sync editRows when result changes
   useEffect(() => {
@@ -452,16 +468,30 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
         )}
       </div>
 
-      {/* Add row button */}
+      {/* Action buttons */}
       {hasFinalResult && (
-        <div className="shrink-0 pt-2">
+        <div className="shrink-0 pt-2 flex gap-2">
           <button
             onClick={handleAddRow}
-            className="w-full py-2 rounded-xl border-2 border-dashed border-slate-200 text-[13px] font-medium text-slate-400 hover:text-flame-500 hover:border-flame-300 hover:bg-flame-50/30 transition-colors"
+            className="flex-1 py-2 rounded-xl border-2 border-dashed border-slate-200 text-[13px] font-medium text-slate-400 hover:text-flame-500 hover:border-flame-300 hover:bg-flame-50/30 transition-colors"
           >
             + 添加工序
           </button>
+          <button
+            onClick={() => setShowCommitModal(true)}
+            className="px-5 py-2 rounded-xl bg-gradient-to-r from-flame-500 to-orange-500 text-white text-[13px] font-semibold shadow-sm hover:shadow-md transition-shadow"
+          >
+            入库
+          </button>
         </div>
+      )}
+
+      {showCommitModal && (
+        <CommitToLibraryModal
+          draft={commitDraft}
+          onClose={() => setShowCommitModal(false)}
+          onSuccess={() => setShowCommitModal(false)}
+        />
       )}
     </div>
   )
