@@ -131,21 +131,11 @@ export function HistoryPage() {
   // GSAP: Table row hover animation
   const handleRowHover = (e: React.MouseEvent<HTMLTableRowElement>, isEnter: boolean) => {
     const row = e.currentTarget
-    if (isEnter) {
-      gsap.to(row, {
-        backgroundColor: '#f8fafc',
-        scale: 1.005,
-        duration: 0.2,
-        ease: 'power1.out',
-      })
-    } else {
-      gsap.to(row, {
-        backgroundColor: '#ffffff',
-        scale: 1,
-        duration: 0.2,
-        ease: 'power1.out',
-      })
-    }
+    gsap.to(row, {
+      scale: isEnter ? 1.005 : 1,
+      duration: 0.2,
+      ease: 'power1.out',
+    })
   }
 
   // GSAP: Modal animation
