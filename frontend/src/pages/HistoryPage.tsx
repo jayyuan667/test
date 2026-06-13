@@ -384,7 +384,56 @@ export function HistoryPage() {
             <div className="text-[13px] text-slate-400">上传文件生成工艺后，记录会出现在这里。</div>
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-auto">
+          <>
+          {/* Mobile card list */}
+          <div className="md:hidden flex flex-col gap-2 flex-1 min-h-0 overflow-auto">
+            {pageItems.map(h => {
+              const isDone = h.progress >= 100
+              return (
+                <div
+                  key={h.task_id}
+                  className="rounded-xl border border-slate-200 bg-white p-3.5"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-semibold text-slate-800 truncate">{h.pdf_name || h.task_id}</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5 font-mono">{h.task_id}</div>
+                    </div>
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0 ml-2 ${isDone ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                      {isDone ? '已完成' : '待审阅'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mb-2">
+                    {formatDate(h.completed_at || h.created_at)}
+                    {h.file_count != null ? ` · 已输出 ${h.file_count} 条工序` : ''}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(h.task_id)}
+                      onChange={() => toggleSelect(h.task_id)}
+                      className="rounded accent-flame-500"
+                    />
+                    <button
+                      className="btn btn-ghost !text-[11px] !py-1 !px-2.5 !text-blue-600"
+                      onClick={() => openSnapshot(h.task_id)}
+                    >
+                      查看快照
+                    </button>
+                    <button
+                      className="btn btn-ghost !text-[11px] !py-1 !px-2 !text-red-400 ml-auto"
+                      disabled={deleting === h.task_id}
+                      onClick={() => handleDelete(h.task_id)}
+                    >
+                      {deleting === h.task_id ? '删除中...' : '删除'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {/* Desktop table */}
+          <div className="hidden md:block flex-1 min-h-0 overflow-auto">
             <table className="data-table">
               <thead>
                 <tr>
@@ -458,6 +507,7 @@ export function HistoryPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 
