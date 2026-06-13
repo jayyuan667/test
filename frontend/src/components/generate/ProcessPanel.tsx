@@ -106,9 +106,15 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
 
     // Parse prefix from feature_report_text (【零件名称】xxx)
     let prefix = ''
+    let techRequirement = ''
+    let productType = ''
     if (result?.feature_report_text) {
       const m = result.feature_report_text.match(/【零件名称】\s*(.+)/)
       if (m) prefix = m[1].trim()
+      const tr = result.feature_report_text.match(/【技术要求】\s*(.+)/)
+      if (tr) techRequirement = tr[1].trim()
+      const pt = result.feature_report_text.match(/【类型】\s*(.+)/)
+      if (pt) productType = pt[1].trim()
     }
     if (!prefix && result?.source_name) prefix = result.source_name
     if (!prefix && result?.pdf_name) prefix = result.pdf_name.replace(/\.\w+$/, '')
@@ -117,7 +123,13 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
       prefix,
       content,
       process_summary: processSummary,
-      feature_report: result?.feature_report_text || '',
+      feature_report_text: result?.feature_report_text || '',
+      preview_image_urls: result?.preview_image_urls || result?.preview_images || [],
+      source_type: 'web_upload',
+      source_task_id: result?.task_id || '',
+      process_list: rows.map(r => ({ code: r.code, trade: r.trade, content: r.content })),
+      tech_requirement: techRequirement,
+      product_type: productType,
     }
   }, [editRows, finalRows, result])
 
@@ -400,18 +412,23 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
                     {row.code}
                   </td>
                   <td>
-                    {hasFinalResult ? (
+                    {row.trade ? (
+                      <span
+                        contentEditable={hasFinalResult}
+                        suppressContentEditableWarning
+                        onBlur={(e) => hasFinalResult && handleCellEdit(i, 'trade', e.currentTarget.textContent || '')}
+                        className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border ${tradeBadgeClass(row.trade)} ${hasFinalResult ? 'cursor-text' : ''}`}
+                      >
+                        {row.trade}
+                      </span>
+                    ) : hasFinalResult ? (
                       <span
                         contentEditable
                         suppressContentEditableWarning
                         onBlur={(e) => handleCellEdit(i, 'trade', e.currentTarget.textContent || '')}
-                        className="cell-editable block"
+                        className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] text-slate-400 border border-dashed border-slate-200 cursor-text"
                       >
-                        {row.trade}
-                      </span>
-                    ) : row.trade ? (
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border ${tradeBadgeClass(row.trade)}`}>
-                        {row.trade}
+                        工种
                       </span>
                     ) : null}
                   </td>

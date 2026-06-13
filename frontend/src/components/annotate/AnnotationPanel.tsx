@@ -17,6 +17,7 @@ interface Props {
 export interface AnnotationPanelHandle {
   saveAndClose: () => Promise<void>
   saveNow: () => Promise<void>
+  getShapeCounts: () => Record<string, number>
 }
 
 const CUSTOM_LABELS_KEY = 'annotate.customLabels.v1'
@@ -192,10 +193,22 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose }, ref) {
     onClose?.()
   }, [handleSaveNow, onClose])
 
+  // Get shape counts across all pages
+  const getShapeCounts = useCallback(() => {
+    const counts: Record<string, number> = {}
+    for (const page of Object.values(allPagesRef.current)) {
+      for (const shape of page.shapes) {
+        counts[shape.label] = (counts[shape.label] || 0) + 1
+      }
+    }
+    return counts
+  }, [])
+
   useImperativeHandle(ref, () => ({
     saveAndClose: handleSaveAndClose,
     saveNow: handleSaveNow,
-  }), [handleSaveAndClose, handleSaveNow])
+    getShapeCounts,
+  }), [handleSaveAndClose, handleSaveNow, getShapeCounts])
 
   // Image load handler
   const handleImageLoad = useCallback(() => {

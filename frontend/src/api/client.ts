@@ -352,7 +352,13 @@ export interface CommitDraft {
   prefix: string
   content: string
   process_summary: string
-  feature_report: string
+  feature_report_text: string
+  preview_image_urls: string[]
+  source_type: string
+  source_task_id: string
+  process_list: { code: string; trade: string; content: string }[]
+  tech_requirement: string
+  product_type: string
 }
 
 export async function commitToLibrary(params: {

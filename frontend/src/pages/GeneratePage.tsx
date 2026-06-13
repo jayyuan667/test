@@ -105,6 +105,9 @@ export function GeneratePage({ onError }: { onError: (msg: string) => void }) {
     try {
       await annotationRef.current?.saveNow()
     } catch { /* save failed, still close */ }
+    // Update summary from current annotations
+    const counts = annotationRef.current?.getShapeCounts()
+    if (counts) setAnnotateSummary(counts)
     setAnnotateOpen(false)
   }, [])
 
@@ -535,7 +538,11 @@ export function GeneratePage({ onError }: { onError: (msg: string) => void }) {
             <div className="flex items-center gap-2">
               <button
                 className="btn btn-ghost !text-[11px] !py-1.5 !px-3 text-slate-500 hover:text-flame-600"
-                onClick={async () => { try { await annotationRef.current?.saveNow() } catch {} }}
+                onClick={async () => {
+                  try { await annotationRef.current?.saveNow() } catch {}
+                  const counts = annotationRef.current?.getShapeCounts()
+                  if (counts) setAnnotateSummary(counts)
+                }}
               >
                 保存修改
               </button>
