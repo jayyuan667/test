@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import type { TaskResult } from '../../types'
 import { CommitToLibraryModal } from './CommitToLibraryModal'
 import type { CommitDraft } from '../../api/client'
+import { TypingRow } from './TypingRow'
+import type { TypingRowHandle, TypewriterProgress } from './TypingRow'
 import gsap from 'gsap'
 
-interface ProcessRow {
+export interface ProcessRow {
   code: string
   trade: string
   content: string
@@ -13,7 +15,12 @@ interface ProcessRow {
 interface Props {
   result: TaskResult | null
   taskId: string | null
+  runToken: number
   streamingChunks: string
+  reviewText?: string
+  onTypewriterComplete?: () => void
+  onRowsChange?: (rows: ProcessRow[]) => void
+  onTypewriterProgress?: (info: TypewriterProgress) => void  // new
 }
 
 // Parse a single line into a process row (matches H5's twParseLine)
@@ -63,18 +70,15 @@ function tradeBadgeClass(trade: string): string {
   return 'bg-blue-50 text-blue-600 border-blue-200'
 }
 
-export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
+export function ProcessPanel({ result, taskId, runToken, streamingChunks, reviewText, onTypewriterComplete, onRowsChange, onTypewriterProgress }: Props) {
   const tableRef = useRef<HTMLDivElement>(null)
   const emptyStateRef = useRef<HTMLDivElement>(null)
+  const commitBtnRef = useRef<HTMLButtonElement>(null)
 
   // Streaming typewriter state
   const [displayedRows, setDisplayedRows] = useState<ProcessRow[]>([])
-  const [typingRow, setTypingRow] = useState<ProcessRow | null>(null)
-  const [typingField, setTypingField] = useState<'code' | 'trade' | 'content'>('code')
-  const [typingText, setTypingText] = useState('')
-  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const rowQueueRef = useRef<ProcessRow[]>([])
-  const isTypingRef = useRef(false)
+  const typingRef = useRef<TypingRowHandle>(null)
+  const [isTyping, setIsTyping] = useState(false)
   const animatedCountRef = useRef(0)
   const userScrolledRef = useRef(false)
 
@@ -104,16 +108,20 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
     const content = rows.map(r => `${r.code}\t${r.trade}\t${r.content}`).join('\n')
     const processSummary = rows.map(r => `${r.code} ${r.trade} ${r.content}`).join('; ')
 
-    // Parse prefix from feature_report_text (【零件名称】xxx)
+    // Use edited reviewText if available, otherwise fall back to original
+    const featureText = reviewText || result?.feature_report_text || ''
+    const featSrc = featureText
+
+    // Parse prefix from feature text (【零件名称】xxx)
     let prefix = ''
     let techRequirement = ''
     let productType = ''
-    if (result?.feature_report_text) {
-      const m = result.feature_report_text.match(/【零件名称】\s*(.+)/)
+    if (featSrc) {
+      const m = featSrc.match(/【零件名称】\s*(.+)/)
       if (m) prefix = m[1].trim()
-      const tr = result.feature_report_text.match(/【技术要求】\s*(.+)/)
+      const tr = featSrc.match(/【技术要求】\s*(.+)/)
       if (tr) techRequirement = tr[1].trim()
-      const pt = result.feature_report_text.match(/【类型】\s*(.+)/)
+      const pt = featSrc.match(/【类型】\s*(.+)/)
       if (pt) productType = pt[1].trim()
     }
     if (!prefix && result?.source_name) prefix = result.source_name
@@ -123,7 +131,7 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
       prefix,
       content,
       process_summary: processSummary,
-      feature_report_text: result?.feature_report_text || '',
+      feature_report_text: featureText,
       preview_image_urls: result?.preview_image_urls || result?.preview_images || [],
       source_type: 'web_upload',
       source_task_id: result?.task_id || '',
@@ -131,7 +139,7 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
       tech_requirement: techRequirement,
       product_type: productType,
     }
-  }, [editRows, finalRows, result])
+  }, [editRows, finalRows, result, reviewText])
 
   // Sync editRows when result changes
   useEffect(() => {
@@ -139,6 +147,11 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
       setEditRows(finalRows)
     }
   }, [finalRows])
+
+  // Notify parent when rows change (for export sync)
+  useEffect(() => {
+    onRowsChange?.(editRows)
+  }, [editRows, onRowsChange])
 
   // Row management callbacks
   const renumberRows = useCallback((rows: ProcessRow[]) => {
@@ -169,90 +182,15 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
     })
   }, [])
 
-  // Reset streaming state when task changes
+  // Reset streaming state when a new run starts
   useEffect(() => {
     setDisplayedRows([])
-    setTypingRow(null)
-    setTypingText('')
-    rowQueueRef.current = []
-    isTypingRef.current = false
+    animatedCountRef.current = 0
     processedLinesRef.current = 0
     resultArrivedRef.current = false
-    animatedCountRef.current = 0
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
-  }, [taskId])
-
-  // Auto-scroll to bottom unless user has scrolled up
-  const scrollToBottom = useCallback(() => {
-    if (userScrolledRef.current) return
-    const el = tableRef.current
-    if (!el) return
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-  }, [])
-
-  // Typewriter: type a single field char by char
-  const typeField = useCallback((text: string, speed: 'fast' | 'slow', onDone: () => void) => {
-    let i = 0
-    const tick = () => {
-      if (i >= text.length) { onDone(); return }
-      i++
-      setTypingText(text.slice(0, i))
-      scrollToBottom()
-
-      const ch = text[i - 1]
-      let delay: number
-      if (speed === 'fast') {
-        delay = /\d/.test(ch) ? 14 + Math.random() * 14 : 9 + Math.random() * 9
-      } else {
-        if (/[，。、；：！？,.!?]/.test(ch)) delay = 55 + Math.random() * 75
-        else if (/[一-鿿]/.test(ch)) delay = 20 + Math.random() * 20
-        else if (/\d/.test(ch)) delay = 16 + Math.random() * 16
-        else delay = 11 + Math.random() * 11
-      }
-      typingTimerRef.current = setTimeout(tick, delay)
-    }
-    tick()
-  }, [scrollToBottom])
-
-  // Typewriter: type fields sequence for a row
-  const typeRow = useCallback((row: ProcessRow) => {
-    isTypingRef.current = true
-    setTypingRow(row)
-    setTypingField('code')
-    setTypingText('')
-
-    // Type code
-    typeField(row.code, 'fast', () => {
-      setTypingField('trade')
-      setTypingText('')
-      typeField(row.trade, 'fast', () => {
-        setTypingField('content')
-        setTypingText('')
-        typeField(row.content, 'slow', () => {
-          // Row done
-          setDisplayedRows(prev => [...prev, row])
-          setTimeout(scrollToBottom, 50)
-          setTypingRow(null)
-          setTypingText('')
-          isTypingRef.current = false
-          // Pause between rows
-          typingTimerRef.current = setTimeout(() => {
-            kickTyping()
-          }, 320 + Math.random() * 280)
-        })
-      })
-    })
-  }, [typeField, scrollToBottom])
-
-  // Kick the typing queue
-  const kickTyping = useCallback(() => {
-    if (isTypingRef.current) return
-    const next = rowQueueRef.current.shift()
-    if (next) {
-      typeRow(next)
-    }
-  }, [typeRow])
-
+    typingRef.current?.reset()
+    setIsTyping(false)
+  }, [runToken])
   // Process streaming chunks — track processed line count to avoid re-parsing
   const processedLinesRef = useRef(0)
   const resultArrivedRef = useRef(false)
@@ -266,7 +204,6 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
 
   useEffect(() => {
     if (!streamingChunks) return
-    // Don't add new rows after result arrived — let typewriter finish queued rows
     if (resultArrivedRef.current) return
 
     const lines = streamingChunks.split(/\r?\n/)
@@ -275,17 +212,14 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
     for (let i = processedLinesRef.current; i < completeCount; i++) {
       const row = parseLine(lines[i])
       if (row) {
-        const inQueue = rowQueueRef.current.some(r => r.code === row.code)
         const inDisplayed = displayedRows.some(r => r.code === row.code)
-        const isCurrentTyping = typingRow?.code === row.code
-        if (!inQueue && !inDisplayed && !isCurrentTyping) {
-          rowQueueRef.current.push(row)
-          kickTyping()
+        if (!inDisplayed) {
+          typingRef.current?.enqueue(row)
         }
       }
     }
     processedLinesRef.current = completeCount
-  }, [streamingChunks, displayedRows, typingRow, kickTyping])
+  }, [streamingChunks, displayedRows])
 
   // Reset user scroll flag when streaming starts
   useEffect(() => {
@@ -294,7 +228,23 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
     }
   }, [streamingChunks])
 
-  // GSAP: Table row animation (only animate new rows to prevent flickering)
+  // Bridge: TypingRow progress → parent callback
+  const handleTypingProgress = useCallback((info: TypewriterProgress) => {
+    setIsTyping(info.queued > 0 || info.currentChar < info.currentTotal)
+    onTypewriterProgress?.(info)
+  }, [onTypewriterProgress])
+
+  // Auto-scroll after row complete
+  const handleRowComplete = useCallback((row: ProcessRow) => {
+    setDisplayedRows(prev => [...prev, row])
+    if (!userScrolledRef.current && tableRef.current) {
+      setTimeout(() => {
+        if (tableRef.current) tableRef.current.scrollTop = tableRef.current.scrollHeight
+      }, 50)
+    }
+  }, [])
+
+  // GSAP: Table row animation (opacity only — transforms on <tr> cause layout bugs)
   useEffect(() => {
     if (!tableRef.current) return
     const rows = tableRef.current.querySelectorAll('tbody tr')
@@ -304,8 +254,8 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
     if (newRows.length === 0) return
 
     gsap.fromTo(newRows,
-      { opacity: 0, y: 10 },
-      { opacity: 1, y: 0, duration: 0.3, stagger: 0.04, ease: 'power2.out' }
+      { opacity: 0 },
+      { opacity: 1, duration: 0.3, stagger: 0.04, ease: 'power2.out' }
     )
     animatedCountRef.current = rows.length
   }, [finalRows, displayedRows, editRows])
@@ -322,12 +272,49 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
 
   // Determine what to show
   // When result arrives, let typewriter finish before switching to finalRows
-  const typewriterActive = isTypingRef.current || rowQueueRef.current.length > 0
+  const typewriterActive = isTyping
   const hasFinalResult = finalRows.length > 0 && !typewriterActive
-  const hasStreamingContent = displayedRows.length > 0 || typingRow !== null
+  const hasStreamingContent = displayedRows.length > 0 || isTyping
+
+  // Notify parent when typewriter finishes (result arrived + all rows displayed)
+  const hasFiredCompleteRef = useRef(false)
+  useEffect(() => {
+    if (hasFinalResult && !hasFiredCompleteRef.current) {
+      hasFiredCompleteRef.current = true
+      onTypewriterComplete?.()
+    }
+  }, [hasFinalResult, onTypewriterComplete])
+
+  // Reset the flag when task changes
+  useEffect(() => {
+    hasFiredCompleteRef.current = false
+  }, [runToken])
+
+  // GSAP: Entrance animation for commit button
+  useEffect(() => {
+    if (hasFinalResult && commitBtnRef.current) {
+      gsap.fromTo(commitBtnRef.current,
+        { scale: 0.7, opacity: 0, y: 8 },
+        { scale: 1, opacity: 1, y: 0, duration: 0.5, ease: 'back.out(2)' }
+      )
+    }
+  }, [hasFinalResult])
+
+  // GSAP: Breathing glow on commit button
+  useEffect(() => {
+    if (!hasFinalResult || !commitBtnRef.current) return
+    const tl = gsap.timeline({ repeat: -1, yoyo: true, delay: 0.6 })
+      .to(commitBtnRef.current, {
+        boxShadow: '0 0 16px rgba(249,115,22,0.3), 0 4px 12px rgba(249,115,22,0.15)',
+        duration: 2,
+        ease: 'sine.inOut',
+      })
+    return () => { tl.kill() }
+  }, [hasFinalResult])
   const isStreaming = !result || typewriterActive
 
-  if (!result && !streamingChunks) {
+  // Only show "upload first" when there's genuinely no task — not during rerun/continue
+  if (!result && !streamingChunks && !taskId) {
     return (
       <div ref={emptyStateRef} className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-8">
         <div
@@ -351,7 +338,6 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
 
   // Render rows (final or streaming)
   const rows = hasFinalResult ? editRows : displayedRows
-  const showTyping = isStreaming && typingRow !== null
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-4">
@@ -365,8 +351,9 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
         </div>
         {hasFinalResult && (
           <button
+            ref={commitBtnRef}
             onClick={() => setShowCommitModal(true)}
-            className="px-5 py-2 rounded-xl bg-gradient-to-r from-flame-500 to-orange-500 text-white text-[13px] font-semibold shadow-sm hover:shadow-md transition-shadow"
+            className="btn btn-primary !text-[13px] !px-6 !py-2"
           >
             入库
           </button>
@@ -377,6 +364,7 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
       <div
         ref={tableRef}
         className="flex-1 min-h-0 rounded-2xl border border-slate-200 overflow-y-auto overflow-x-hidden bg-white"
+        style={{ overflowAnchor: 'none', scrollBehavior: 'smooth' }}
         onScroll={() => {
           const el = tableRef.current
           if (!el) return
@@ -384,8 +372,8 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
           userScrolledRef.current = !atBottom
         }}
       >
-        {rows.length > 0 || showTyping ? (
-          <table className="data-table">
+        {rows.length > 0 || isTyping ? (
+          <table className="data-table" style={{ tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 80 }} />
               <col style={{ width: 90 }} />
@@ -460,32 +448,12 @@ export function ProcessPanel({ result, taskId, streamingChunks }: Props) {
                   )}
                 </tr>
               ))}
-              {/* Typing row */}
-              {showTyping && (
-                <tr className="tw-typing-row">
-                  <td className="text-center font-mono text-[15px] font-bold text-flame-600 bg-gradient-to-r from-flame-50/50 to-orange-50/30">
-                    {typingField === 'code' ? (
-                      <span>{typingText}<span className="typing-cursor">▍</span></span>
-                    ) : typingRow.code}
-                  </td>
-                  <td>
-                    {typingField === 'trade' ? (
-                      <span>{typingText}<span className="typing-cursor">▍</span></span>
-                    ) : typingField === 'content' || typingField === 'code' ? (
-                      typingRow.trade ? (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border ${tradeBadgeClass(typingRow.trade)}`}>
-                          {typingRow.trade}
-                        </span>
-                      ) : null
-                    ) : null}
-                  </td>
-                  <td>
-                    {typingField === 'content' ? (
-                      <span>{typingText}<span className="typing-cursor">▍</span></span>
-                    ) : null}
-                  </td>
-                </tr>
-              )}
+              {/* TypingRow — always mounted, self-manages visibility */}
+              <TypingRow
+                ref={typingRef}
+                onRowComplete={handleRowComplete}
+                onProgress={handleTypingProgress}
+              />
             </tbody>
           </table>
         ) : isStreaming ? (
