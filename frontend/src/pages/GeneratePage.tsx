@@ -4,7 +4,7 @@ import type { TaskResult } from '../types'
 import { WorkflowHUD } from '../components/generate/WorkflowHUD'
 import { UploadPanel } from '../components/generate/UploadPanel'
 import { ReviewPanel } from '../components/generate/ReviewPanel'
-import { ProcessPanel } from '../components/generate/ProcessPanel'
+import { ProcessPanel, type ProcessRow } from '../components/generate/ProcessPanel'
 import { AnnotationPanel, type AnnotationPanelHandle } from '../components/annotate/AnnotationPanel'
 import { ExportModal } from '../components/shared/ExportModal'
 import { FullscreenPreview } from '../components/generate/FullscreenPreview'
@@ -13,7 +13,7 @@ import gsap from 'gsap'
 
 type ActiveTab = 'review' | 'process'
 
-export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) => void; onSuccess?: (msg: string) => void }) {
+export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (msg: string) => void; onSuccess?: (msg: string) => void; onBusyChange?: (busy: boolean) => void }) {
   const [taskId, setTaskId] = useState<string | null>(null)
   const [status, setStatus] = useState<string>('idle')
   const [progress, setProgress] = useState(0)
@@ -26,6 +26,70 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
   const [streamingChunks, setStreamingChunks] = useState('')
   const [fileName, setFileName] = useState('')
   const esRef = useRef<EventSource | null>(null)
+  const onErrorRef = useRef(onError)
+  onErrorRef.current = onError
+  // runToken increments on each new run (upload / confirm / rerun / reset)
+  // so ProcessPanel can reset internal state even when taskId stays the same
+  const [runToken, setRunToken] = useState(0)
+
+  // Shared SSE connection helper — used by initial upload, confirm, and rerun flows
+  const connectStream = useCallback((tid: string) => {
+    esRef.current?.close()
+    esRef.current = connectSSE(tid, {
+      onStepStart(data) { setPhaseHint(String(data.message || data.step_name || '处理中...')) },
+      onStepComplete(data) { setPhaseHint(String(data.message || '步骤完成')) },
+      onLog(data) { setPhaseHint(String(data.message || '')) },
+      onReviewRequired(data) {
+        const text = String(data.content || data.review_text || data.raw_content || '')
+        setReviewText(text)
+        setStatus('awaiting_review')
+        setProgress(50)
+        setPhaseHint('请审阅特征报告')
+        const urls = (data.preview_image_urls as string[]) || []
+        if (urls.length) setPreviewUrls(urls)
+      },
+      onProcessStream(data) {
+        setStreamingChunks(prev => prev + String(data.chunk || ''))
+      },
+      onPreviewUpdated(data) {
+        const urls = (data.preview_image_urls as string[]) || []
+        if (urls.length) setPreviewUrls(urls)
+      },
+      async onAnnotationRequired(data) {
+        setAnnotateSummary((data.summary as Record<string, number>) || {})
+        setAnnotateVisited(false)
+        setStatus('awaiting_annotation')
+        setProgress(35)
+        setPhaseHint('等待人工补全标注')
+        setActiveTab('review')
+        try {
+          const res = await getResult(tid) as Record<string, unknown>
+          const urls = (res.preview_image_urls as string[]) || []
+          if (urls.length) setPreviewUrls(urls)
+        } catch { /* ignore */ }
+      },
+      async onComplete() {
+        setStatus('completed')
+        setProgress(90)
+        setPhaseHint('渲染工艺表格...')
+        try {
+          const res = await getResult(tid)
+          setResult(res as unknown as TaskResult)
+          const rawUrls = (res as Record<string, unknown>).preview_image_urls as string[] || []
+          if (rawUrls.length) {
+            setPreviewUrls(rawUrls.map(u => u.startsWith('/api') ? u : getAssetUrl(tid, u)))
+          }
+          setActiveTab('process')
+        } catch { /* already set */ }
+      },
+      onError(data) {
+        const msg = String(data.message || data.error || '处理失败')
+        setStatus('error')
+        setPhaseHint(`错误：${msg}`)
+        onErrorRef.current(msg)
+      },
+    })
+  }, [])
   const [showExport, setShowExport] = useState(false)
   const [showFullscreen, setShowFullscreen] = useState(false)
   const [fullscreenIndex, setFullscreenIndex] = useState(0)
@@ -37,6 +101,7 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
   const [annotateSummary, setAnnotateSummary] = useState<Record<string, number>>({})
   const [annotateShapes, setAnnotateShapes] = useState<Record<number, { label: string; x: number; y: number; width: number; height: number }[]>>({})
   const [imgNaturalSize, setImgNaturalSize] = useState({ w: 0, h: 0 })
+  const [editedRows, setEditedRows] = useState<ProcessRow[]>([])
 
   const annotationRef = useRef<AnnotationPanelHandle>(null)
   const tabContentRef = useRef<HTMLDivElement>(null)
@@ -89,6 +154,13 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
   const completed = status === 'completed'
   const hasTask = taskId !== null
   const isAnnotating = status === 'awaiting_annotation'
+
+  // Notify App when page has active work (prevent navigation away)
+  const hasActiveWork = status !== 'idle' && status !== 'completed' && status !== 'error'
+  useEffect(() => {
+    onBusyChange?.(hasActiveWork)
+    return () => { onBusyChange?.(false) }
+  }, [hasActiveWork, onBusyChange])
 
   useEffect(() => { return () => { esRef.current?.close() } }, [])
 
@@ -157,6 +229,42 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
     }
   }, [completed, status])
 
+  // GSAP: Workbench cards breathing when busy
+  useEffect(() => {
+    const wb = workbenchRef.current
+    if (!wb) return
+    const cards = wb.querySelectorAll('.card-solid')
+    if (busy) {
+      const tl = gsap.timeline({ repeat: -1, yoyo: true })
+        .to(cards, {
+          boxShadow: '0 1px 3px rgba(249,115,22,0.04), 0 6px 24px rgba(249,115,22,0.06)',
+          duration: 3,
+          ease: 'sine.inOut',
+          stagger: 0.4,
+        })
+      return () => { tl.kill() }
+    } else {
+      cards.forEach(c => gsap.set(c, { boxShadow: '' }))
+    }
+  }, [busy])
+
+  // GSAP: Tab bar subtle glow when busy
+  useEffect(() => {
+    const bar = tabBarRef.current
+    if (!bar) return
+    if (busy) {
+      const tl = gsap.timeline({ repeat: -1, yoyo: true })
+        .to(bar, {
+          borderColor: 'rgba(249,115,22,0.25)',
+          duration: 2.5,
+          ease: 'sine.inOut',
+        })
+      return () => { tl.kill() }
+    } else {
+      gsap.set(bar, { borderColor: '' })
+    }
+  }, [busy])
+
   // Annotation handlers
   const handleOpenAnnotate = useCallback(() => {
     setAnnotateOpen(true)
@@ -167,9 +275,9 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
     try {
       await annotationRef.current?.saveNow()
     } catch { /* save failed, still close */ }
-    // Update summary from current annotations
+    // Update summary from current annotations (guarded against empty object)
     const counts = annotationRef.current?.getShapeCounts()
-    if (counts) setAnnotateSummary(counts)
+    if (counts && Object.keys(counts).length > 0) setAnnotateSummary(counts)
     setAnnotateOpen(false)
   }, [])
 
@@ -193,6 +301,7 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
       setReviewText('')
       setStreamingChunks('')
       setPreviewUrls([])
+      setEditedRows([])
       setProgress(0)
       setPhaseHint(`正在上传 ${files.length} 个文件...`)
       setStatus('processing')
@@ -204,62 +313,16 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
       setTaskId(batch_task_id)
       setActiveTab('review')
       setPhaseHint(`${uploaded.length} 个文件已上传，等待处理...`)
+      setRunToken(t => t + 1)
 
-      esRef.current?.close()
-      esRef.current = connectSSE(batch_task_id, {
-        onStepStart(data) { setPhaseHint(String(data.message || '处理中...')) },
-        onStepComplete(data) { setPhaseHint(String(data.message || '步骤完成')) },
-        onLog(data) { setPhaseHint(String(data.message || '')) },
-        onReviewRequired(data) {
-          const text = String(data.content || data.review_text || data.raw_content || '')
-          setReviewText(text)
-          setStatus('awaiting_review')
-          setProgress(50)
-          setPhaseHint('请审阅特征报告')
-        },
-        onProcessStream(data) {
-          setStreamingChunks(prev => prev + String(data.chunk || ''))
-        },
-        onPreviewUpdated(data) {
-          const urls = (data.preview_image_urls as string[]) || []
-          if (urls.length) setPreviewUrls(urls)
-        },
-        async onAnnotationRequired(data) {
-          setAnnotateSummary((data.summary as Record<string, number>) || {})
-          setAnnotateVisited(false)
-          setStatus('awaiting_annotation')
-          setProgress(35)
-          setPhaseHint('等待人工补全标注')
-          setActiveTab('review')
-          try {
-            const res = await getResult(batch_task_id) as Record<string, unknown>
-            const urls = (res.preview_image_urls as string[]) || []
-            if (urls.length) setPreviewUrls(urls)
-          } catch { /* ignore */ }
-        },
-        async onComplete() {
-          setStatus('completed')
-          setProgress(100)
-          setPhaseHint('处理完成！')
-          try {
-            const res = await getResult(batch_task_id)
-            setResult(res as unknown as TaskResult)
-            setActiveTab('process')
-          } catch { /* already set */ }
-        },
-        onError(data) {
-          setStatus('error')
-          setPhaseHint(`错误：${String(data.message || '处理失败')}`)
-          onError(String(data.message || '处理失败'))
-        },
-      })
+      connectStream(batch_task_id)
     } catch (err: unknown) {
       setStatus('error')
       const msg = err instanceof Error ? err.message : '批量上传失败'
       setPhaseHint(`上传失败：${msg}`)
-      onError(msg)
+      onErrorRef.current(msg)
     }
-  }, [onError])
+  }, [connectStream])
 
   const handleFileSelected = useCallback(async (file: File) => {
     try {
@@ -267,6 +330,7 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
       setReviewText('')
       setStreamingChunks('')
       setPreviewUrls([])
+      setEditedRows([])
       setProgress(0)
       setPhaseHint('正在上传文件...')
       setStatus('processing')
@@ -280,75 +344,16 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
       setTaskId(task_id)
       setActiveTab('review')
       setPhaseHint('文件已上传，等待视觉分析...')
+      setRunToken(t => t + 1)
 
-      esRef.current?.close()
-      esRef.current = connectSSE(task_id, {
-        onStepStart(data) {
-          setPhaseHint(String(data.message || data.step_name || '处理中...'))
-        },
-        onStepComplete(data) {
-          setPhaseHint(String(data.message || '步骤完成'))
-        },
-        onLog(data) {
-          setPhaseHint(String(data.message || ''))
-        },
-        onReviewRequired(data) {
-          const text = String(data.content || data.review_text || data.raw_content || '')
-          setReviewText(text)
-          setStatus('awaiting_review')
-          setProgress(50)
-          setPhaseHint('请审阅特征报告')
-          const urls = (data.preview_image_urls as string[]) || []
-          if (urls.length) setPreviewUrls(urls)
-        },
-        onProcessStream(data) {
-          setStreamingChunks(prev => prev + String(data.chunk || ''))
-        },
-        onPreviewUpdated(data) {
-          const urls = (data.preview_image_urls as string[]) || []
-          if (urls.length) setPreviewUrls(urls)
-        },
-        async onAnnotationRequired(data) {
-          setAnnotateSummary((data.summary as Record<string, number>) || {})
-          setAnnotateVisited(false)
-          setStatus('awaiting_annotation')
-          setProgress(35)
-          setPhaseHint('等待人工补全标注')
-          setActiveTab('review')
-          try {
-            const res = await getResult(task_id) as Record<string, unknown>
-            const urls = (res.preview_image_urls as string[]) || []
-            if (urls.length) setPreviewUrls(urls)
-          } catch { /* ignore */ }
-        },
-        async onComplete() {
-          setStatus('completed')
-          setProgress(100)
-          setPhaseHint('处理完成！')
-          try {
-            const res = await getResult(task_id)
-            setResult(res as unknown as TaskResult)
-            const rawUrls = (res as Record<string, unknown>).preview_image_urls as string[] || []
-            if (rawUrls.length) {
-              setPreviewUrls(rawUrls.map(u => u.startsWith('/api') ? u : getAssetUrl(task_id, u)))
-            }
-            setActiveTab('process')
-          } catch { /* already set */ }
-        },
-        onError(data) {
-          const msg = String(data.message || data.error || '处理失败')
-          setStatus('error')
-          setPhaseHint(`错误：${msg}`)
-          onError(msg)
-        },
-      })
+      connectStream(task_id)
     } catch (err: unknown) {
       setStatus('error')
       const msg = err instanceof Error ? err.message : '上传失败'
       setPhaseHint(`上传失败：${msg}`)
-      onError(msg)
+      onErrorRef.current(msg)
     }
-  }, [onError])
+  }, [connectStream])
 
   const handleConfirmReview = useCallback(async () => {
     if (!taskId) {
@@ -363,17 +368,20 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
       setReviewFeedback(undefined)
       setStatus('processing')
       setProgress(60)
-      setPhaseHint('特征已确认，正在生成工艺规程...')
+      setPhaseHint('特征已确认，等待后端响应...')
+      setResult(null)
       setStreamingChunks('')
       setActiveTab('process')
+      setRunToken(t => t + 1)
+      // SSE connection stays alive from upload — backend streams on same connection
       await submitReview(taskId, { review_text: reviewText, action: 'continue' })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '审阅提交失败'
       setStatus('awaiting_review')
       setReviewFeedback({ message: msg, tone: 'danger' })
-      onError(msg)
+      onErrorRef.current(msg)
     }
-  }, [taskId, reviewText, onError])
+  }, [taskId, reviewText])
 
   const handleRerun = useCallback(async () => {
     if (!taskId) {
@@ -383,23 +391,49 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
     try {
       setReviewFeedback(undefined)
       setStatus('processing')
-      setProgress(50)
-      setPhaseHint('修改已提交，正在重新生成...')
+      setProgress(40)
+      setPhaseHint('重新生成中，正在特征审阅...')
+      setResult(null)
       setStreamingChunks('')
       setActiveTab('process')
+      setRunToken(t => t + 1)
+      // SSE connection stays alive — backend streams rerun results on same connection
       await submitReview(taskId, { review_text: reviewText, action: 'rerun' })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '重新生成失败'
       setStatus('awaiting_review')
       setReviewFeedback({ message: msg, tone: 'danger' })
-      onError(msg)
+      onErrorRef.current(msg)
     }
-  }, [taskId, reviewText, onError])
+  }, [taskId, reviewText])
 
   const handleReviewTextChange = useCallback((text: string) => {
     setReviewText(text)
     if (reviewFeedback) setReviewFeedback(undefined)
   }, [reviewFeedback])
+
+  // Typewriter progress → incremental progress bar + dynamic phaseHint
+  const progressThrottleRef = useRef(0)
+
+  const handleTypewriterProgress = useCallback((info: { displayed: number; queued: number; currentChar: number; currentTotal: number }) => {
+    const active = (info.currentChar < info.currentTotal) ? 1 : 0
+    const total = info.displayed + info.queued + active
+
+    // Throttle progress update to ~200ms to avoid excessive re-renders
+    const now = Date.now()
+    if (total > 0 && now - progressThrottleRef.current > 200) {
+      progressThrottleRef.current = now
+      const pct = info.displayed / total
+      setProgress(60 + Math.round(pct * 25))
+    }
+
+    // Phase hint with live count
+    if (info.queued > 0 || info.currentChar < info.currentTotal) {
+      setPhaseHint(`正在生成工艺规程... 已完成 ${info.displayed} 道工序，共 ${total} 道`)
+    } else if (info.displayed > 0) {
+      setPhaseHint(`工艺内容生成完成，共 ${info.displayed} 道工序`)
+    }
+  }, [])
 
   const handleReset = useCallback(() => {
     esRef.current?.close()
@@ -419,6 +453,8 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
     setAnnotateVisited(false)
     setAnnotateSummary({})
     setReviewFeedback(undefined)
+    setEditedRows([])
+    setRunToken(t => t + 1)
   }, [])
 
   const handleUploadClick = useCallback(() => {
@@ -447,7 +483,7 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
     <div className="flex flex-col gap-0 h-full min-h-0">
       {/* ── HUD ── */}
       <div ref={hudRef} className="shrink-0 px-1">
-        <WorkflowHUD progress={progress} phaseHint={phaseHint} busy={busy} completed={completed} />
+        <WorkflowHUD progress={progress} phaseHint={phaseHint} busy={busy} completed={completed} waiting={status === 'awaiting_review' || status === 'awaiting_annotation'} />
       </div>
 
       {/* ── Tab bar: [上传 | 特征审阅 | 工艺规程] ... [导出] [重置] ── */}
@@ -492,7 +528,12 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
               </span>
             </button>
           )}
-          <button className="btn btn-ghost !text-[11px] !py-1.5 !px-2.5" onClick={handleReset}>
+          <button
+            className="btn btn-ghost !text-[11px] !py-1.5 !px-2.5"
+            onClick={handleReset}
+            disabled={busy}
+            title={busy ? '任务进行中，请等待完成' : '重置当前任务'}
+          >
             <span className="flex items-center gap-1">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
               重置
@@ -572,9 +613,22 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
                     busy={busy}
                     ocrThicknessHint={ocrThicknessHint || undefined}
                     feedback={reviewFeedback}
+                    annotateSummary={Object.keys(annotateSummary).length > 0 ? annotateSummary : undefined}
                   />
                 ) : (
-                  <ProcessPanel result={result} taskId={taskId} streamingChunks={streamingChunks} />
+                  <ProcessPanel
+                    result={result}
+                    taskId={taskId}
+                    runToken={runToken}
+                    streamingChunks={streamingChunks}
+                    reviewText={reviewText}
+                    onTypewriterComplete={() => {
+                      setProgress(100)
+                      setPhaseHint(`工艺生成完成，共 ${editedRows.length || 0} 道工序`)
+                    }}
+                    onTypewriterProgress={handleTypewriterProgress}
+                    onRowsChange={setEditedRows}
+                  />
                 )}
               </div>
             </div>
@@ -583,7 +637,13 @@ export function GeneratePage({ onError, onSuccess }: { onError: (msg: string) =>
 
       {/* ── Export Modal ── */}
       {showExport && result && (
-        <ExportModal taskId={taskId!} result={result} onClose={() => setShowExport(false)} />
+        <ExportModal
+          taskId={taskId!}
+          result={result}
+          reviewText={reviewText}
+          editedRows={editedRows}
+          onClose={() => setShowExport(false)}
+        />
       )}
 
       {/* ── Fullscreen Preview ── */}
