@@ -31,6 +31,8 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
     const isActiveRef = useRef(false)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const completedCountRef = useRef(0)
+    const processNextRef = useRef<() => void>(null!)
+    const typeRowRef = useRef<(row: ProcessRow) => void>(null!)
 
     useEffect(() => {
       return () => {
@@ -42,7 +44,7 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
       enqueue(row: ProcessRow) {
         queueRef.current.push(row)
         if (!isActiveRef.current) {
-          processNext()
+          processNextRef.current()
         }
       },
       reset() {
@@ -113,20 +115,22 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
               setStatus('idle')
               isActiveRef.current = false
               timerRef.current = setTimeout(() => {
-                processNext()
+                processNextRef.current()
               }, 320 + Math.random() * 280)
             }, 300)
           })
         })
       })
     }, [typeField, onRowComplete])
+    typeRowRef.current = typeRow
 
     function processNext() {
       const next = queueRef.current.shift()
       if (next) {
-        typeRow(next)
+        typeRowRef.current(next)
       }
     }
+    processNextRef.current = processNext
 
     function tradeBadgeClass(trade: string): string {
       if (trade === '热处理') return 'bg-emerald-100 text-emerald-700 border-emerald-200'
