@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
-import { batchUpload, connectSSE, finalizeAnnotation, getAnnotations, getAssetUrl, getResult, submitReview, uploadDrawing, uploadFile } from '../api/client'
+import { batchUpload, connectSSE, finalizeAnnotation, getAnnotations, getAssetUrl, getResult, submitReview, uploadDrawing, uploadFile, getLibraryScopes } from '../api/client'
 import type { TaskResult } from '../types'
 import { WorkflowHUD } from '../components/generate/WorkflowHUD'
 import { UploadPanel } from '../components/generate/UploadPanel'
@@ -62,11 +62,16 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
         setProgress(35)
         setPhaseHint('等待人工补全标注')
         setActiveTab('review')
-        try {
-          const res = await getResult(tid) as Record<string, unknown>
-          const urls = (res.preview_image_urls as string[]) || []
-          if (urls.length) setPreviewUrls(urls)
-        } catch { /* ignore */ }
+        // Use preview URLs from the event (backend includes them)
+        let urls = (data.preview_image_urls as string[]) || []
+        // Fallback: fetch from result endpoint if event didn't include URLs
+        if (!urls.length) {
+          try {
+            const res = await getResult(tid) as Record<string, unknown>
+            urls = (res.preview_image_urls as string[]) || []
+          } catch { /* ignore */ }
+        }
+        if (urls.length) setPreviewUrls(urls)
       },
       async onComplete() {
         setStatus('completed')
@@ -107,6 +112,22 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
   const tabContentRef = useRef<HTMLDivElement>(null)
   const annotationOverlayRef = useRef<HTMLDivElement>(null)
 
+  // Retrieval library & feature cache state
+  const [retrievalKey, setRetrievalKey] = useState<string>(() => sessionStorage.getItem('retrieval_scope') || 'public')
+  const [retrievalName, setRetrievalName] = useState('公共工艺库')
+  const [featureCache, setFeatureCache] = useState(false)
+  const [showRetrievalModal, setShowRetrievalModal] = useState(false)
+  const [libraryScopes, setLibraryScopes] = useState<{ library_key: string; library_name: string; scope_type: string }[]>([])
+
+  // Load library scopes
+  useEffect(() => {
+    getLibraryScopes().then(data => {
+      setLibraryScopes(data.items || [])
+      const found = (data.items || []).find((s: { library_key: string }) => s.library_key === retrievalKey)
+      if (found) setRetrievalName(found.library_name)
+    }).catch(() => {})
+  }, [])
+
   // Load natural image size from first preview
   useEffect(() => {
     if (!previewUrls.length) return
@@ -115,7 +136,8 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
     img.src = previewUrls[0]
   }, [previewUrls])
 
-  // Load annotations for preview overlay
+  // Load annotations for preview overlay (only on taskId change)
+  // Real-time shape updates come via onShapesChanged callback from AnnotationPanel
   useEffect(() => {
     if (!taskId) return
     let cancelled = false
@@ -138,12 +160,15 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
             counts[s.label] = (counts[s.label] || 0) + 1
           }
         }
-        setAnnotateShapes(shapes)
-        if (Object.keys(counts).length > 0) setAnnotateSummary(counts)
+        // Only update if server returned data — don't overwrite local shapes with empty
+        if (Object.keys(shapes).length > 0) {
+          setAnnotateShapes(shapes)
+          if (Object.keys(counts).length > 0) setAnnotateSummary(counts)
+        }
       } catch { /* no annotations yet */ }
     })()
     return () => { cancelled = true }
-  }, [taskId, annotateOpen]) // re-load when annotation panel closes
+  }, [taskId])
 
   // Refs for GSAP animations
   const hudRef = useRef<HTMLDivElement>(null)
@@ -266,10 +291,21 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
   }, [busy])
 
   // Annotation handlers
-  const handleOpenAnnotate = useCallback(() => {
-    setAnnotateOpen(true)
+  const handleOpenAnnotate = useCallback(async () => {
+    if (!taskId) return
     setAnnotateVisited(true)
-  }, [])
+    try {
+      const data = await getAnnotations(taskId)
+      const counts: Record<string, number> = {}
+      for (const ann of Object.values(data)) {
+        for (const s of (ann.shapes || [])) {
+          counts[s.label] = (counts[s.label] || 0) + 1
+        }
+      }
+      if (Object.keys(counts).length > 0) setAnnotateSummary(counts)
+    } catch { /* no annotations yet */ }
+    setAnnotateOpen(true)
+  }, [taskId])
 
   const handleCloseAnnotate = useCallback(async () => {
     try {
@@ -278,6 +314,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
     // Update summary from current annotations (guarded against empty object)
     const counts = annotationRef.current?.getShapeCounts()
     if (counts && Object.keys(counts).length > 0) setAnnotateSummary(counts)
+    // Shapes are already synced via onShapesChanged callback — no need to re-fetch
     setAnnotateOpen(false)
   }, [])
 
@@ -309,7 +346,8 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setAnnotateVisited(false)
       setAnnotateSummary({})
 
-      const { batch_task_id, files: uploaded } = await batchUpload(files)
+      const opts = { retrieval_library_key: retrievalKey, feature_cache: featureCache }
+      const { batch_task_id, files: uploaded } = await batchUpload(files, opts)
       setTaskId(batch_task_id)
       setActiveTab('review')
       setPhaseHint(`${uploaded.length} 个文件已上传，等待处理...`)
@@ -340,7 +378,8 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
 
       const ext = file.name.toLowerCase().split('.').pop() || ''
       const isDrawing = ['pdf', 'png', 'jpg', 'jpeg'].includes(ext)
-      const { task_id } = isDrawing ? await uploadDrawing(file) : await uploadFile(file)
+      const opts = { retrieval_library_key: retrievalKey, feature_cache: featureCache }
+      const { task_id } = isDrawing ? await uploadDrawing(file, opts) : await uploadFile(file, opts)
       setTaskId(task_id)
       setActiveTab('review')
       setPhaseHint('文件已上传，等待视觉分析...')
@@ -374,7 +413,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setActiveTab('process')
       setRunToken(t => t + 1)
       // SSE connection stays alive from upload — backend streams on same connection
-      await submitReview(taskId, { review_text: reviewText, action: 'continue' })
+      await submitReview(taskId, { review_text: reviewText, action: 'continue', library_key: retrievalKey })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '审阅提交失败'
       setStatus('awaiting_review')
@@ -481,6 +520,44 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
 
   return (
     <div className="flex flex-col gap-0 h-full min-h-0">
+      {/* ── Toolbar ── */}
+      <div className="shrink-0 flex items-center gap-2 px-2 py-1.5 border-b border-slate-200 bg-white">
+        <button
+          className="btn btn-secondary !text-[11px] !py-1.5 !px-2.5"
+          onClick={() => setShowRetrievalModal(true)}
+          disabled={busy}
+        >
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            检索库：{retrievalName}
+          </span>
+        </button>
+        <button
+          className={`btn !text-[11px] !py-1.5 !px-2.5 ${featureCache ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setFeatureCache(c => !c)}
+          disabled={busy}
+          title="开启后，同一份图纸再次上传时跳过 VLM 提取，直接恢复上次分析结果"
+        >
+          <span className="flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+            特征缓存：{featureCache ? '开' : '关'}
+          </span>
+        </button>
+        <div className="flex-1" />
+        <button
+          className="btn btn-ghost !text-[11px] !py-1.5 !px-2.5"
+          onClick={handleReset}
+          disabled={busy}
+        >
+          <span className="flex items-center gap-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+            重置工作区
+          </span>
+        </button>
+      </div>
+
       {/* ── HUD ── */}
       <div ref={hudRef} className="shrink-0 px-1">
         <WorkflowHUD progress={progress} phaseHint={phaseHint} busy={busy} completed={completed} waiting={status === 'awaiting_review' || status === 'awaiting_annotation'} />
@@ -528,17 +605,6 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
               </span>
             </button>
           )}
-          <button
-            className="btn btn-ghost !text-[11px] !py-1.5 !px-2.5"
-            onClick={handleReset}
-            disabled={busy}
-            title={busy ? '任务进行中，请等待完成' : '重置当前任务'}
-          >
-            <span className="flex items-center gap-1">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
-              重置
-            </span>
-          </button>
         </div>
       </div>
 
@@ -699,6 +765,41 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
               onSuccess={onSuccess}
               onShapesChanged={setAnnotateShapes}
             />
+          </div>
+        </div>
+      )}
+
+      {/* ── Retrieval Library Modal ── */}
+      {showRetrievalModal && (
+        <div className="fixed inset-0 z-[9000] flex items-center justify-center" onClick={() => setShowRetrievalModal(false)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-[420px] w-[90vw] p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-[16px] font-bold text-slate-800 mb-1">选择检索知识库</h3>
+            <p className="text-[12px] text-slate-400 mb-4">工艺生成时用于 RAG 检索的知识库，默认使用公共工艺库。</p>
+            <div className="mb-4">
+              <div className="text-[12px] text-slate-500 mb-1.5">当前检索库：<span className="font-semibold text-slate-700">{retrievalName}｜{retrievalKey}</span></div>
+              <select
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-2 focus:ring-flame-glow transition-all"
+                value={retrievalKey}
+                onChange={e => {
+                  const key = e.target.value
+                  setRetrievalKey(key)
+                  const found = libraryScopes.find(s => s.library_key === key)
+                  if (found) setRetrievalName(found.library_name)
+                  sessionStorage.setItem('retrieval_scope', key)
+                }}
+              >
+                {libraryScopes.map(s => (
+                  <option key={s.library_key} value={s.library_key}>
+                    {s.library_name}{s.scope_type === 'public' ? '（默认）' : '（可检索）'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button className="btn btn-ghost" onClick={() => setShowRetrievalModal(false)}>取消</button>
+              <button className="btn btn-primary" onClick={() => setShowRetrievalModal(false)}>确定</button>
+            </div>
           </div>
         </div>
       )}

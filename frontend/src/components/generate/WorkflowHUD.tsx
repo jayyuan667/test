@@ -338,29 +338,34 @@ export function WorkflowHUD({ progress, phaseHint, busy, completed, waiting }: P
                 filter: 'blur(4px)',
               }}
             />
-            <div className="relative h-2 rounded-full overflow-hidden bg-slate-100 border border-slate-200">
+            <div className="relative progress-rail bg-slate-100 border border-slate-200/80">
               <div
                 ref={progressBarRef}
-                className="h-full rounded-full relative overflow-hidden"
+                className={`h-full rounded-full relative overflow-hidden ${busy ? 'progress-bar-breathe' : ''}`}
                 style={{
                   width: '2%',
                   background: completed
-                    ? 'linear-gradient(90deg, #34d399 0%, #10b981 50%, #059669 100%)'
+                    ? 'linear-gradient(90deg, #6ee7b7 0%, #34d399 30%, #10b981 60%, #059669 100%)'
                     : waiting
-                      ? 'linear-gradient(90deg, #fde68a 0%, #fbbf24 40%, #f59e0b 80%, #d97706 100%)'
-                      : 'linear-gradient(90deg, #fdba74 0%, #fb923c 30%, #f97316 60%, #ea580c 100%)',
+                      ? 'linear-gradient(90deg, #fde68a 0%, #fbbf24 30%, #f59e0b 60%, #d97706 100%)'
+                      : 'linear-gradient(90deg, #fed7aa 0%, #fdba74 20%, #fb923c 45%, #f97316 70%, #ea580c 100%)',
                 }}
               >
+                {/* CSS shimmer — always active during busy for smooth continuous sweep */}
+                {busy && <div className="absolute inset-0 progress-bar-shimmer" />}
+                {/* GSAP-driven shimmer — overlaid for variable-speed control */}
                 {busy && (
                   <div
                     ref={shimmerRef}
                     className="absolute inset-0"
                     style={{
-                      background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.35) 50%, transparent 100%)',
+                      background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%)',
                       width: '40%',
                     }}
                   />
                 )}
+                {/* Inner highlight for depth */}
+                <div className="absolute inset-x-0 top-0 h-1/2 rounded-full bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
               </div>
             </div>
           </div>

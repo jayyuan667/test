@@ -9,9 +9,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json()
 }
 
-export async function uploadFile(file: File): Promise<{ task_id: string; pdf_name: string }> {
+export async function uploadFile(file: File, opts?: { retrieval_library_key?: string; feature_cache?: boolean }): Promise<{ task_id: string; pdf_name: string }> {
   const fd = new FormData()
   fd.append('file', file)
+  if (opts?.retrieval_library_key) fd.append('retrieval_library_key', opts.retrieval_library_key)
+  if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
   const res = await fetch(`${BASE}/upload`, { method: 'POST', body: fd })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
@@ -20,7 +22,7 @@ export async function uploadFile(file: File): Promise<{ task_id: string; pdf_nam
   return res.json()
 }
 
-export async function batchUpload(files: File[]): Promise<{
+export async function batchUpload(files: File[], opts?: { retrieval_library_key?: string; feature_cache?: boolean }): Promise<{
   batch_task_id: string
   file_count: number
   files: { task_id: string; pdf_name: string; prt_name: string }[]
@@ -28,6 +30,8 @@ export async function batchUpload(files: File[]): Promise<{
 }> {
   const fd = new FormData()
   files.forEach(f => fd.append('files', f))
+  if (opts?.retrieval_library_key) fd.append('retrieval_library_key', opts.retrieval_library_key)
+  if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
   const res = await fetch(`${BASE}/batch_upload`, { method: 'POST', body: fd })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
@@ -415,9 +419,11 @@ export async function updateConfig(payload: Partial<SystemConfig>): Promise<{ me
 
 /* ── 2D Drawing Upload ── */
 
-export async function uploadDrawing(file: File): Promise<{ task_id: string; pdf_name: string; message: string }> {
+export async function uploadDrawing(file: File, opts?: { retrieval_library_key?: string; feature_cache?: boolean }): Promise<{ task_id: string; pdf_name: string; message: string }> {
   const fd = new FormData()
   fd.append('file', file)
+  if (opts?.retrieval_library_key) fd.append('retrieval_library_key', opts.retrieval_library_key)
+  if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
   const res = await fetch(`${BASE}/upload_drawing`, { method: 'POST', body: fd })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))

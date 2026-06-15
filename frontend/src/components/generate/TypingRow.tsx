@@ -18,10 +18,12 @@ export interface TypingRowHandle {
 interface Props {
   onRowComplete: (row: ProcessRow) => void
   onProgress?: (info: TypewriterProgress) => void
+  onAllDone?: () => void
+  onStart?: () => void
 }
 
 export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
-  function TypingRow({ onRowComplete, onProgress }, ref) {
+  function TypingRow({ onRowComplete, onProgress, onAllDone, onStart }, ref) {
     const [currentRow, setCurrentRow] = useState<ProcessRow | null>(null)
     const [field, setField] = useState<'code' | 'trade' | 'content'>('code')
     const [typedText, setTypedText] = useState('')
@@ -31,7 +33,12 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
     const isActiveRef = useRef(false)
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const completedCountRef = useRef(0)
+    const currentRowRef = useRef<ProcessRow | null>(null)
     const processNextRef = useRef<() => void>(null!)
+    const onAllDoneRef = useRef(onAllDone)
+    useEffect(() => { onAllDoneRef.current = onAllDone }, [onAllDone])
+    const onStartRef = useRef(onStart)
+    useEffect(() => { onStartRef.current = onStart }, [onStart])
     const typeRowRef = useRef<(row: ProcessRow) => void>(null!)
 
     useEffect(() => {
@@ -42,6 +49,10 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
 
     useImperativeHandle(ref, () => ({
       enqueue(row: ProcessRow) {
+        // Dedup: skip rows already in queue or currently typing
+        const inQueue = queueRef.current.some(r => r.code === row.code)
+        const isCurrent = currentRowRef.current?.code === row.code
+        if (inQueue || isCurrent) return
         queueRef.current.push(row)
         if (!isActiveRef.current) {
           processNextRef.current()
@@ -53,6 +64,7 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
         queueRef.current = []
         isActiveRef.current = false
         completedCountRef.current = 0
+        currentRowRef.current = null
         setCurrentRow(null)
         setField('code')
         setTypedText('')
@@ -77,9 +89,7 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
         })
         const ch = text[i - 1]
         let delay: number
-        const isContentSlow = speed === 'slow' && i > 30
-        const effectiveSpeed = isContentSlow ? 'slow' : 'fast'
-        if (effectiveSpeed === 'fast') {
+        if (speed === 'fast') {
           delay = /\d/.test(ch) ? 14 + Math.random() * 14 : 9 + Math.random() * 9
         } else {
           if (/[，。、；：！？,.!?]/.test(ch)) delay = 55 + Math.random() * 75
@@ -93,7 +103,9 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
     }, [onProgress])
 
     const typeRow = useCallback((row: ProcessRow) => {
+      onStartRef.current?.()
       isActiveRef.current = true
+      currentRowRef.current = row
       setCurrentRow(row)
       setField('code')
       setTypedText('')
@@ -110,14 +122,15 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
             completedCountRef.current++
             onRowComplete(row)
             timerRef.current = setTimeout(() => {
+              currentRowRef.current = null
               setCurrentRow(null)
               setTypedText('')
               setStatus('idle')
               isActiveRef.current = false
               timerRef.current = setTimeout(() => {
                 processNextRef.current()
-              }, 320 + Math.random() * 280)
-            }, 300)
+              }, 80)
+            }, 600)
           })
         })
       })
@@ -128,6 +141,8 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
       const next = queueRef.current.shift()
       if (next) {
         typeRowRef.current(next)
+      } else {
+        onAllDoneRef.current?.()
       }
     }
     processNextRef.current = processNext

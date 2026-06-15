@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, useEffect, type DragEvent } from 'react'
 import gsap from 'gsap'
-import { LABEL_DISPLAY_NAMES } from '../../types/annotate'
+import { LABEL_DISPLAY_NAMES, BUILT_IN_LABELS } from '../../types/annotate'
 
 interface AnnotationBox {
   label: string
@@ -178,7 +178,7 @@ export function UploadPanel({ onFileSelected, disabled, previewUrls, onFullscree
           onMouseUp={handlePanEnd}
           onMouseLeave={handlePanEnd}
         >
-          <div className="relative inline-block" style={{ width: `${zoom * 100}%`, minWidth: '100%', minHeight: '100%' }}>
+          <div className="relative inline-block" style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
             <img
               ref={imageRef}
               src={previewUrls[pageIdx]}
@@ -197,6 +197,8 @@ export function UploadPanel({ onFileSelected, disabled, previewUrls, onFullscree
                 {annotationShapes[pageIdx + 1].map((shape, i) => {
                   const displayName = LABEL_DISPLAY_NAMES[shape.label] || shape.label
                   const color = labelColors?.[shape.label] || '#f97316'
+                  const labelDef = BUILT_IN_LABELS.find(l => l.name === shape.label)
+                  const dash = labelDef?.borderStyle === '6,3' ? '6,3' : undefined
                   // Compute seq
                   const prev = annotationShapes[pageIdx + 1].slice(0, i).filter(s => s.label === shape.label)
                   const seq = prev.length + 1
@@ -209,6 +211,7 @@ export function UploadPanel({ onFileSelected, disabled, previewUrls, onFullscree
                         x={shape.x} y={shape.y}
                         width={shape.width} height={shape.height}
                         fill={`${color}1a`} stroke={color} strokeWidth={2}
+                        strokeDasharray={dash}
                         rx={3}
                       />
                       <rect

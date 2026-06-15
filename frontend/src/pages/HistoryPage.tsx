@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { deleteTask, getExportData, getHistory, getAssetUrl } from '../api/client'
+import { deleteTask, getResult, getHistory, getAssetUrl } from '../api/client'
 import gsap from 'gsap'
 
 interface HistoryEntry {
@@ -18,12 +18,19 @@ interface SnapshotData {
   preview_image_urls: string[]
   review_text: string
   feature_report_text: string
-  process_flow?: { data?: [string, string][]; raw?: string }
+  process_flow?: { data?: [string, string, string?][]; raw?: string }
   process_flow_raw?: string
   gltf_url?: string
+  status?: string
 }
 
 const PAGE_SIZE = 6
+
+function tradeBadgeClass(trade: string): string {
+  if (trade === '热处理') return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+  if (trade === '检验') return 'bg-amber-100 text-amber-700 border-amber-200'
+  return 'bg-blue-50 text-blue-600 border-blue-200'
+}
 
 export function HistoryPage() {
   const [history, setHistory] = useState<HistoryEntry[]>([])
@@ -34,6 +41,7 @@ export function HistoryPage() {
   const [snapshotPage, setSnapshotPage] = useState(0)
   const [snapshotZoom, setSnapshotZoom] = useState(1)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
+  const [imgError, setImgError] = useState(false)
   const [dateFilter, setDateFilter] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
   const selectAllRef = useRef<HTMLInputElement>(null)
@@ -235,17 +243,20 @@ export function HistoryPage() {
     setSnapshotPage(0)
     setSnapshotZoom(1)
     try {
-      const data = await getExportData(taskId)
+      const data = await getResult(taskId)
       const d = data as unknown as Record<string, unknown>
+      // Fallback across multiple field names (matches reference frontend)
+      const urls = (d.preview_image_urls as string[]) || (d.previewImages as string[]) || (d.image_urls as string[]) || []
       setSnapshot({
         task_id: taskId,
-        pdf_name: String(d.pdf_name || ''),
-        preview_image_urls: (d.preview_image_urls as string[]) || [],
+        pdf_name: String(d.pdf_name || d.title || ''),
+        preview_image_urls: urls,
         review_text: String(d.review_text || d.feature_report_text || ''),
         feature_report_text: String(d.feature_report_text || ''),
         process_flow: d.process_flow as SnapshotData['process_flow'],
         process_flow_raw: String(d.process_flow_raw || ''),
         gltf_url: String(d.gltf_url || ''),
+        status: String(d.status || ''),
       })
     } catch {
       setSnapshot({ task_id: taskId, pdf_name: '', preview_image_urls: [], review_text: '', feature_report_text: '' })
@@ -255,14 +266,55 @@ export function HistoryPage() {
 
   const closeSnapshot = () => setSnapshot(null)
 
-  const processRows: [string, string][] = (() => {
+  // Reset image error when navigating pages
+  useEffect(() => { setImgError(false) }, [snapshotPage])
+
+  // Parse feature review text into compact field/value pairs, filtering out empty/"无" fields
+  const featureFields: { label: string; value: string }[] = (() => {
+    const raw = snapshot?.review_text || snapshot?.feature_report_text || ''
+    if (!raw) return []
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+    const fields: { label: string; value: string }[] = []
+    for (const line of lines) {
+      // Skip header line
+      if (/^字段\s+内容$/.test(line)) continue
+      // Try tab or multi-space split
+      const parts = line.split(/\t+|\s{2,}/)
+      if (parts.length >= 2) {
+        const label = parts[0].trim()
+        const value = parts.slice(1).join(' ').trim()
+        if (value && value !== '无') fields.push({ label, value })
+      }
+    }
+    return fields
+  })()
+
+  const processRows: { code: string; trade: string; content: string }[] = (() => {
     if (!snapshot) return []
     const pf = snapshot.process_flow
-    if (pf?.data && Array.isArray(pf.data)) return pf.data
+    if (pf?.data && Array.isArray(pf.data)) {
+      return pf.data.map(row => {
+        if (Array.isArray(row) && row.length >= 3) {
+          return { code: String(row[0] || '').trim(), trade: String(row[1] || '').trim(), content: String(row[2] || '').trim() }
+        }
+        if (Array.isArray(row) && row.length >= 2) {
+          // Try to extract embedded trade: "内容 （工种：xx）"
+          const raw = String(row[1] || '').trim()
+          const m = raw.match(/^(.*?)\s*[（(]工种[：:]\s*([一-鿿\-]{1,6})\s*[）)]\s*$/)
+          if (m) return { code: String(row[0] || '').trim(), trade: m[2].trim(), content: m[1].trim() }
+          return { code: String(row[0] || '').trim(), trade: '', content: raw }
+        }
+        return { code: '', trade: '', content: String(row || '') }
+      })
+    }
     if (snapshot.process_flow_raw) {
       return snapshot.process_flow_raw.split('\n').filter(Boolean).map(line => {
         const m = line.match(/^(\d{4})\s*[:：@]\s*(.+)$/)
-        return m ? [m[1], m[2]] : ['', line]
+        if (!m) return { code: '', trade: '', content: line }
+        const raw = m[2].trim()
+        const t = raw.match(/^(.*?)\s*[（(]工种[：:]\s*([一-鿿\-]{1,6})\s*[）)]\s*$/)
+        if (t) return { code: m[1], trade: t[2].trim(), content: t[1].trim() }
+        return { code: m[1], trade: '', content: raw }
       })
     }
     return []
@@ -524,7 +576,7 @@ export function HistoryPage() {
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 shrink-0">
               <div>
                 <div className="text-[15px] font-bold text-slate-800">{snapshot.pdf_name || '工艺快照'}</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">{snapshot.task_id} · {snapshotUrls.length} 页视图</div>
+                <div className="text-[11px] text-slate-400 mt-0.5">{snapshot.task_id}{snapshot.status ? ` · ${snapshot.status}` : ''} · {snapshotUrls.length} 页视图</div>
               </div>
               <button onClick={closeSnapshot} className="btn btn-ghost !p-1.5 !text-[18px] text-slate-400 hover:text-slate-700">&times;</button>
             </div>
@@ -546,13 +598,20 @@ export function HistoryPage() {
                     {/* Source info */}
                     <div className="text-[11px] text-slate-400 mb-2 shrink-0">{snapshot.task_id} · {has3D ? '3D 模型' : `${snapshotUrls.length} 页视图`}</div>
                     <div className="flex-1 min-h-0 flex items-center justify-center overflow-auto w-full">
-                      <img
-                        src={getAssetUrl(snapshot.task_id, snapshotUrls[snapshotPage])}
-                        alt={`预览 ${snapshotPage + 1}`}
-                        className="max-w-full max-h-[50vh] object-contain transition-transform duration-200"
-                        style={{ transform: `scale(${snapshotZoom})` }}
-                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                      />
+                      {imgError ? (
+                        <div className="flex flex-col items-center text-slate-400 text-[12px] gap-1">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" /></svg>
+                          图片加载失败
+                        </div>
+                      ) : (
+                        <img
+                          src={snapshotUrls[snapshotPage].startsWith('/api') ? snapshotUrls[snapshotPage] : getAssetUrl(snapshot.task_id, snapshotUrls[snapshotPage])}
+                          alt={`预览 ${snapshotPage + 1}`}
+                          className="max-w-full max-h-[50vh] object-contain transition-transform duration-200"
+                          style={{ transform: `scale(${snapshotZoom})` }}
+                          onError={() => setImgError(true)}
+                        />
+                      )}
                     </div>
                     {/* Controls */}
                     <div className="flex items-center gap-2 mt-3 shrink-0 flex-wrap justify-center">
@@ -572,32 +631,63 @@ export function HistoryPage() {
               {/* Right: Details */}
               <div className="w-full md:w-[320px] shrink-0 overflow-auto p-4 flex flex-col gap-4 border-t md:border-t-0 md:border-l border-slate-200">
                 {/* Feature review */}
-                <div>
+                <div className="flex flex-col min-h-0">
                   <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">特征审阅</div>
-                  <div className="text-[12px] text-slate-600 leading-relaxed whitespace-pre-wrap max-h-[200px] overflow-auto rounded-xl bg-slate-50 border border-slate-200 p-3">
-                    {snapshot.review_text || snapshot.feature_report_text || '暂无特征数据'}
-                  </div>
-                </div>
-
-                {/* Process */}
-                <div>
-                  <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">工艺规程</div>
-                  {processRows.length === 0 ? (
-                    <div className="text-[12px] text-slate-400">暂无工艺数据</div>
+                  {featureFields.length === 0 ? (
+                    <div className="text-[12px] text-slate-400">暂无特征数据</div>
                   ) : (
-                    <div className="rounded-xl border border-slate-200 overflow-hidden">
-                      <table className="data-table">
+                    <div className="overflow-auto max-h-[240px] data-table-wrap">
+                      <table className="data-table" style={{ tableLayout: 'fixed' }}>
+                        <colgroup>
+                          <col style={{ width: 100 }} />
+                          <col />
+                        </colgroup>
                         <thead>
                           <tr>
-                            <th style={{ width: 60 }}>工序号</th>
+                            <th>字段</th>
                             <th>内容</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {processRows.map(([code, content], i) => (
+                          {featureFields.map((f, i) => (
                             <tr key={i}>
-                              <td className="font-mono text-blue-600 text-[12px]">{code || `#${i + 1}`}</td>
-                              <td className="text-[12px]">{content}</td>
+                              <td className="text-[11px] font-semibold text-slate-500">{f.label}</td>
+                              <td className="text-[12px]">{f.value}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Process */}
+                <div className="flex flex-col min-h-0 flex-1">
+                  <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">工艺规程</div>
+                  {processRows.length === 0 ? (
+                    <div className="text-[12px] text-slate-400">暂无工艺数据</div>
+                  ) : (
+                    <div className="overflow-auto max-h-[320px] data-table-wrap">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 60 }}>工序号</th>
+                            <th style={{ width: 70 }}>工种</th>
+                            <th>内容</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {processRows.map((row, i) => (
+                            <tr key={i}>
+                              <td className="font-mono text-blue-600 text-[12px]">{row.code || `#${i + 1}`}</td>
+                              <td>
+                                {row.trade ? (
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border ${tradeBadgeClass(row.trade)}`}>
+                                    {row.trade}
+                                  </span>
+                                ) : null}
+                              </td>
+                              <td className="text-[12px]">{row.content}</td>
                             </tr>
                           ))}
                         </tbody>

@@ -1167,6 +1167,7 @@ def upload_drawing():
             task["status"] = "awaiting_annotation"
             update_task_status(task_id, "awaiting_annotation", 35)
             persist_review_payload(task)
+            preview_image_urls = _build_preview_urls(task_id, png_paths)
             emit_custom(
                 task_id, event_data, event_locks,
                 "annotation_required",
@@ -1174,6 +1175,7 @@ def upload_drawing():
                     "task_id": task_id,
                     "summary": yolo_summary,
                     "pages":   len(png_paths),
+                    "preview_image_urls": preview_image_urls,
                 },
             )
             annotation_event = task.get("annotation_event")

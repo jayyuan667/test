@@ -103,6 +103,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
   const shapes = currentPage?.shapes || []
 
   // Load annotations from backend on mount
+  const [isLoaded, setIsLoaded] = useState(false)
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -112,16 +113,17 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
         const loaded: Record<number, AnnotationPage> = {}
         for (const [pg, ann] of Object.entries(data)) {
           const pageNum = Number(pg)
+          const shapes = (ann.shapes || []).map(s => ({
+            id: crypto.randomUUID(),
+            label: s.label,
+            x: s.points[0][0],
+            y: s.points[0][1],
+            width: s.points[1][0] - s.points[0][0],
+            height: s.points[1][1] - s.points[0][1],
+          }))
           loaded[pageNum] = {
             pageNumber: pageNum,
-            shapes: (ann.shapes || []).map(s => ({
-              id: crypto.randomUUID(),
-              label: s.label,
-              x: s.points[0][0],
-              y: s.points[0][1],
-              width: s.points[1][0] - s.points[0][0],
-              height: s.points[1][1] - s.points[0][1],
-            })),
+            shapes,
             imageWidth: ann.imageWidth || 0,
             imageHeight: ann.imageHeight || 0,
             imagePath: ann.imagePath || '',
@@ -130,15 +132,15 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
         if (Object.keys(loaded).length > 0) {
           setAllPages(loaded)
         }
-      } catch {
-        // No saved annotations yet — that's fine
-      }
+      } catch { /* no annotations yet */ }
+      finally { if (!cancelled) setIsLoaded(true) }
     })()
     return () => { cancelled = true }
   }, [taskId])
 
-  // Ensure current page exists in allPages
+  // Ensure current page exists in allPages (only after initial load)
   useEffect(() => {
+    if (!isLoaded) return
     if (!allPages[pageNumber]) {
       setAllPages(prev => ({
         ...prev,
@@ -151,7 +153,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
         }
       }))
     }
-  }, [pageNumber, previewImages, imgNatural, allPages])
+  }, [isLoaded, pageNumber, previewImages, imgNatural, allPages])
 
   // Auto-save effect (debounced) — persist to backend
   useEffect(() => {
@@ -444,50 +446,28 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
     setIsPanning(false)
   }, [])
 
-  // Wheel zoom — cursor-anchored, ref-based to avoid stale closures
-  const handleWheelRef = useRef<(e: WheelEvent) => void>(() => {})
-
+  // Wheel zoom — cursor-anchored (same logic as FullscreenPreview)
   useEffect(() => {
-    handleWheelRef.current = (e: WheelEvent) => {
+    const el = scrollRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
-
-      const scroll = scrollRef.current
-      const img = imgRef.current
-      if (!scroll || !img?.naturalWidth) return
-
       const oldZoom = zoomRef.current
       const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
       const newZoom = Math.min(Math.max(oldZoom * factor, 0.05), 8)
 
-      const scrollRect = scroll.getBoundingClientRect()
-      const desiredX = e.clientX - scrollRect.left
-      const desiredY = e.clientY - scrollRect.top
-
-      const imgRect = img.getBoundingClientRect()
-      const sxOld = imgRect.width / img.naturalWidth
-      const pxNat = (e.clientX - imgRect.left) / sxOld
-      const pyNat = (e.clientY - imgRect.top) / (imgRect.height / img.naturalHeight)
-
-      setZoom(newZoom)
+      const rect = el.getBoundingClientRect()
+      const cursorX = e.clientX - rect.left + el.scrollLeft
+      const cursorY = e.clientY - rect.top + el.scrollTop
+      const ratio = newZoom / oldZoom
 
       requestAnimationFrame(() => {
-        const newImg = imgRef.current
-        if (!newImg) return
-        const newImgRect = newImg.getBoundingClientRect()
-        const sxNew = newImgRect.width / img.naturalWidth
-        scroll.scrollLeft = Math.max(0,
-          (newImgRect.left - scrollRect.left) + scroll.scrollLeft + pxNat * sxNew - desiredX)
-        scroll.scrollTop = Math.max(0,
-          (newImgRect.top - scrollRect.top) + scroll.scrollTop + pyNat * sxNew - desiredY)
+        setZoom(newZoom)
+        el.scrollLeft = Math.max(0, cursorX * ratio - (e.clientX - rect.left))
+        el.scrollTop = Math.max(0, cursorY * ratio - (e.clientY - rect.top))
       })
     }
-  }, [])
-
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    const handler = (e: WheelEvent) => handleWheelRef.current(e)
     el.addEventListener('wheel', handler, { passive: false })
     return () => el.removeEventListener('wheel', handler)
   }, [])

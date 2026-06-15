@@ -20,7 +20,7 @@ interface LibraryTarget {
   key: string
 }
 
-export function ZipPage() {
+export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => void }) {
   const [scopes, setScopes] = useState<LibraryScope[]>([])
   const [selectedScope, setSelectedScope] = useState<string>('__new__')
   const [newLibName, setNewLibName] = useState('我的工艺库')
@@ -29,6 +29,7 @@ export function ZipPage() {
   const [statusZone, setStatusZone] = useState<StatusZone>('idle')
   const [resultTab, setResultTab] = useState<ResultTab>('matched')
   const [busy, setBusy] = useState(false)
+  useEffect(() => { onBusyChange?.(busy); return () => { onBusyChange?.(false) } }, [busy, onBusyChange])
   const [report, setReport] = useState<ZipImportReport | null>(null)
   const [phaseText, setPhaseText] = useState('等待上传工艺包')
   const [percent, setPercent] = useState(0)

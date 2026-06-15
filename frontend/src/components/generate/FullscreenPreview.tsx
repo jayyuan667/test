@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
-import { LABEL_DISPLAY_NAMES } from '../../types/annotate'
+import { LABEL_DISPLAY_NAMES, BUILT_IN_LABELS } from '../../types/annotate'
 
 interface AnnotationBox {
   label: string
@@ -150,6 +150,8 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
                 {annotationShapes[index + 1].map((shape, i) => {
                   const displayName = LABEL_DISPLAY_NAMES[shape.label] || shape.label
                   const color = labelColors?.[shape.label] || '#f97316'
+                  const labelDef = BUILT_IN_LABELS.find(l => l.name === shape.label)
+                  const dash = labelDef?.borderStyle === '6,3' ? '6,3' : undefined
                   const prev = annotationShapes[index + 1].slice(0, i).filter(s => s.label === shape.label)
                   const seq = prev.length + 1
                   const tagText = `${displayName} ${seq}`
@@ -161,6 +163,7 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
                         x={shape.x} y={shape.y}
                         width={shape.width} height={shape.height}
                         fill={`${color}1a`} stroke={color} strokeWidth={2}
+                        strokeDasharray={dash}
                         rx={3}
                       />
                       <rect

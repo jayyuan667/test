@@ -182,12 +182,16 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
     })
   }, [])
 
+  // Track whether typewriter has been fed rows (prevents hasFinalResult flash)
+  const rowsFedRef = useRef(false)
+
   // Reset streaming state when a new run starts
   useEffect(() => {
     setDisplayedRows([])
     animatedCountRef.current = 0
     processedLinesRef.current = 0
     resultArrivedRef.current = false
+    rowsFedRef.current = false
     typingRef.current?.reset()
     setIsTyping(false)
   }, [runToken])
@@ -195,16 +199,29 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
   const processedLinesRef = useRef(0)
   const resultArrivedRef = useRef(false)
 
-  // Mark when result arrives — stop queuing new rows but let typewriter finish
+  // When result arrives: feed rows to typewriter if no streaming happened, then mark arrived
   useEffect(() => {
-    if (result && !resultArrivedRef.current) {
-      resultArrivedRef.current = true
+    if (!result || resultArrivedRef.current) return
+    // Feed final rows through typewriter if it never ran (no streaming)
+    if (displayedRows.length === 0 && !isTyping && typingRef.current) {
+      for (const row of finalRows) {
+        typingRef.current.enqueue(row)
+      }
+      // Set isTyping synchronously to prevent hasFinalResult flash on next render.
+      // React batches this with the state updates from enqueue → typewriter starts.
+      setIsTyping(true)
+      rowsFedRef.current = true
     }
-  }, [result])
+    // Mark AFTER feeding — so streaming effect won't block
+    resultArrivedRef.current = true
+  }, [result, finalRows, displayedRows.length, isTyping])
 
+  // Process streaming chunks into typewriter queue
   useEffect(() => {
     if (!streamingChunks) return
-    if (resultArrivedRef.current) return
+    if (resultArrivedRef.current) {
+      return
+    }
 
     const lines = streamingChunks.split(/\r?\n/)
     const completeCount = lines.length - 1
@@ -215,6 +232,7 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
         const inDisplayed = displayedRows.some(r => r.code === row.code)
         if (!inDisplayed) {
           typingRef.current?.enqueue(row)
+          rowsFedRef.current = true
         }
       }
     }
@@ -229,10 +247,23 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
   }, [streamingChunks])
 
   // Bridge: TypingRow progress → parent callback
+  // Only set isTyping = true here; isTyping = false is handled by onAllDone
   const handleTypingProgress = useCallback((info: TypewriterProgress) => {
-    setIsTyping(info.queued > 0 || info.currentChar < info.currentTotal)
+    if (info.queued > 0 || info.currentChar < info.currentTotal) {
+      setIsTyping(true)
+    }
     onTypewriterProgress?.(info)
   }, [onTypewriterProgress])
+
+  // Called when typewriter starts processing a row (synchronous, before render)
+  const handleTypingStart = useCallback(() => {
+    setIsTyping(true)
+  }, [])
+
+  // Called when typewriter queue is fully drained
+  const handleAllDone = useCallback(() => {
+    setIsTyping(false)
+  }, [])
 
   // Auto-scroll after row complete
   const handleRowComplete = useCallback((row: ProcessRow) => {
@@ -273,7 +304,7 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
   // Determine what to show
   // When result arrives, let typewriter finish before switching to finalRows
   const typewriterActive = isTyping
-  const hasFinalResult = finalRows.length > 0 && !typewriterActive
+  const hasFinalResult = finalRows.length > 0 && !typewriterActive && rowsFedRef.current
   const hasStreamingContent = displayedRows.length > 0 || isTyping
 
   // Notify parent when typewriter finishes (result arrived + all rows displayed)
@@ -363,7 +394,7 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
       {/* Process table */}
       <div
         ref={tableRef}
-        className="flex-1 min-h-0 rounded-2xl border border-slate-200 overflow-y-auto overflow-x-hidden bg-white"
+        className="flex-1 min-h-0 max-h-[65vh] overflow-y-auto overflow-x-hidden bg-white data-table-wrap"
         style={{ overflowAnchor: 'none', scrollBehavior: 'smooth' }}
         onScroll={() => {
           const el = tableRef.current
@@ -372,7 +403,7 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
           userScrolledRef.current = !atBottom
         }}
       >
-        {rows.length > 0 || isTyping ? (
+        {taskId ? (
           <table className="data-table" style={{ tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 80 }} />
@@ -448,19 +479,33 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
                   )}
                 </tr>
               ))}
-              {/* TypingRow — always mounted, self-manages visibility */}
+              {/* TypingRow — always mounted when taskId exists, self-manages visibility */}
               <TypingRow
                 ref={typingRef}
                 onRowComplete={handleRowComplete}
                 onProgress={handleTypingProgress}
+                onAllDone={handleAllDone}
+                onStart={handleTypingStart}
               />
+              {/* Hidden placeholder to maintain table height between typewriter rows */}
+              {isTyping && (
+                <tr aria-hidden="true" style={{ visibility: 'hidden' }}>
+                  <td>&nbsp;</td><td /><td />
+                </tr>
+              )}
+              {/* Placeholder row when table is empty and not typing */}
+              {rows.length === 0 && !isTyping && (
+                <tr>
+                  <td colSpan={3} className="text-center py-8">
+                    <span className="flex items-center justify-center gap-2 text-[12px] text-slate-400">
+                      <span className="w-4 h-4 border-2 border-slate-200 border-t-flame-500 rounded-full animate-spin" />
+                      工艺正在生成...
+                    </span>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
-        ) : isStreaming ? (
-          <div className="p-5 flex items-center gap-3 text-[13px] text-slate-500">
-            <span className="w-4 h-4 border-2 border-slate-200 border-t-flame-500 rounded-full animate-spin" />
-            工艺正在生成...
-          </div>
         ) : (
           <div className="flex items-center justify-center h-full text-[12px] text-slate-400 p-8">
             <span className="flex items-center gap-2">

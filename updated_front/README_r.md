@@ -28,6 +28,16 @@
   - [2.9 完整数据流图](#29-完整数据流图)
   - [2.10 功能界限与能力边界](#210-功能界限与能力边界)
 - [三、两模块的协作边界](#三两模块的协作边界)
+- [四、图纸预览逻辑](#四图纸预览逻辑)
+  - [4.1 状态管理](#41-状态管理)
+  - [4.2 预览图片来源](#42-预览图片来源)
+  - [4.3 预览面板构建](#43-预览面板构建)
+  - [4.4 图片渲染与状态同步](#44-图片渲染与状态同步)
+  - [4.5 用户交互（翻页/缩放/重置）](#45-用户交互翻页缩放重置)
+  - [4.6 全屏预览](#46-全屏预览)
+  - [4.7 与标注工具的集成](#47-与标注工具的集成)
+  - [4.8 工作区重置](#48-工作区重置)
+  - [4.9 功能界限与能力边界](#49-功能界限与能力边界)
 
 ---
 
@@ -728,6 +738,304 @@ SSE "complete" 事件
 | SSE 断线 | 标注阶段依赖 `annotation_required` 事件；流式阶段依赖 `process_stream` | 轮询 `followTaskProgress` 作为兜底恢复 |
 | 后端重启 | 前端 EventSource 断开，`startup_token` 变化 | 重连逻辑 + 页面刷新提示 |
 | 标注数据量极大 | `_allPages` 全部在内存，`getSummary()` 每次遍历全部 | 当前规模（< 1000 框）无性能问题 |
+
+---
+
+## 四、图纸预览逻辑
+
+图纸预览是工艺生成页面左侧上传面板的核心功能。用户上传 PDF/图片后，左侧面板从上传拖拽区切换为图纸预览区，支持多页翻页、缩放、全屏查看。
+
+### 4.1 状态管理
+
+`backendState` 上的预览相关字段（~line 500）：
+
+| 字段 | 类型 | 初始值 | 说明 |
+|------|------|--------|------|
+| `previewImages` | string[] | `[]` | 当前任务的图片 URL 数组，每个元素对应一页 |
+| `previewTaskId` | string | `''` | 当前预览所属的任务 ID（防止跨任务重复渲染） |
+| `previewIndex` | number | `0` | 当前显示页的零基索引 |
+| `previewZoom` | number | `1` | CSS 缩放因子（1 = 100%） |
+| `lastPreviewUrls` | string | `''` | 上一次 3D 模型 URL，用于去重重渲染 |
+
+重置时（`resetGenerateWorkspace`，~line 3579）全部清零：
+```javascript
+backendState.previewImages = [];
+backendState.previewTaskId = '';
+backendState.previewIndex = 0;
+backendState.previewZoom = 1;
+```
+
+### 4.2 预览图片来源
+
+预览图片通过四个来源逐步填充：
+
+#### 来源 A：SSE `image_ready` 事件（逐页实时推送）
+
+```javascript
+// ~line 2946
+source.addEventListener('image_ready', (event) => {
+    const payload = JSON.parse(event.data || '{}');
+    const url = payload.url ? (API_BASE.replace('/api', '') + payload.url) : '';
+    if (url && !backendState.previewImages.includes(url)) {
+        backendState.previewImages.push(url);
+        updateTaskPreviewSurface();
+    }
+});
+```
+
+每转换完一页 PDF，后端推送一个 `image_ready` 事件，前端将 URL 追加到 `previewImages` 数组，立即刷新预览。图片逐页出现。
+
+#### 来源 B：SSE `preview_updated` 事件（YOLO 标注后替换）
+
+```javascript
+// ~line 2911
+source.addEventListener('preview_updated', (event) => {
+    const payload = JSON.parse(event.data || '{}');
+    const urls = payload.preview_image_urls || [];
+    backendState.previewImages = urls.map(u => u + '?v=' + Date.now());
+    updateTaskPreviewSurface();
+});
+```
+
+YOLO 检测完成后，后端推送带标注框的图片 URL，**整体替换**预览数组。添加 `?v=timestamp` 缓存破坏标记确保浏览器加载新图。
+
+#### 来源 C：SSE `review_required` / `annotation_required` 事件
+
+这两个事件都会调用 `renderUploadedPreviewFromResult()`，确保左侧面板在工艺结果到达前就切换为预览壳。
+
+#### 来源 D：轮询结果 `renderProcessFromResult`
+
+当轮询检测到 `process_flow` 完成时（~line 3451），调用 `renderProcessFromResult(result)` → `renderUploadedPreviewFromResult(result)`，从 `result.preview_image_urls` 提取 URL。
+
+#### 来源优先级
+
+`renderUploadedPreviewFromResult` 中的保护逻辑（~line 2296）：
+```javascript
+const normalized = normalizePreviewImages(result);
+if (normalized.length) {
+    backendState.previewImages = normalized;  // 仅当有新数据时覆盖
+}
+```
+
+这保证了 `image_ready` 逐页推送的实时图片不会被轮询结果中的旧数据覆盖。
+
+### 4.3 预览面板构建
+
+`renderUploadedPreviewFromResult(result)` 函数（~line 2288）负责将上传拖拽区替换为预览面板。
+
+#### 构建流程
+
+1. 从 `result.pdf_name` 提取文件名
+2. 检查 `nextPreviewTaskId` 是否与当前 `previewTaskId` 相同（避免重复渲染）
+3. 调用 `normalizePreviewImages(result)` 提取 URL 数组
+4. 若壳体不存在，注入完整 HTML 到 `uploadPanelBody`：
+
+```
+uploadPanelBody
+└─ .task-preview-shell
+   ├─ .task-preview-head
+   │  ├─ .section-label "图纸预览"
+   │  ├─ .summary-note 文件名
+   │  └─ .task-preview-toolbar
+   │     ├─ ← 上一张
+   │     ├─ 下一张 →
+   │     ├─ 缩小
+   │     ├─ #taskPreviewZoomLabel "100%"
+   │     ├─ 放大
+   │     ├─ 重置
+   │     └─ ⛶ 全屏
+   ├─ .task-preview-stage
+   │  ├─ #taskPreviewEmpty 占位符
+   │  └─ #taskPreviewImage <img>
+   └─ .task-preview-foot
+      └─ #taskPreviewCounter "1 / 3"
+```
+
+5. 若壳体已存在（同一任务），仅更新文件名文字
+6. 调用 `updateTaskPreviewSurface()` 渲染当前图片
+
+#### `normalizePreviewImages(result)` 函数（~line 853）
+
+从结果对象中提取图片 URL 数组：
+```javascript
+return result.preview_image_urls || result.previewImages || result.image_urls || [];
+```
+
+### 4.4 图片渲染与状态同步
+
+`updateTaskPreviewSurface()` 函数（~line 863）是**唯一的渲染入口**，所有状态变更后都调用它。
+
+#### 渲染步骤
+
+1. 通过 `refreshTaskPreviewRefs()` / `refreshTaskPreviewFullscreenRefs()` 刷新 DOM 引用（因为 `renderUploadedPreviewFromResult` 会替换 innerHTML，旧引用失效）
+2. 读取 `backendState.previewImages` 和 `previewIndex`，钳制索引范围
+3. 获取当前活跃 URL：`activeUrl = images[previewIndex]`
+4. 更新**内联预览**：
+   - 计数器：`"2 / 5"`
+   - 缩放标签：`"100%"`
+   - 翻页按钮禁用状态（首页禁用"上一张"，末页禁用"下一张"）
+   - `<img>` 的 `src`、`display`、`transform: scale(zoom)`
+5. 更新**全屏预览**（若存在）：同步相同的 src、缩放、计数器
+6. 显示/隐藏空状态占位符
+
+#### 缩放实现
+
+通过 CSS `transform: scale()` 实现，而非改变图片尺寸：
+```css
+.task-preview-image {
+    transform-origin: center center;
+    transition: transform 0.18s ease;
+}
+```
+
+`updateTaskPreviewSurface` 中设置：
+```javascript
+taskPreviewImage.style.transform = `scale(${backendState.previewZoom})`;
+```
+
+### 4.5 用户交互（翻页/缩放/重置）
+
+所有按钮事件通过**委托监听**统一处理（~line 4878），绑定在 `uploadPanelBody` 上：
+
+```javascript
+uploadPanelBody.addEventListener('click', (e) => {
+    const btn = e.target.closest('.task-preview-btn');
+    if (!btn) return;
+    const id = btn.id;
+    // ...
+    updateTaskPreviewSurface();
+});
+```
+
+| 按钮 | ID | 行为 |
+|------|----|------|
+| 上一张 | `taskPreviewPrevBtn` | `previewIndex--`（钳制 ≥ 0） |
+| 下一张 | `taskPreviewNextBtn` | `previewIndex++`（钳制 ≤ length-1） |
+| 放大 | `taskPreviewZoomInBtn` | `previewZoom += 0.2`（最大 2.4） |
+| 缩小 | `taskPreviewZoomOutBtn` | `previewZoom -= 0.2`（最小 0.6） |
+| 重置 | `taskPreviewResetBtn` | `previewZoom = 1, previewIndex = 0` |
+| 全屏 | `taskPreviewFullscreenBtn` | `openPreviewFullscreen()` |
+| 点击图片 | `#taskPreviewImage` | `openPreviewFullscreen()` |
+
+点击图片本身也会打开全屏预览。
+
+### 4.6 全屏预览
+
+#### DOM 创建
+
+`ensurePreviewFullscreenHost()` 函数（~line 905）惰性创建全屏覆盖层，追加到 `document.body`：
+
+```
+#taskPreviewFullscreen (.task-preview-fullscreen)
+└─ .task-preview-fullscreen-shell
+   ├─ .task-preview-fs-prev ← 上一张（左侧 13% 透明覆盖层）
+   ├─ .task-preview-fs-next → 下一张（右侧 13% 透明覆盖层）
+   ├─ .task-preview-fs-close ✕ 关闭按钮（右上角小圆）
+   ├─ .task-preview-fs-counter "2 / 5"（hover 时显示）
+   └─ .task-preview-fullscreen-stage
+      └─ #taskPreviewFullscreenImage <img>
+```
+
+#### 交互
+
+- **翻页**：左右两侧透明覆盖层点击，或键盘左右箭头
+- **缩放**：滚轮缩放（范围 0.3 ~ 4.0，步进 0.15）
+- **关闭**：点击 ✕ 按钮、点击背景、按 Escape 键
+- **计数器**：默认隐藏，hover shell 时淡入显示
+
+#### CSS 特性
+
+- `position: fixed; inset: 0; z-index: 2000` — 最顶层覆盖
+- `backdrop-filter: blur(10px)` — 背景模糊
+- 翻页按钮：`opacity: 0` → hover 时 `opacity: 0.55`，带渐变背景
+- 图片：`max-width: 100%; max-height: 100%; object-fit: contain` — 保持比例
+
+#### 与内联预览的状态同步
+
+全屏和内联预览**共享同一组状态**（`previewIndex`、`previewZoom`、`previewImages`），通过同一个 `updateTaskPreviewSurface()` 渲染。在全屏中翻页或缩放后，关闭全屏回到内联预览时状态保持一致。
+
+#### 缩放范围差异
+
+| 上下文 | 滚轮缩放范围 | 按钮缩放范围 |
+|--------|-------------|-------------|
+| 内联预览 | 无滚轮缩放 | 0.6 ~ 2.4 |
+| 全屏预览 | 0.3 ~ 4.0 | 无按钮缩放 |
+| 标注工具 | 0.05 ~ 8.0（Ctrl+滚轮） | 0.05 ~ 8.0 |
+
+### 4.7 与标注工具的集成
+
+标注工具（`AnnotationTool`）和内联预览共享**同一组图片 URL**，但各自维护独立的缩放和翻页状态。
+
+#### 进入标注模式时（`enterAnnotateMode`，~line 4622）
+
+```javascript
+const urls = (backendState.previewImages && backendState.previewImages.length)
+    ? backendState.previewImages
+    : (backendState.latestResult?.preview_image_urls) || [];
+_annotateTool.activate(taskId, urls, imgEl, svgEl);
+```
+
+`AnnotationTool.activate()` 收到 `urls` 后存为 `_pageUrls`，用于自己的翻页系统。
+
+#### 状态隔离
+
+| 状态 | 内联预览 | 标注工具 |
+|------|----------|----------|
+| 图片 URL 列表 | `backendState.previewImages` | `_pageUrls`（同一引用） |
+| 当前页索引 | `backendState.previewIndex` | `_pageIndex`（独立） |
+| 缩放比 | `backendState.previewZoom` | `_zoom`（独立） |
+| 缩放范围 | 0.6 ~ 2.4 | 0.05 ~ 8.0 |
+| 缩放方式 | `transform: scale()` | 直接设置 `img.style.width/height` |
+
+#### 退出标注后
+
+`exitAnnotateMode()` 不修改 `backendState.previewIndex` 或 `previewZoom`，内联预览保持用户进入标注前的状态。
+
+### 4.8 工作区重置
+
+`resetGenerateWorkspace()` 函数（~line 3573）重置所有预览状态：
+
+1. 清空 `previewImages`、`previewTaskId`、`previewIndex`、`previewZoom`
+2. 恢复 `uploadPanelBody` 的初始 HTML（上传拖拽区）：
+   ```javascript
+   if (uploadPanelBody) uploadPanelBody.innerHTML = initialUploadPanelHTML;
+   ```
+3. 初始 HTML 在脚本启动时被捕获（~line 349）：
+   ```javascript
+   const initialUploadPanelHTML = uploadPanelBody?.innerHTML || '';
+   ```
+
+### 4.9 功能界限与能力边界
+
+#### 能做什么
+
+| 能力 | 说明 |
+|------|------|
+| 多页预览 | 支持 PDF 多页图片，逐页翻页浏览 |
+| 逐页加载 | `image_ready` 事件实现 PDF 页逐页转换、逐页出现 |
+| 缩放 | 内联预览 0.6x~2.4x 按钮缩放，全屏 0.3x~4.0x 滚轮缩放 |
+| 全屏查看 | 独立全屏覆盖层，backdrop blur，左右区域点击翻页 |
+| 状态同步 | 内联/全屏共享同一组状态，切换时保持一致 |
+| 标注集成 | 标注工具复用同一组图片 URL，独立维护缩放/翻页 |
+| 缓存破坏 | `preview_updated` 替换图片时添加 `?v=timestamp` 确保刷新 |
+| 重置恢复 | 工作区重置后恢复初始上传拖拽区 |
+
+#### 不能做什么 / 已知限制
+
+| 边界 | 具体限制 | 原因 |
+|------|----------|------|
+| **无图片编辑** | 不能裁剪、旋转、调整亮度/对比度 | 纯 `<img>` 展示，无 Canvas 处理 |
+| **无拖拽平移** | 缩放后不能拖拽平移查看局部 | 用 `transform: scale` 而非 Canvas/scroll 实现缩放 |
+| **无图片标注** | 预览面板本身不能画框，需进入标注模式 | 标注功能由独立的 `AnnotationTool` 全屏覆盖层提供 |
+| **无图片下载** | 不能直接从预览面板下载原始图片 | 无下载按钮或右键菜单扩展 |
+| **PDF 限制** | 预览依赖后端将 PDF 转为图片，不支持前端直接解析 PDF | `<img>` 标签不支持 PDF 渲染 |
+| **无缩略图导航** | 多页时无缩略图条或页码快速跳转，只能逐页翻 | 未实现缩略图 strip 组件 |
+| **无键盘快捷键** | 全屏仅支持 Escape 关闭和左右箭头翻页，无 +/- 缩放 | 只绑定了 3 个键盘事件 |
+| **全屏无按钮缩放** | 全屏模式只能滚轮缩放，无放大/缩小按钮 | 全屏 DOM 中未注入缩放按钮 |
+| **缩放不居中** | `transform-origin: center center` 是容器中心，非光标位置 | 与标注工具的光标居中缩放不同 |
+| **图片加载无进度** | 大图加载时无 loading 指示器 | `<img>` 标签无 onload 进度事件 |
+| **无错误重试** | 图片 URL 404 时无重试或占位图 | `<img>` 标签的 onerror 未处理 |
+| **预览尺寸固定** | 内联预览 `max-height: 540px`，不随窗口大小自适应 | CSS 固定值，非 `vh` 单位 |
 
 ---
 
