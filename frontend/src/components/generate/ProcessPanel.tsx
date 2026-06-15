@@ -48,20 +48,7 @@ function parseLine(line: string): ProcessRow | null {
   return { code: m2[1].trim(), trade: '', content: rawContent }
 }
 
-// Parse all streaming text into rows
-function parseStreamingRows(text: string): ProcessRow[] {
-  const rows: ProcessRow[] = []
-  const seen = new Set<string>()
-  for (const line of text.split(/\r?\n/)) {
-    const row = parseLine(line)
-    if (!row) continue
-    const key = `${row.code}::${row.content}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    rows.push(row)
-  }
-  return rows
-}
+
 
 // Trade badge color
 function tradeBadgeClass(trade: string): string {
@@ -184,6 +171,8 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
 
   // Track whether typewriter has been fed rows (prevents hasFinalResult flash)
   const rowsFedRef = useRef(false)
+  // Track enqueued row codes to avoid re-parsing duplicates in streaming effect
+  const enqueuedCodesRef = useRef(new Set<string>())
 
   // Reset streaming state when a new run starts
   useEffect(() => {
@@ -192,6 +181,7 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
     processedLinesRef.current = 0
     resultArrivedRef.current = false
     rowsFedRef.current = false
+    enqueuedCodesRef.current.clear()
     typingRef.current?.reset()
     setIsTyping(false)
   }, [runToken])
@@ -206,6 +196,7 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
     if (displayedRows.length === 0 && !isTyping && typingRef.current) {
       for (const row of finalRows) {
         typingRef.current.enqueue(row)
+        enqueuedCodesRef.current.add(row.code)
       }
       // Set isTyping synchronously to prevent hasFinalResult flash on next render.
       // React batches this with the state updates from enqueue → typewriter starts.
@@ -228,16 +219,14 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
 
     for (let i = processedLinesRef.current; i < completeCount; i++) {
       const row = parseLine(lines[i])
-      if (row) {
-        const inDisplayed = displayedRows.some(r => r.code === row.code)
-        if (!inDisplayed) {
-          typingRef.current?.enqueue(row)
-          rowsFedRef.current = true
-        }
+      if (row && !enqueuedCodesRef.current.has(row.code)) {
+        enqueuedCodesRef.current.add(row.code)
+        typingRef.current?.enqueue(row)
+        rowsFedRef.current = true
       }
     }
     processedLinesRef.current = completeCount
-  }, [streamingChunks, displayedRows])
+  }, [streamingChunks])
 
   // Reset user scroll flag when streaming starts
   useEffect(() => {
@@ -305,7 +294,6 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
   // When result arrives, let typewriter finish before switching to finalRows
   const typewriterActive = isTyping
   const hasFinalResult = finalRows.length > 0 && !typewriterActive && rowsFedRef.current
-  const hasStreamingContent = displayedRows.length > 0 || isTyping
 
   // Notify parent when typewriter finishes (result arrived + all rows displayed)
   const hasFiredCompleteRef = useRef(false)

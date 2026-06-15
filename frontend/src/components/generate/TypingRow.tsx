@@ -76,6 +76,7 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
 
     const typeField = useCallback((text: string, speed: 'fast' | 'slow', onDone: () => void) => {
       if (!text) { onDone(); return }
+      if (timerRef.current) clearTimeout(timerRef.current)
       let i = 0
       const tick = () => {
         if (i >= text.length) { onDone(); return }

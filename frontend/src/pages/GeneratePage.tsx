@@ -405,6 +405,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
     }
     try {
       setReviewFeedback(undefined)
+      esRef.current?.close()  // 关闭旧 SSE，防止旧事件干扰新阶段
       setStatus('processing')
       setProgress(60)
       setPhaseHint('特征已确认，等待后端响应...')
@@ -412,15 +413,16 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setStreamingChunks('')
       setActiveTab('process')
       setRunToken(t => t + 1)
-      // SSE connection stays alive from upload — backend streams on same connection
       await submitReview(taskId, { review_text: reviewText, action: 'continue', library_key: retrievalKey })
+      connectStream(taskId)  // 重新连接 SSE 接收新阶段事件
     } catch (err: unknown) {
+      connectStream(taskId)  // 失败时也要重连，防止页面卡死
       const msg = err instanceof Error ? err.message : '审阅提交失败'
       setStatus('awaiting_review')
       setReviewFeedback({ message: msg, tone: 'danger' })
       onErrorRef.current(msg)
     }
-  }, [taskId, reviewText])
+  }, [taskId, reviewText, retrievalKey, connectStream])
 
   const handleRerun = useCallback(async () => {
     if (!taskId) {
@@ -429,6 +431,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
     }
     try {
       setReviewFeedback(undefined)
+      esRef.current?.close()  // 关闭旧 SSE
       setStatus('processing')
       setProgress(40)
       setPhaseHint('重新生成中，正在特征审阅...')
@@ -436,15 +439,16 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setStreamingChunks('')
       setActiveTab('process')
       setRunToken(t => t + 1)
-      // SSE connection stays alive — backend streams rerun results on same connection
       await submitReview(taskId, { review_text: reviewText, action: 'rerun' })
+      connectStream(taskId)  // 重新连接 SSE
     } catch (err: unknown) {
+      connectStream(taskId)  // 失败时也要重连，防止页面卡死
       const msg = err instanceof Error ? err.message : '重新生成失败'
       setStatus('awaiting_review')
       setReviewFeedback({ message: msg, tone: 'danger' })
       onErrorRef.current(msg)
     }
-  }, [taskId, reviewText])
+  }, [taskId, reviewText, connectStream])
 
   const handleReviewTextChange = useCallback((text: string) => {
     setReviewText(text)
