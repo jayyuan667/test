@@ -525,6 +525,7 @@
       reviewEventSource: null,
       initialized: false,
       featureCacheEnabled: false,
+      annotationAnalyzed: false,
     };
     backendState.retrievalLibraryKey = getSessionRetrievalScopeKey() || 'public';
     backendState.retrievalLibraryName = resolveLibraryScopeLabel(backendState.retrievalLibraryKey);
@@ -1521,7 +1522,7 @@
     }
 
     function parseFeatureFieldPairs(text = '') {
-      const cleaned = String(text || '').trim().replace(/\ufeff/g, '').replace(/^\[Pasted/i, '');
+      const cleaned = String(text || '').trim().replace(/\ufeff/g, '').replace(/^\[Pasted/i, '').replace(/\s*##+\s*$/g, '');
       if (!cleaned) return [];
       const pairs = [];
       const matches = [...cleaned.matchAll(/【([^】]+)】/g)];
@@ -1532,7 +1533,7 @@
           const start = match.index + match[0].length;
           const end = index + 1 < matches.length ? matches[index + 1].index : cleaned.length;
           const label = normalizeFeatureLabel(match[1]);
-          const value = cleaned.slice(start, end).trim();
+          const value = _cleanFieldValue(cleaned.slice(start, end));
           if (label && !_isFeatureNoiseLabel(label)) pairs.push({ label, value });
         });
         return pairs;
@@ -1544,7 +1545,7 @@
         const match = current.match(/^【([^】]+)】\s*(.*)$/) || current.match(/^([^:：]{1,32})[：:]\s*(.*)$/);
         if (!match) return;
         const label = normalizeFeatureLabel(match[1]);
-        const value = String(match[2] || '').trim();
+        const value = _cleanFieldValue(match[2]);
         if (label && !_isFeatureNoiseLabel(label)) pairs.push({ label, value });
       });
 
@@ -2333,6 +2334,15 @@
       updateTaskPreviewSurface();
     }
 
+    function _cleanFieldValue(raw) {
+      let v = String(raw || '').trim();
+      // Strip trailing ## markers
+      v = v.replace(/\s*##+\s*$/g, '');
+      // Strip leading colon/full-colon (from 【label】: value format)
+      v = v.replace(/^[\s：:]+/, '');
+      return v.trim();
+    }
+
     function parseReviewFields(text = '') {
       const fields = [];
       let current = null;
@@ -2343,14 +2353,15 @@
         if (match) {
           const label = match[1].trim();
           if (_isFeatureNoiseLabel(label)) { current = null; return; }
-          current = { label, value: match[2].trim() };
+          current = { label, value: _cleanFieldValue(match[2]) };
           fields.push(current);
         } else if (current) {
-          current.value = current.value ? current.value + '\n' + trimmed : trimmed;
+          const cleaned = _cleanFieldValue(trimmed);
+          if (cleaned) current.value = current.value ? current.value + '\n' + cleaned : cleaned;
         }
       });
       if (!fields.length) {
-        const raw = String(text || '').trim();
+        const raw = String(text || '').trim().replace(/\s*##+\s*$/g, '');
         if (raw) fields.push({ label: '审阅内容', value: raw });
       }
       return fields;
@@ -2691,6 +2702,7 @@
       if (options.activate !== false) {
         activateResultView('view-review');
       }
+      try { renderReviewAnnotationSummary(); } catch (_) {}
     }
 
     function renderReviewFromResult(result = {}, options = {}) {
@@ -2881,6 +2893,8 @@
           appendWorkflowLiveEntry('ANNOTATE', `YOLO 检出 ${(payload.summary?.chamfer||0)+(payload.summary?.threaded_hole||0)+(payload.summary?.circle_hole||0)} 处，请人工核对`, 'step');
           renderUploadedPreviewFromResult({ task_id: taskId, pdf_name: payload.title || taskId });
           renderAnnotationPendingPanel();
+          backendState.annotationAnalyzed = true;
+          renderReviewAnnotationSummary();
           activateResultView('view-review');
         } catch (error) {
           console.warn('[demo] annotation_required parse failed:', error);
@@ -3487,7 +3501,9 @@
                 backendState.annotationSummary = sum;
                 backendState.annotationPages = pageCount;
                 backendState.annotateVisitedOnce = false;
+                backendState.annotationAnalyzed = true;
                 renderAnnotationPendingPanel();
+                renderReviewAnnotationSummary();
                 activateResultView('view-review');
               } catch (e) { console.warn('[restore awaiting_annotation] failed', e); }
             })();
@@ -4663,7 +4679,42 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         if (_pages) backendState.annotationPages = _pages;
         backendState.annotateVisitedOnce = true;
         try { renderAnnotationPendingPanel(); } catch (_) {}
+        try { renderReviewAnnotationSummary(); } catch (_) {}
       }
+    }
+
+    function renderReviewAnnotationSummary() {
+      const host = document.getElementById('reviewAnnotationSummary');
+      if (!host) return;
+      const s = backendState.annotationSummary || {};
+      // 特征审阅表格未渲染或分析未完成时，隐藏汇总卡片
+      const tableReady = reviewTableHost && reviewTableHost.querySelector('table');
+      if (!backendState.annotationAnalyzed || !tableReady) {
+        host.innerHTML = '';
+        return;
+      }
+      const meta = (typeof window.getAnnotationLabelMeta === 'function')
+        ? window.getAnnotationLabelMeta()
+        : { chamfer:{zh:'倒角',color:'#f59e0b'}, threaded_hole:{zh:'螺纹孔',color:'#6366f1'}, circle_hole:{zh:'圆孔',color:'#10b981'} };
+      const keys = new Set(['chamfer','threaded_hole','circle_hole']);
+      Object.keys(s).forEach((k) => { if ((s[k]||0) > 0) keys.add(k); });
+      let total = 0;
+      const tabsHtml = Array.from(keys).map((k) => {
+        const cnt = s[k] || 0; total += cnt;
+        const m = meta[k] || { zh: k, color: '#9ca3af' };
+        return `<div class="ann-tab" style="--ann-color:${m.color}">
+          <span class="ann-tab-dot" style="background:${m.color}"></span>
+          <span class="ann-tab-label">${m.zh}</span>
+          <span class="ann-tab-count">${cnt}</span>
+        </div>`;
+      }).join('');
+      const pages = backendState.annotationPages || 0;
+      host.innerHTML = `
+        <div class="ann-summary-header">
+          <span class="ann-summary-title">标注汇总</span>
+          <span class="ann-summary-total">${total > 0 ? `共 ${total} 处 · ${pages} 页` : '暂无标注数据'}</span>
+        </div>
+        <div class="ann-tabs-row">${tabsHtml}</div>`;
     }
 
     function renderAnnotationPendingPanel() {
@@ -4690,18 +4741,22 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
       const keys = new Set(['chamfer','threaded_hole','circle_hole']);
       Object.keys(s).forEach((k) => { if ((s[k]||0) > 0) keys.add(k); });
       let total = 0;
-      const rowsHtml = Array.from(keys).map((k) => {
+      const tabsHtml = Array.from(keys).map((k) => {
         const cnt = s[k] || 0; total += cnt;
         const m   = meta[k] || { zh: k, color: '#9ca3af' };
-        return `<span style="display:inline-block;width:10px;height:10px;background:${m.color};border-radius:2px;margin-right:6px;"></span>${m.zh}  <b>${cnt}</b> 处<br>`;
+        return `<div class="ann-tab" style="--ann-color:${m.color}">
+          <span class="ann-tab-dot" style="background:${m.color}"></span>
+          <span class="ann-tab-label">${m.zh}</span>
+          <span class="ann-tab-count">${cnt}</span>
+        </div>`;
       }).join('');
       host.innerHTML = `
         <div class="annotation-pending-card">
-          <div style="font-weight:600;font-size:14px;margin-bottom:12px;color:#1f2937;">
-            ⓘ YOLO 已完成初步标注，请人工核对并补全
+          <div class="ann-summary-header">
+            <span class="ann-summary-title">标注汇总</span>
+            <span class="ann-summary-total">共 ${total} 处 · ${backendState.annotationPages || 0} 页</span>
           </div>
-          <div style="line-height:1.9;font-size:13px;color:#374151;">${rowsHtml}</div>
-          <div style="margin-top:8px;font-size:11px;color:#6b7280;">共 ${total} 处预标注 · ${backendState.annotationPages || 0} 页</div>
+          <div class="ann-tabs-row">${tabsHtml}</div>
           <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
             <button class="button primary" id="startAnnotateBtn">✏ 开始标注</button>
             <button class="button secondary" id="finalizeAnnotateBtn" disabled title="请先进入标注页核对">✓ 完成标注 → 继续</button>

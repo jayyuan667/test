@@ -133,9 +133,34 @@
     }
 
     deactivate() {
-      // Kick off a final save and capture its promise so callers can await.
-      // SVG/state cleanup is safe to run immediately — they're not used by the save.
-      const savePromise = this._autoSaveNow();
+      // Sync current page into _allPages before saving
+      this._allPages[this._pageKey()] = this._annotations.slice();
+
+      // Save ALL pages that have annotations, not just the current one
+      const savePromises = [];
+      Object.entries(this._allPages).forEach(([pageKey, shapes]) => {
+        if (!shapes || shapes.length === 0) return;
+        const pageNum = parseInt(pageKey, 10);
+        const imgSrc = this._pageUrls[pageNum - 1] || this._img?.src || '';
+        const imgFilename = imgSrc.split('/').pop().split('?')[0] || `page_${pageNum}.png`;
+        const payload = {
+          page:        pageNum,
+          shapes:      shapes.map((a) => ({ label: a.label, points: a.points })),
+          imageWidth:  this._img?.naturalWidth  || 0,
+          imageHeight: this._img?.naturalHeight || 0,
+          imagePath:   imgFilename,
+        };
+        savePromises.push(
+          fetch(`${this._apiBase}/annotations/${this._taskId}/save`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(payload),
+          }).catch((err) => console.warn('[annotation-tool] save page', pageNum, 'failed:', err))
+        );
+      });
+
+      const allSaved = savePromises.length > 0 ? Promise.all(savePromises) : Promise.resolve();
+
       const scrollEl = document.getElementById('annotateFsScroll');
       if (scrollEl && this._boundWheel) {
         scrollEl.removeEventListener('wheel', this._boundWheel);
@@ -152,7 +177,7 @@
       this._drawState.isDrawing = false;
       this._draftRect = null;
       clearTimeout(this._saveTimer);
-      return Promise.resolve(savePromise);
+      return allSaved;
     }
 
     /** Return aggregate counts {chamfer, threaded_hole, circle_hole, pages}
@@ -161,8 +186,7 @@
     getSummary() {
       // 保证当前页 in-memory 状态被算进去
       this._allPages[this._pageKey()] = this._annotations.slice();
-      // 内建三类先以 0 占位（即使没标注也要显示在卡片上）
-      const sum = { chamfer: 0, threaded_hole: 0, circle_hole: 0 };
+      const sum = {};
       let pages = 0;
       Object.values(this._allPages).forEach((shapes) => {
         pages += 1;
@@ -171,6 +195,10 @@
           sum[s.label] = (sum[s.label] || 0) + 1;
         });
       });
+      // 内建三类即使为 0 也保留占位，让卡片始终显示它们
+      if (sum.chamfer === undefined) sum.chamfer = 0;
+      if (sum.threaded_hole === undefined) sum.threaded_hole = 0;
+      if (sum.circle_hole === undefined) sum.circle_hole = 0;
       return { ...sum, pages };
     }
 
@@ -582,13 +610,13 @@
         });
         this._svg.appendChild(rect);
 
-        // ── Selected-only floating label "螺纹孔 3" ──
-        // Placed above the box; only drawn when selected so unselected boxes
-        // never have label occlusion. Background pill for readability.
-        if (isSel) {
+        // ── Floating label "螺纹孔 3" — always visible ──
+        // Selected boxes get full opacity; unselected get a translucent pill.
+        {
           const labelText = `${cfg.zh} ${seq}`;
-          const tagH = 22;
-          const tagW = Math.max(60, labelText.length * 12 + 14);
+          const tagH = isSel ? 22 : 18;
+          const tagFontSize = isSel ? 13 : 11;
+          const tagW = Math.max(isSel ? 60 : 48, labelText.length * (isSel ? 12 : 10) + 14);
           const tagX = x;
           const tagY = Math.max(y - tagH - 6, 4);
 
@@ -599,15 +627,17 @@
           tagBg.setAttribute('height', tagH);
           tagBg.setAttribute('rx', '4');
           tagBg.setAttribute('fill', cfg.color);
+          tagBg.setAttribute('opacity', isSel ? '1' : '0.7');
           tagBg.setAttribute('pointer-events', 'none');
           this._svg.appendChild(tagBg);
 
           const tagTxt = document.createElementNS(NS, 'text');
           tagTxt.setAttribute('x', tagX + tagW / 2);
-          tagTxt.setAttribute('y', tagY + tagH / 2 + 5);
+          tagTxt.setAttribute('y', tagY + tagH / 2 + (isSel ? 5 : 4));
           tagTxt.setAttribute('text-anchor', 'middle');
+          tagTxt.setAttribute('opacity', isSel ? '1' : '0.85');
           tagTxt.setAttribute('fill', '#ffffff');
-          tagTxt.setAttribute('font-size', '13');
+          tagTxt.setAttribute('font-size', String(tagFontSize));
           tagTxt.setAttribute('font-weight', '700');
           tagTxt.setAttribute('font-family', 'sans-serif');
           tagTxt.setAttribute('pointer-events', 'none');
