@@ -69,8 +69,20 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
   const animatedCountRef = useRef(0)
   const userScrolledRef = useRef(false)
 
-  // Editable rows & row management
-  const [editRows, setEditRows] = useState<ProcessRow[]>([])
+  // Editable rows & row management — initialize from result on re-mount to avoid empty flash
+  const [editRows, setEditRows] = useState<ProcessRow[]>(() => {
+    if (!result?.process_flow?.data) return []
+    return result.process_flow.data.map((row: unknown) => {
+      if (Array.isArray(row)) {
+        return {
+          code: String(row[0] || '').trim(),
+          trade: row.length >= 3 ? String(row[1] || '').trim() : '',
+          content: String(row[row.length >= 3 ? 2 : 1] || '').trim(),
+        }
+      }
+      return { code: '', trade: '', content: String(row || '') }
+    })
+  })
   const [hoveredRow, setHoveredRow] = useState<number | null>(null)
   const [showCommitModal, setShowCommitModal] = useState(false)
 
@@ -128,8 +140,10 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
     }
   }, [editRows, finalRows, result, reviewText])
 
-  // Sync editRows when result changes
+  // Sync editRows when result changes (skip on re-mount if result already exists to avoid empty-array flash)
+  const editRowsInitRef = useRef(!!result)
   useEffect(() => {
+    if (editRowsInitRef.current) { editRowsInitRef.current = false; return }
     if (finalRows.length > 0) {
       setEditRows(finalRows)
     }
@@ -174,14 +188,18 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
   // Track enqueued row codes to avoid re-parsing duplicates in streaming effect
   const enqueuedCodesRef = useRef(new Set<string>())
 
-  // Reset streaming state when a new run starts
+  // Reset streaming state when a new run starts (skip on mount — refs already initialized)
+  const prevRunTokenRef = useRef(runToken)
   useEffect(() => {
+    if (prevRunTokenRef.current === runToken) return
+    prevRunTokenRef.current = runToken
     setDisplayedRows([])
     animatedCountRef.current = 0
     processedLinesRef.current = 0
     resultArrivedRef.current = false
     rowsFedRef.current = false
     enqueuedCodesRef.current.clear()
+    skipOnMountRef.current = false
     typingRef.current?.reset()
     setIsTyping(false)
   }, [runToken])
@@ -189,9 +207,17 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
   const processedLinesRef = useRef(0)
   const resultArrivedRef = useRef(false)
 
+  // Skip result/streaming effects on re-mount when result already present (tab switch)
+  // On re-mount, go straight to final display state
+  const skipOnMountRef = useRef(!!result)
+  if (skipOnMountRef.current) {
+    rowsFedRef.current = true
+    resultArrivedRef.current = true
+  }
+
   // When result arrives: feed rows to typewriter if no streaming happened, then mark arrived
   useEffect(() => {
-    if (!result || resultArrivedRef.current) return
+    if (!result || resultArrivedRef.current || skipOnMountRef.current) return
     // Feed final rows through typewriter if it never ran (no streaming)
     if (displayedRows.length === 0 && !isTyping && typingRef.current) {
       for (const row of finalRows) {
@@ -210,9 +236,9 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
   // Process streaming chunks into typewriter queue
   useEffect(() => {
     if (!streamingChunks) return
-    if (resultArrivedRef.current) {
-      return
-    }
+    if (resultArrivedRef.current) return
+    // Skip if result already arrived (e.g. tab switch re-mount)
+    if (result) return
 
     const lines = streamingChunks.split(/\r?\n/)
     const completeCount = lines.length - 1
@@ -296,7 +322,8 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
   const hasFinalResult = finalRows.length > 0 && !typewriterActive && rowsFedRef.current
 
   // Notify parent when typewriter finishes (result arrived + all rows displayed)
-  const hasFiredCompleteRef = useRef(false)
+  // Initialize to true on re-mount when result already exists to prevent duplicate callback
+  const hasFiredCompleteRef = useRef(!!result)
   useEffect(() => {
     if (hasFinalResult && !hasFiredCompleteRef.current) {
       hasFiredCompleteRef.current = true
@@ -305,12 +332,17 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
   }, [hasFinalResult, onTypewriterComplete])
 
   // Reset the flag when task changes
+  const prevRunTokenForCompleteRef = useRef(runToken)
   useEffect(() => {
+    if (prevRunTokenForCompleteRef.current === runToken) return
+    prevRunTokenForCompleteRef.current = runToken
     hasFiredCompleteRef.current = false
   }, [runToken])
 
-  // GSAP: Entrance animation for commit button
+  // GSAP: Entrance animation for commit button (skip on re-mount with result)
+  const commitAnimInitRef = useRef(!!result)
   useEffect(() => {
+    if (commitAnimInitRef.current) { commitAnimInitRef.current = false; return }
     if (hasFinalResult && commitBtnRef.current) {
       gsap.fromTo(commitBtnRef.current,
         { scale: 0.7, opacity: 0, y: 8 },

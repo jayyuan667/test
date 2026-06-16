@@ -4,10 +4,12 @@
 import os
 import io
 import base64
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any
 from datetime import datetime
 from openai import OpenAI
+from openai import APIConnectionError, APITimeoutError, RateLimitError
 from PIL import Image, ImageFilter
 
 from ..config import validate_vision_config
@@ -362,13 +364,23 @@ class VisionAnalyzer:
             {"role": "system", "content": prompt},
             {"role": "user", "content": content},
         ]
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            max_tokens=self.max_tokens,
-            timeout=600,
-        )
-        return response.choices[0].message.content
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=self.max_tokens,
+                    timeout=600,
+                )
+                return response.choices[0].message.content
+            except (APIConnectionError, APITimeoutError) as e:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    print(f"[Vision] API 连接失败 (attempt {attempt + 1}/{max_retries})，{wait}s 后重试: {e}")
+                    time.sleep(wait)
+                else:
+                    raise
 
     def analyze_drawing(self, image_paths: List[str],
                         annotation_text: str = "") -> Dict[str, Any]:

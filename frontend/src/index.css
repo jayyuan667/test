@@ -391,22 +391,9 @@
   background: rgba(249, 115, 22, 0.03) !important;
 }
 
-/* Completing transition — cursor fade out + bg transition */
-.tw-typing-row.completing .typing-cursor {
-  opacity: 0;
-  transition: opacity 150ms ease;
-}
-.tw-typing-row.completing td {
-  transition: background-color 300ms ease;
-}
-/* Fade-out animation for completed row — keeps height during transition */
-@keyframes tw-row-fadeout {
-  0% { opacity: 1; }
-  60% { opacity: 1; }
-  100% { opacity: 0; }
-}
+/* Completing state — instant hide */
 .tw-typing-row.completing {
-  animation: tw-row-fadeout 600ms ease-out forwards;
+  display: none;
 }
 
 /* ── Phase Hint Breathing Glow ── */

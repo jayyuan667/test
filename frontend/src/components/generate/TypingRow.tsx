@@ -131,7 +131,7 @@ export const TypingRow = memo(forwardRef<TypingRowHandle, Props>(
               timerRef.current = setTimeout(() => {
                 processNextRef.current()
               }, 80)
-            }, 600)
+            }, 100)
           })
         })
       })
