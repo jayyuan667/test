@@ -1488,14 +1488,18 @@ class ProcessGenerator:
         if not value or "\n" in value or len(value) > 120:
             return ""
 
+        if re.search(r'(?:第\d+页摘要|摘要|图号|零件名称|关键尺寸|技术要求)', value):
+            return ""
+
         patterns = (
             r'[δ≠]\s*\d+(?:\.\d+)?\s*[×xX*]\s*\d+(?:\.\d+)?(?:\s*[×xX*]\s*\d+(?:\.\d+)?)?(?:\s*=\s*\d+)?',
             r'[φΦØ]\s*\d+(?:\.\d+)?\s*[×xX*]\s*\d+(?:\.\d+)?(?:\s*=\s*\d+)?',
         )
+        matches = []
         for pattern in patterns:
-            if re.fullmatch(pattern, value):
-                return value
-        return ""
+            matches.extend(m.group(0).strip() for m in re.finditer(pattern, value))
+        unique = list(dict.fromkeys(match for match in matches if match))
+        return unique[0] if len(unique) == 1 else ""
 
     def _post_check_process(self, process_raw: str, constraints: dict) -> str:
         """对生成的工艺进行约束校验和几何数据覆盖。
