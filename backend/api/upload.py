@@ -44,7 +44,8 @@ from ..services.review_session import (
 )
 from ..vision_utils import split_vision_results, format_vision_failure_message
 from ..task_store import insert_task, update_task_status, save_result, get_prt_cache, save_prt_cache
-from ._response import fail, ERR_FILE_MISSING, ERR_FILE_TYPE, ERR_CONFIG
+from ._response import fail, ERR_FILE_MISSING, ERR_FILE_TYPE, ERR_CONFIG, ERR_CAPABILITY
+from ..services.capabilities import inspect_pdf_capability
 from ._utils import PRT_FILE_RE, extract_prefix_from_filename
 from ..services.observability import time_block
 
@@ -1145,6 +1146,16 @@ def upload_drawing():
     filename = file.filename or ""
     if not _is_drawing_file(filename):
         return fail(ERR_FILE_TYPE, "Only PDF, PNG, JPG files allowed")
+
+    if filename.lower().endswith(".pdf"):
+        pdf_capability = inspect_pdf_capability()
+        if not pdf_capability["available"]:
+            return fail(
+                ERR_CAPABILITY,
+                pdf_capability["reason"],
+                422,
+                {"capability": "pdf"},
+            )
 
     config_error = validate_vision_config()
     if config_error:
