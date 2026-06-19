@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-import sys; sys.stdout.reconfigure(encoding="utf-8")
 """Process generation step using RAG and LLM."""
 
 import os
 import re
 import time
+import logging
 from typing import List, Dict, Any, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
+
+logger = logging.getLogger(__name__)
 
 
 class ProcessGenerator:
@@ -58,7 +60,9 @@ class ProcessGenerator:
     def _replace_placeholder_tokens(self, text: str) -> str:
         if not text:
             return ""
-        return str(text).replace("ENDD$$", " ")
+        cleaned = str(text).replace("ENDD$$", " ")
+        cleaned = re.sub(r'(^|；|;|\n)-(\d)', r'\1\2', cleaned)
+        return cleaned
 
     def _fuse_descriptions(self, descriptions: List[Dict[str, Any]]) -> str:
         """Fuse multiple page descriptions into a single feature set.
@@ -110,11 +114,7 @@ class ProcessGenerator:
         """
         import re
         process_data = []
-        for line in self._replace_placeholder_tokens(raw_text).strip().split("\n"):
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            content = line[2:].strip() if line.startswith(("- ", "* ")) else line
+        for content in self._coalesce_process_lines(raw_text):
             match = re.match(r"^(\d{4})\s*[:：@\-\|,，;；\s]*\s*(.+)$", content)
             if match:
                 tag = match.group(1)
@@ -143,6 +143,47 @@ class ProcessGenerator:
                     else:
                         process_data.append([tag, proc_content])
         return process_data
+
+    def _coalesce_process_lines(self, raw_text: str, continuation_separator: str = "\n") -> List[str]:
+        """Merge continuation lines like 工步1/工步2 into the previous coded process row."""
+        merged_lines: List[str] = []
+        current: Optional[str] = None
+
+        for raw_line in self._replace_placeholder_tokens(str(raw_text or "")).splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            content = line[2:].strip() if line.startswith(("- ", "* ")) else line
+            if not content or content.startswith("#") or re.match(r"^[-=]{3,}$", content):
+                continue
+
+            is_main_row = bool(
+                re.match(r"^\d{4}@[^@]*@.+$", content)
+                or re.match(r"^\d{4}\s*[:：@\-\|,，;；\s]+\s*(.+)$", content)
+            )
+            if is_main_row:
+                if current:
+                    merged_lines.append(current)
+                current = content
+                continue
+
+            if current:
+                current = f"{current}{continuation_separator}{content}"
+
+        if current:
+            merged_lines.append(current)
+        return merged_lines
+
+    def _emit_process_stream_lines(self, process_raw: str, stream_callback=None, log_callback=None, delay: float = 0.05):
+        """Emit only normalized process rows to the frontend stream."""
+        if not stream_callback or not process_raw:
+            return
+        for line in self._coalesce_process_lines(process_raw, continuation_separator="；"):
+            chunk = f"- {line}\n" if not line.startswith(("- ", "* ")) else f"{line}\n"
+            stream_callback(chunk)
+            if log_callback:
+                log_callback(chunk)
+            time.sleep(delay)
 
     def _normalize_standard_process_rows(self, rows: List[Any]) -> List[List[str]]:
         """Normalize stored DB process rows into [tag, content] pairs.
@@ -200,6 +241,7 @@ class ProcessGenerator:
         library_key: Optional[str] = None,
         geo_data: Optional[dict] = None,
         force_llm: bool = False,
+        confidence: float = 0.5,
     ) -> tuple[str, list[list[str]], dict | None]:
         """Generate process specifications with constraint-aware assembly."""
         fused_description = self._replace_placeholder_tokens(self._fuse_descriptions(descriptions))
@@ -208,8 +250,12 @@ class ProcessGenerator:
         # ── Step 1: Extract constraints from review/feature text ──
         constraints = self._extract_process_constraints(fused_description, geo_data=geo_data)
 
+        # 根据 ExpertJudge 置信度自适应调整 RAG 候选数
+        rag_top_k = 1 if confidence >= 0.8 else (2 if confidence >= 0.5 else 3)
+
         rag_results, rag_context, use_rag_only, exact_result = self._run_rag_lookup(
-            fused_description, descriptions, prefix_hint, log_callback, library_key
+            fused_description, descriptions, prefix_hint, log_callback, library_key,
+            top_k=rag_top_k,
         )
 
         # ── Step 2: 图号精确匹配 + 高相似度 → 直接返回蓝本工艺原文 ──
@@ -230,6 +276,7 @@ class ProcessGenerator:
                 ("钻", ["钻孔", "钻"]),
                 ("攻", ["攻丝", "攻螺纹", "攻"]),
                 ("钳", ["去毛刺", "清洗", "试装", "钳"]),
+                ("镀覆", ["镀覆", "外协镀", "AL/Ct", "Ocd"]),
                 ("表处", ["阳极化", "电镀", "喷漆", "氧化", "镀"]),
                 ("刻字", ["刻字"]),
                 ("检", ["检验", "标识", "入库", "检"]),
@@ -245,13 +292,7 @@ class ProcessGenerator:
             proc_raw = "\n".join(_rows_with_trade)
             # ⚠️ 蓝本精确匹配 → 直接输出，不进行后校验（避免拆分改动）
             if stream_callback and proc_raw:
-                lines = proc_raw.split("\n")
-                for line in lines:
-                    chunk = line + "\n"
-                    stream_callback(chunk)
-                    if log_callback:
-                        log_callback(chunk)
-                    time.sleep(0.01)
+                self._emit_process_stream_lines(proc_raw, stream_callback=stream_callback, log_callback=log_callback, delay=0.06)
             return proc_raw, self._parse_markdown_process(proc_raw), rag_results
 
         if not rag_context:
@@ -283,19 +324,21 @@ class ProcessGenerator:
                 constraints, use_blueprint, allowed_fragments
             )
             if rag_context
-            else self._build_fallback_prompt(fused_description, expert_judgment)
+            else self._build_fallback_prompt(fused_description, expert_judgment, constraints)
         )
 
         if log_callback:
             log_callback("🧠 开始流式生成工艺规程...")
         process_flow_raw = self._stream_llm_response(
-            prompt, log_callback=log_callback, stream_callback=stream_callback
+            prompt, log_callback=log_callback
         )
         process_flow_raw = self._extract_process_section(process_flow_raw)
 
         # ── Step 6: Post-check ──
         process_flow_raw = self._post_check_process(process_flow_raw, constraints)
 
+        # 只把合并后的规范工序行流给前端，避免原始 LLM 续行/杂文混入
+        self._emit_process_stream_lines(process_flow_raw, stream_callback=stream_callback)
         return process_flow_raw, self._parse_markdown_process(process_flow_raw), rag_results
 
     # ── RAG helpers ──────────────────────────────────────────────────────────
@@ -341,10 +384,10 @@ class ProcessGenerator:
         matched = exact_result["matches"][0]
         vec_sim = self._get_vector_sim_for_drawing(matched["drawing_id"], rag_results)
 
-        if vec_sim >= 0.70:
+        if vec_sim >= 0.75:
             if log_callback:
                 log_callback(
-                    f"📎 图号精确匹配 + 余弦相似度 {vec_sim:.1%} ≥ 70%，直接采用蓝本工艺（跳过LLM）..."
+                    f"📎 图号精确匹配 + 余弦相似度 {vec_sim:.1%} ≥ 75%，直接采用蓝本工艺（跳过LLM）..."
                 )
             return True, "", exact_result
 
@@ -370,6 +413,7 @@ class ProcessGenerator:
         prefix_hint: Optional[str],
         log_callback,
         library_key: Optional[str],
+        top_k: int = 5,
     ) -> tuple[Optional[Dict], str, bool, Optional[Dict]]:
         """执行完整 RAG 检索。返回 (rag_results, rag_context, use_rag_only, exact_result)。
 
@@ -382,15 +426,15 @@ class ProcessGenerator:
             from concurrent.futures import ThreadPoolExecutor
 
             effective_prefix = self._extract_drawing_prefix(descriptions, prefix_hint)
-            print(f"[RAG] prefix_hint={prefix_hint}, effective_prefix={effective_prefix}")
+            logger.info("[RAG] prefix_hint=%s, effective_prefix=%s", prefix_hint, effective_prefix)
 
             # 并发：向量相似度查询 + 图号精确查询（两者相互独立）
             with ThreadPoolExecutor(max_workers=2) as executor:
                 fused_future = executor.submit(
                     self.query_by_fused_text,
                     fused_description,
-                    top_k=3,
-                    min_similarity=0.25,
+                    top_k=top_k,
+                    min_similarity=0.20,
                     prefix_hint=effective_prefix,
                     log_callback=log_callback,
                     library_key=library_key,
@@ -408,6 +452,27 @@ class ProcessGenerator:
                 rag_results = fused_future.result()
                 prefetched_prefix = prefix_future.result() if prefix_future else None
 
+            # 非公共库匹配度不足时，补充公共库检索
+            if library_key and library_key != "public" and rag_results:
+                best_sim = rag_results["matches"][0].get("similarity", 0) if rag_results.get("matches") else 0
+                if best_sim < 0.25:
+                    public_results = self.query_by_fused_text(
+                        fused_description,
+                        top_k=top_k,
+                        min_similarity=0.20,
+                        prefix_hint=effective_prefix,
+                        log_callback=log_callback,
+                        library_key="public",
+                    )
+                    if public_results and public_results.get("matches"):
+                        existing_ids = {m.get("drawing_id") for m in rag_results.get("matches", [])}
+                        for pm in public_results["matches"]:
+                            if pm.get("drawing_id") not in existing_ids:
+                                rag_results["matches"].append(pm)
+                                existing_ids.add(pm.get("drawing_id"))
+                        if log_callback:
+                            log_callback("🔍 私有库匹配度不足（<0.3），已补充公共工艺库检索结果")
+
             use_rag_only, prefix_context, exact_result = self._check_exact_prefix(
                 effective_prefix, rag_results, library_key, log_callback,
                 prefetched_result=prefetched_prefix,
@@ -422,8 +487,44 @@ class ProcessGenerator:
             return rag_results, rag_context, use_rag_only, exact_result
 
         except Exception as e:
-            print(f"RAG error: {e}")
+            logger.error("RAG error: %s", e)
             return None, "", False, None
+
+    def _search_with_public_fallback(
+        self,
+        fused_description: str,
+        top_k: int,
+        min_similarity: float,
+        library_key: Optional[str],
+        prefix_hint: Optional[str] = None,
+        log_callback=None,
+    ):
+        """搜索指定库，若结果不足则自动回退公共库补充。"""
+        results = self.query_by_vector_similarity(
+            fused_description, top_k=top_k, min_similarity=min_similarity,
+            prefix_hint=prefix_hint, library_key=library_key,
+        ) if self.rag_available else []
+
+        # 非公共库且结果不足时，追加公共库结果
+        if library_key and library_key != "public" and self.rag_available:
+            best_sim = results[0].get("similarity", 0) if results else 0
+            if best_sim < 0.3:
+                public_results = self.query_by_vector_similarity(
+                    fused_description, top_k=top_k, min_similarity=min_similarity,
+                    prefix_hint=prefix_hint, library_key="public",
+                )
+                existing_ids = {r.get("drawing_id") for r in results}
+                for pr in public_results:
+                    if pr.get("drawing_id") not in existing_ids:
+                        results.append(pr)
+                        existing_ids.add(pr.get("drawing_id"))
+                if log_callback and any(
+                    pr.get("drawing_id") not in {r.get("drawing_id") for r in results[:-len(public_results)]}
+                    for pr in public_results
+                ):
+                    log_callback("🔍 私有库匹配度不足，已补充公共工艺库检索结果")
+
+        return results
 
     def _nearest_neighbor_fallback(
         self,
@@ -432,13 +533,20 @@ class ProcessGenerator:
         library_key: Optional[str],
         log_callback,
     ) -> tuple[str, Optional[Dict]]:
-        """知识库无匹配时取最近邻蓝本。返回 (rag_context, rag_results)。"""
+        """知识库无匹配时取最近邻蓝本，私有库无结果则回退公共库。"""
         if not self.rag_available:
             return "", rag_results
         try:
             nearest = self.query_by_vector_similarity(
                 fused_description, top_k=1, min_similarity=0.0, library_key=library_key
             )
+            # 私有库无匹配时回退公共库
+            if not nearest and library_key and library_key != "public":
+                if log_callback:
+                    log_callback("🔍 私有工艺库无匹配，回退公共工艺库检索...")
+                nearest = self.query_by_vector_similarity(
+                    fused_description, top_k=1, min_similarity=0.0, library_key="public"
+                )
             if not nearest:
                 return "", rag_results
 
@@ -464,7 +572,7 @@ class ProcessGenerator:
             return rag_context, rag_results
 
         except Exception as e:
-            print(f"[ProcessGenerator] nearest-neighbor fallback error: {e}")
+            logger.warning("[ProcessGenerator] nearest-neighbor fallback error: %s", e)
             return "", rag_results
 
     @staticmethod
@@ -475,8 +583,13 @@ class ProcessGenerator:
         parts = raw_text.split("## 生成的工艺规程")
         return parts[-1].strip() if len(parts) > 1 else raw_text
 
-    def _stream_llm_response(self, prompt: str, log_callback=None, stream_callback=None) -> str:
-        """Stream LLM response chunk by chunk and collect final text."""
+    def _stream_llm_response(self, prompt: str, log_callback=None) -> str:
+        """Stream LLM response chunk by chunk and collect final text.
+
+        Note: stream_callback is NOT used here — raw LLM output is collected
+        internally and returned. The caller (_emit_process_stream_lines) is
+        responsible for emitting only coalesced, normalized rows to the frontend.
+        """
         messages = [
             SystemMessage(content="输出简单Markdown格式，逐步流式输出，不要一次性整段返回。"),
             HumanMessage(content=prompt),
@@ -490,8 +603,6 @@ class ProcessGenerator:
                 if not delta:
                     continue
                 chunks.append(delta)
-                if stream_callback:
-                    stream_callback(delta)
 
                 buffered_for_log += delta
                 # Avoid flushing mid-（工种：xxx） pattern — only flush when
@@ -513,7 +624,7 @@ class ProcessGenerator:
             if final_text.strip():
                 return final_text
         except Exception as e:
-            print(f"[ProcessGenerator] streaming failed, fallback to invoke: {e}")
+            logger.warning("[ProcessGenerator] streaming failed, fallback to invoke: %s", e)
 
         # Fallback: non-streaming invoke
         response = self.llm_client.invoke(messages)
@@ -526,13 +637,43 @@ class ProcessGenerator:
                 log_callback(final_text[i:i + step])
                 time.sleep(0.01)
 
-        if stream_callback and final_text:
-            step = max(5, len(final_text) // 40)
-            for i in range(0, len(final_text), step):
-                stream_callback(final_text[i:i + step])
-                time.sleep(0.01)
-
         return final_text
+
+    @staticmethod
+    def _parse_structural_dims(text: str):
+        """Extract (thickness_mm, area_mm2) from feature description.
+
+        Supports:
+          - ≠T×L×W  (备料 notation)
+          - 厚: T  +  长: L 宽: W  (field notation)
+        Returns (None, None) when not enough information is found.
+        """
+        thickness = length = width = None
+
+        # ≠T×L×W pattern
+        m = re.search(
+            r'[≠δ]\s*(\d+(?:\.\d+)?)\s*[×xX×]\s*(\d+(?:\.\d+)?)\s*[×xX×]\s*(\d+(?:\.\d+)?)',
+            text,
+        )
+        if m:
+            thickness = float(m.group(1))
+            d2, d3 = float(m.group(2)), float(m.group(3))
+            length, width = max(d2, d3), min(d2, d3)
+
+        if thickness is None:
+            m = re.search(r'厚(?:度)?\s*[:：]\s*(\d+(?:\.\d+)?)', text)
+            if m:
+                thickness = float(m.group(1))
+
+        if length is None:
+            ml = re.search(r'长\s*[:：]\s*(\d+(?:\.\d+)?)', text)
+            mw = re.search(r'宽\s*[:：]\s*(\d+(?:\.\d+)?)', text)
+            if ml and mw:
+                length = float(ml.group(1))
+                width = float(mw.group(1))
+
+        area = length * width if (length is not None and width is not None) else None
+        return thickness, area
 
     @staticmethod
     def _extract_key_geo_fields(feature_text: str) -> str:
@@ -578,10 +719,16 @@ class ProcessGenerator:
         for m in re.finditer(r'【([^】]+)】([^\n【]*)', feature_text):
             fields[m.group(1).strip()] = m.group(2).strip()
 
-        hard = {"blank_size": "", "outer_size": "", "key_dims": "", "part_count": 1}
+        hard = {"blank_size": "", "outer_size": "", "key_dims": "", "part_count": 1, "material_form": "",
+                "heat_treatment": "", "surface_treatment": "",
+                "is_cavity_part": False, "is_aluminum_alloy": False, "is_large_part": False,
+                "cavity_depth_hint": ""}
         soft = {"roughness": "", "chamfer": "", "fillet": "", "surface_treatment": "", "holes_threads": ""}
 
         # ── 硬约束 ──
+        hard["material_form"] = self._extract_material_form(feature_text)
+        hard["heat_treatment"] = fields.get("热处理与探伤", "")
+        hard["surface_treatment"] = fields.get("表面处理与镀层特征", "")
         hard["key_dims"] = fields.get("关键尺寸", "")
 
         # 外形尺寸：优先【外形尺寸】/【主要外形尺寸】，其次【关键尺寸】
@@ -664,6 +811,10 @@ class ProcessGenerator:
                 blank = self._ceil_blank_dims(blank)
             hard["geo_blank_spec"] = blank
 
+            # material_form 强制修正：若 Creo 推导的毛坯规格含 ≠/δ 符号，无视 VLM 结果
+            if re.search(r'[≠δ]\s*\d+', blank):
+                hard["material_form"] = "板料"
+
         # 孔信息始终来自几何分析（Creo 没有等效数据）
         if geo_data and "error" not in geo_data:
             hole_info = geo_data.get("hole_info", {})
@@ -675,6 +826,45 @@ class ProcessGenerator:
                     hard["geo_hole_count"] = count
                 if min_d and max_d:
                     hard["geo_bore_range"] = f"{min_d}~{max_d}mm"
+
+        # ── 吊面/翻面约束（硬约束：有吊面必须生成翻面工序）──
+        flip_face_val = fields.get("吊面/翻面特征", "") or ""
+        if flip_face_val in ("无", "无。", ""):
+            flip_face_val = ""
+        # 兜底：从【其他特征】文本中检测翻面/吊面关键词
+        if not flip_face_val:
+            _other = fields.get("其他特征", "") or ""
+            if re.search(r'吊面|翻面|背面加工|反面特征', _other):
+                flip_face_val = f"存在（来自其他特征：{_other[:60]}）"
+        # 从技术要求中检测
+        if not flip_face_val:
+            for _note in (fields.get("技术要求", "") or "").split("；"):
+                if re.search(r'翻面|吊面|反面|背面', _note):
+                    flip_face_val = f"存在（来自技术要求：{_note.strip()[:60]}）"
+                    break
+        hard["flip_face"] = flip_face_val
+
+        # ── 腔体件 / 铝合金 / 大尺寸检测 ──
+        _shape_val  = (fields.get("形态", "") or "") + (fields.get("类型", "") or "")
+        _other_val  = fields.get("其他特征", "") or ""
+        _tech_val   = fields.get("技术要求", "") or ""
+        _all_text   = feature_text  # 全文兜底
+        _cavity_kw  = ["腔体", "内腔", "腔室", "深腔", "型腔", "腔内", "空腔"]
+        hard["is_cavity_part"] = any(kw in _all_text for kw in _cavity_kw)
+
+        _al_pattern = r'铝合金|铝板|Al\b|5A\d+|6061|6063|7075|2A\d+|LY\d+|LD\d+|LC\d+'
+        hard["is_aluminum_alloy"] = bool(re.search(_al_pattern, _all_text, re.I))
+
+        _outer_nums = [float(n) for n in re.findall(r'\d+(?:\.\d+)?', hard.get("outer_size", "") or "")
+                       if float(n) >= 10]
+        hard["is_large_part"] = bool(_outer_nums and max(_outer_nums) >= 500)
+
+        # 腔体深度粗估：从关键尺寸中找最小值作为可能的腔体深度参考
+        if hard["is_cavity_part"]:
+            _key_nums = [float(n) for n in re.findall(r'\d+(?:\.\d+)?', hard.get("key_dims", "") or "")
+                         if 5 <= float(n) <= 100]
+            if _key_nums:
+                hard["cavity_depth_hint"] = f"关键尺寸中含可能的腔深参考值：{min(_key_nums):.0f}~{max(_key_nums):.0f}mm"
 
         # ── 特征字段（传递给 post-check 用于一致性对比）──
         feature_fields = {}
@@ -713,6 +903,48 @@ class ProcessGenerator:
             for m in re.finditer(p, text):
                 found.append(m.group(0).strip())
         return "；".join(dict.fromkeys(found)) if found else ""
+
+    @staticmethod
+    def _extract_material_form(feature_text: str) -> str:
+        """从特征报告提取【物料形态】字段；无该字段或为"其他"时降级推断。"""
+        declared = ""
+        m = re.search(r'【物料形态】([^\n【]*)', feature_text)
+        if m:
+            declared = m.group(1).strip()
+        # 有明确非"其他"值时直接返回
+        if declared and declared not in ("无", "其他"):
+            return declared
+
+        # 降级推断1：≠ 符号
+        if re.search(r'[≠δ]\s*\d+', feature_text):
+            return "板料"
+        # 降级推断2：外形尺寸几何比例 — 最小维度 < 最大维度的 30% 视为薄板
+        outer_m = re.search(r'【外形尺寸】([^\n【]*)', feature_text)
+        if outer_m:
+            nums = re.findall(r'\d+(?:\.\d+)?', outer_m.group(1))
+            if len(nums) >= 3:
+                vals = sorted([float(n) for n in nums[:3]])
+                # vals[0]=最小, vals[2]=最大
+                if vals[2] > 0 and vals[0] / vals[2] < 0.30:
+                    return "板料"
+        # 降级推断3：圆棒格式
+        if re.search(r'φ\s*\d+\s*[×x]\s*\d', feature_text):
+            return "棒料（圆）"
+        return declared or ""
+
+    @staticmethod
+    def _infer_blueprint_material_form(rag_context: str) -> str:
+        """从蓝本工艺文本推断物料形态（用于不匹配检测）。"""
+        if not rag_context:
+            return ""
+        if re.search(r'[≠δ]\s*\d+|铣四边', rag_context):
+            return "板料"
+        if re.search(r'φ\s*\d+\s*[×x]\s*\d', rag_context):
+            return "棒料（圆）"
+        if re.search(r'铣六面', rag_context):
+            # 铣六面通常对应方棒或块体
+            return "棒料（方）"
+        return ""
 
     @staticmethod
     def _derive_blank_from_creo_fields(fields: dict, part_count: int = 1) -> str:
@@ -1022,7 +1254,7 @@ class ProcessGenerator:
     def _extract_allowed_feature_fragments(rag_context: str, review_constraints: dict) -> dict:
         """从历史候选中提取允许补充的局部特征。
 
-        仅当低相似度（图号不匹配或<70%）时调用。
+        仅当低相似度（图号不匹配或<80%）时调用。
         只返回当前审阅特征未明确给出的受控字段。
 
         Returns:
@@ -1307,6 +1539,111 @@ class ProcessGenerator:
             )
             process_raw = blank_pat.sub(_fix_blank_line, process_raw)
 
+        # ── ① bis: 掏铣外形 → 三段式备料尺寸兜底校验 ──
+        # 仅当生成结果含"掏铣外形"且备料尺寸明显偏小时修正；不插入铣四边（交由提示词控制）
+        # 几何守卫：小边 ≥ 150mm 且 长厚比 ≥ 20（与提示词触发条件一致）
+        # 对于小边 < 150mm 的细长板（如 Y2 293×51.3×10），即使 LLM 写了"掏铣外形"也不套三段式
+        if "掏铣外形" in process_raw:
+            _outer_val = hard.get("outer_size", "")
+            if _outer_val and _outer_val != "无":
+                _onums = re.findall(r'\d+(?:\.\d+)?', _outer_val)
+                _ovals = sorted([float(n) for n in _onums if float(n) >= 5], reverse=True)
+                if len(_ovals) >= 2:
+                    _L = _ovals[0]
+                    _W = _ovals[1]
+                    _T = int(_ovals[2]) if len(_ovals) >= 3 else None
+                    # 薄板夹持框判定：小边 ≥ 150mm 且 长厚比 ≥ 20（与提示词触发条件一致）
+                    # 细长板/厚板即使 LLM 写"掏铣外形"也只是工步描述，无需三段式备料
+                    _needs_frame = _W >= 150 and _T is not None and _T > 0 and _L / _T >= 20
+                    if not _needs_frame and _T is not None:
+                        # 兜底：LLM 违规生成了三段式备料，改回简单余量
+                        _sl = int(_L + 5) if _L <= 100 else int(_L + 7)
+                        _sw = int(_W + 5) if _W <= 100 else int(_W + 7)
+                        _min3 = int(_L + 15 * 2)  # 最小三段式尺寸下限（frame=15最小）
+                        _bm2 = re.search(
+                            r'^((?:-\s*)?\d{4}\s*[:：@\-\|,，;；\s]*'
+                            r'(?:[^\n]*?(?:备料|下料|毛坯)[^\n]*|[≠δ≠][^\n]*))$',
+                            process_raw, re.MULTILINE,
+                        )
+                        if _bm2:
+                            _bv = sorted(
+                                [float(n) for n in re.findall(r'\d+(?:\.\d+)?', _bm2.group(1)) if float(n) >= 5],
+                                reverse=True,
+                            )
+                            if _bv and _bv[0] >= _min3:
+                                _fix = f"≠{_T}×{_sl}×{_sw}"
+                                _ob = _bm2.group(1)
+                                _nb = re.sub(r'[≠δ]\s*\d+\s*[×xX]\s*\d+\s*[×xX]\s*\d+', _fix, _ob, count=1)
+                                if _nb == _ob:
+                                    _nb = re.sub(r'\d{3,}\s*[×xX]\s*\d{2,}(?:\s*[×xX]\s*\d+)?', f'{_sl}×{_sw}', _ob, count=1)
+                                if _nb != _ob:
+                                    process_raw = process_raw.replace(_ob, _nb, 1)
+                    if _needs_frame:
+                        _fr = 15 if _L <= 150 else (20 if _L <= 300 else 25)
+                        _L_blank = int(_L + _fr * 2 + 5)
+                        _W_blank = int(_W + _fr * 2 + 5)
+                        # 扫描生成工序中的备料行（匹配含"备料/下料"关键字或含≠/δ毛坯符号的行）
+                        _bm = re.search(
+                            r'^((?:-\s*)?\d{4}\s*[:：@\-\|,，;；\s]*'
+                            r'(?:[^\n]*?(?:备料|下料|毛坯)[^\n]*|[≠δ≠][^\n]*))$',
+                            process_raw, re.MULTILINE,
+                        )
+                        if _bm:
+                            _bcurr = re.findall(r'\d+(?:\.\d+)?', _bm.group(1))
+                            _bvals = sorted([float(n) for n in _bcurr if float(n) >= 5], reverse=True)
+                            _cur_max = _bvals[0] if _bvals else 0
+                            if _cur_max < _L_blank - 10:
+                                _t_prefix = f"≠{_T}×" if _T else "≠"
+                                _correct = f"{_t_prefix}{_L_blank}×{_W_blank}"
+                                _old_b = _bm.group(1)
+                                _new_b = re.sub(
+                                    r'[≠δ]\s*\d+\s*[×xX]\s*\d+\s*[×xX]\s*\d+',
+                                    _correct, _old_b, count=1,
+                                )
+                                if _new_b == _old_b:
+                                    _new_b = re.sub(
+                                        r'\d{3,}\s*[×xX]\s*\d{3,}(?:\s*[×xX]\s*\d+)?',
+                                        f'{_L_blank}×{_W_blank}', _old_b, count=1,
+                                    )
+                                if _new_b != _old_b:
+                                    process_raw = process_raw.replace(_old_b, _new_b, 1)
+
+        # ── ④ 铣四边缺失兜底（LLM 不遵从提示词时的后处理） ──
+        _mf = hard.get("material_form", "")
+        if "板料" in _mf and "铣四边" not in process_raw and "铣六面" not in process_raw:
+            _outer = hard.get("outer_size", "")
+            if _outer and _outer != "无":
+                _nums = re.findall(r'\d+(?:\.\d+)?', _outer)
+                if len(_nums) >= 3:
+                    _vals = sorted([float(n) for n in _nums], reverse=True)
+                    _l, _w = int(_vals[0]), int(_vals[1])
+                    _lines = process_raw.split("\n")
+                    _insert_at = -1
+                    for _i, _line in enumerate(_lines):
+                        if not _line.strip():
+                            continue
+                        if re.search(r'（工种：(备料|检)）', _line):
+                            _insert_at = _i + 1
+                        else:
+                            if _insert_at >= 0:
+                                break
+                    if 0 < _insert_at < len(_lines):
+                        _mill_line = f"- 0100: 铣四边{_l}×{_w} （工种：铣）"
+                        _check_line = f"- 0105: 外观检验 （工种：检）"
+                        _lines.insert(_insert_at, _check_line)
+                        _lines.insert(_insert_at, _mill_line)
+                        # Renumber subsequent lines (+50 to avoid clashes)
+                        _step_pat = re.compile(r'^(-\s*)(\d{4})(\s*[:：])')
+                        _base = 150  # first renumbered step
+                        for _j in range(_insert_at + 2, len(_lines)):
+                            _s = _lines[_j]
+                            if _step_pat.match(_s):
+                                _new_num = _base + (_j - _insert_at - 2) * 50
+                                _lines[_j] = _step_pat.sub(
+                                    lambda m: f"{m.group(1)}{_new_num:04d}{m.group(3)}", _s
+                                )
+                        process_raw = "\n".join(_lines)
+
         # ── ② 孔数量覆盖 ──
         geo_hole_count = hard.get("geo_hole_count", 0)
         if geo_hole_count > 0:
@@ -1361,8 +1698,19 @@ class ProcessGenerator:
 
         以当前审阅特征为主约束源，蓝本仅提供流程框架。
         """
-        # 候选信息
-        candidates_info = ""
+        # ContextHarness: 槽位预算（约 4 字符/token）
+        expert_judgment = expert_judgment[:3200]   # ~800 tokens
+        rag_context = rag_context[:8000]           # ~2000 tokens
+
+        # 候选信息（Plan C：注入结构维度）
+        curr_t, curr_area = self._parse_structural_dims(fused_description)
+        struct_hint = ""
+        if curr_t is not None:
+            struct_hint = f"当前零件结构维度：厚度≈{curr_t:.0f}mm"
+            if curr_area is not None:
+                struct_hint += f"，面积≈{curr_area / 10000:.1f}万mm²"
+            struct_hint += "\n"
+        candidates_info = struct_hint
         if rag_results and rag_results.get("matches"):
             for i, m in enumerate(rag_results["matches"][:3], 1):
                 candidates_info += f"候选{i}: {m.get('drawing_id')} (相似度:{m.get('similarity'):.3f}, 类型:{m.get('match_type')})\n"
@@ -1428,6 +1776,30 @@ class ProcessGenerator:
 - 与主体结构绑定的关键尺寸
 - 当前审阅特征已明确但历史值不同的数值"""
 
+        # ── 吊面/翻面约束段落 ──
+        flip_face = hard.get("flip_face", "")
+        flip_face_section = ""
+        if flip_face:
+            flip_face_section = f"""
+## 吊面/翻面约束（重要，不可省略）
+当前零件存在吊面（背面需加工的特征）：{flip_face}
+⚠️ 工艺规程**必须包含翻面操作**，具体要求：
+- 正面加工工序完成后，必须有一道"翻面，加工背面"的翻面步骤（可合并在数控铣工序工步中）
+- 背面特征（孔/螺纹孔/沉孔/槽等）须在翻面后的工步中单独列出，不可遗漏
+- 蓝本若无翻面步骤，必须新增；不可因蓝本无翻面步骤而省略
+- 工种保持与正面加工工序一致（通常为数铣或数控铣）
+
+**翻面工序格式模板（根据当前零件背面实际特征替换方括号内容，禁止照抄）：**
+写法A（翻面独立工序，背面特征较多时推荐）：
+  00XX  数控铣  以底面定位，铣削正面[特征描述]；钻攻正面[孔规格，如4×M6深10]；
+  00XX  翻面    翻面，以正面为基准重新装夹，压紧底面两侧；
+  00XX  数控铣  铣削背面[平面/槽，注明尺寸和粗糙度]；钻攻背面[孔规格]；
+写法B（翻面作工步，背面特征简单时可合并在同一工序）：
+  00XX  数控铣
+    工步1：以底面定位，铣削正面[特征]；钻攻正面[孔规格]；
+    工步2：翻面，以正面为基准重新装夹；铣削/钻攻背面[背面具体特征]；
+"""
+
         geo_summary = self._extract_key_geo_fields(fused_description)
         geo_summary_line = f"\n**当前零件关键参数**: {geo_summary}" if geo_summary else ""
         authoritative_blank = hard.get("geo_blank_spec", "") or hard.get("blank_size", "")
@@ -1448,6 +1820,207 @@ class ProcessGenerator:
             fused_description, authoritative_blank, rag_context=rag_context
         )
 
+        # ── 物料形态约束 ──
+        material_form = hard.get("material_form", "")
+        material_form_section = ""
+        if material_form:
+            material_form_section = f"\n## 物料形态约束\n当前零件物料形态：**{material_form}**\n"
+            if "板料" in material_form:
+                # 板厚判断：薄板铣四边，厚板（>40mm）铣六面
+                _thickness_for_mill = None
+                _outer_val = hard.get("outer_size", "")
+                if _outer_val and _outer_val != "无":
+                    _outer_nums = re.findall(r'\d+(?:\.\d+)?', _outer_val)
+                    _outer_vals = sorted([float(n) for n in _outer_nums if float(n) >= 3])
+                    if _outer_vals:
+                        _thickness_for_mill = _outer_vals[0]
+                if _thickness_for_mill and _thickness_for_mill > 40:
+                    material_form_section += (
+                        f"- 当前零件板厚 {_thickness_for_mill:.0f}mm > 40mm，属于厚板\n"
+                        "- 铣工序内容必须写**铣六面**（厚板需加工六个面），禁止写铣四边\n"
+                        "- 铣六面工序的**工种必须写铣**，禁止写数控铣；铣六面是普通铣床工序\n"
+                        "- 备料格式：≠板厚×长×宽\n"
+                        "- 铣方保证尺寸：长×宽×厚，均带 ±0.1 公差\n"
+                    )
+                else:
+                    material_form_section += (
+                        "- 铣四边工序的**工种必须写铣**，禁止写数控铣；铣四边是普通铣床工序\n"
+                        "- 铣工序内容必须写**铣四边**，禁止出现铣六面\n"
+                        "- 备料格式：≠板厚×长×宽\n"
+                        "- 铣工序保证尺寸只含长×宽，不含厚度\n"
+                        "- **禁止**在数控铣工序中出现铣大底面、铣底面步骤；板料厚度已由备料保证，无需再铣底面\n"
+                    )
+            blueprint_form = self._infer_blueprint_material_form(rag_context)
+            if blueprint_form and blueprint_form != material_form:
+                material_form_section += (
+                    f"⚠️ **蓝本物料形态（{blueprint_form}）与当前零件（{material_form}）不匹配**：\n"
+                    "- 蓝本的备料规格、铣削工序结构**不可参考**\n"
+                    "- 仅可参考蓝本的检验、表处、包装等通用工序的组织方式\n"
+                )
+
+        # ── 热处理约束 ──
+        heat_val = hard.get("heat_treatment", "")
+        _is_al   = hard.get("is_aluminum_alloy", False)
+        _is_cav  = hard.get("is_cavity_part", False)
+        _is_lg   = hard.get("is_large_part", False)
+        if not heat_val or heat_val == "无":
+            if _is_al and _is_cav and _is_lg:
+                # 铝合金大型腔体件：图纸虽未注明，但工程上需要去应力，不强制禁止
+                heat_treatment_section = (
+                    "\n## 热处理约束\n"
+                    "当前零件图纸【热处理与探伤】字段为无，通常不添加热处理工序。\n"
+                    "**但当前零件属于铝合金大型腔体件（外形≥500mm），工程实践中粗铣后常需**：\n"
+                    "- 方案A（推荐）：粗铣完卸料，**静置12~24h** 自然释放应力，再精铣\n"
+                    "- 方案B：如客户/工艺协议有要求，可安排**低温去应力退火**（约150~180℃）\n"
+                    "若图纸/技术协议未明确要求退火，优先使用方案A（卸料静置），不单独列热处理工序。\n"
+                    "蓝本中若含淬火/调质/高温退火等与铝合金腔体无关的热处理，必须删除。\n"
+                )
+            else:
+                heat_treatment_section = (
+                    "\n## 热处理约束\n"
+                    "当前零件【热处理与探伤】字段为无，**禁止添加任何热处理工序**"
+                    "（退火、时效、淬火、回火、调质等均不允许出现）。"
+                    "蓝本中若含热处理工序，必须删除。\n"
+                )
+        else:
+            heat_treatment_section = (
+                f"\n## 热处理约束\n"
+                f"当前零件热处理要求：{heat_val}\n"
+                f"必须按此添加对应热处理工序，不可省略。\n"
+            )
+
+        # ── 表面处理/镀覆约束 ──
+        st_val = hard.get("surface_treatment", "")
+        if not st_val or st_val == "无":
+            surface_treatment_section = (
+                "\n## 表面处理约束\n"
+                "当前零件【表面处理与镀层特征】字段为无，**禁止添加任何镀覆/表处工序**"
+                "（镀覆、阳极化、氧化、涂漆、喷漆等均不允许出现）。"
+                "蓝本中若含镀覆/表处工序，必须删除。\n"
+            )
+        else:
+            surface_treatment_section = (
+                f"\n## 表面处理约束\n"
+                f"当前零件表面处理要求：{st_val}\n"
+                f"必须按此添加对应表处工序，不可省略。\n"
+            )
+            # 特定涂漆规范需要前处理（化学氧化/镀覆）
+            _paint_pre_treat_specs = ["Ts96-61", "海依", "Ts96"]
+            if any(spec in st_val for spec in _paint_pre_treat_specs):
+                surface_treatment_section += (
+                    "- 当前涂漆规范（Ts96-61/海依）要求涂漆前进行化学氧化（镀覆）前处理\n"
+                    "- 应在涂漆工序前单独列一道**表处（化学氧化/镀覆）**工序，"
+                    "或在涂漆工序内容中注明包括前处理\n"
+                )
+
+        # ── 腔体件特殊制造规则 ──
+        cavity_manufacturing_section = ""
+        if hard.get("is_cavity_part"):
+            _cav_rules = [
+                "当前零件含**复杂内腔结构**，必须遵循以下腔体件制造规则：",
+                "- **数控铣须分阶段**：至少分粗加工、半精加工、精加工三个独立工序，不可合并为一道",
+                "  - 粗铣：去大余量，单面留余量4~5mm",
+                "  - 半精铣：单面留余量0.5~1mm",
+                "  - 精铣：达到图纸尺寸和公差",
+                "- **工艺凸台**：粗铣外形时沿一周保留宽≥50mm工艺凸台（防薄板翻转变形），"
+                "精铣前最后一道工序铣去",
+                "- **卸料静置**：粗铣完毕后卸料放置12~24h，令残余应力自然释放后再精加工",
+            ]
+            if hard.get("is_aluminum_alloy") and hard.get("is_large_part"):
+                _cav_rules.append(
+                    "- **铝合金大型腔体**：因变形风险高，粗铣→半精铣→精铣各阶段之间"
+                    "均需卸料检测平面度，超差需校平后再继续"
+                )
+            cavity_depth = hard.get("cavity_depth_hint", "")
+            if cavity_depth:
+                _cav_rules.append(f"- 备料厚度参考：{cavity_depth}，备料厚度应为成品厚度 + 内腔最大深度 + 双面加工余量")
+            cavity_manufacturing_section = "\n## 腔体件特殊制造规则（重要，必须遵守）\n" + "\n".join(_cav_rules) + "\n"
+
+        # ── 数控铣位置尺寸映射提示 ──
+        key_dims_val = hard.get("key_dims", "")
+        cnc_dim_section = ""
+        if key_dims_val:
+            cnc_dim_section = (
+                f"\n## 数控铣工步尺寸映射\n"
+                f"当前零件【关键尺寸】：{key_dims_val}\n"
+                "生成数控铣工序内容时，规则如下：\n"
+                "- 铣槽/铣缺口/铣异型面的工步必须写出保证尺寸，从上述关键尺寸中选取相关数值\n"
+                "- 角度、半径、定位距离（如6.8°、R3、R5、定位坐标）须写入对应工步\n"
+                "- 钻孔/攻丝工步须包含孔径和深度（如5×φ2.5,深8；3×M5,深12）\n"
+                "- 不要只写操作动词，必须同时写保证尺寸\n"
+            )
+
+        # ── 板料备料余量规则（有外形尺寸且无权威毛坯规格时触发，不依赖物料形态） ──
+        blank_allowance_section = ""
+        if not authoritative_blank:
+            outer_val = hard.get("outer_size", "")
+            if outer_val and outer_val != "无":
+                _nums = re.findall(r'\d+(?:\.\d+)?', outer_val)
+                _plate_hint = ""
+                if len(_nums) >= 3:
+                    _vals = sorted([float(n) for n in _nums[:3]])
+                    _thickness = _vals[0]
+                    _l, _w = _vals[2], _vals[1]
+                    # 腔体件：备料厚度需加上内腔深度余量
+                    # 从关键尺寸中估计最大腔深（取关键尺寸中 5~60mm 的最大值作为腔深上限）
+                    if hard.get("is_cavity_part") and _thickness < 150:
+                        _key_nums_for_depth = [
+                            float(n) for n in re.findall(r'\d+(?:\.\d+)?', hard.get("key_dims", "") or "")
+                            if 5 <= float(n) <= 60
+                        ]
+                        _est_cavity_depth = max(_key_nums_for_depth, default=0)
+                        if _est_cavity_depth >= 5:
+                            _raw_thickness = _thickness + _est_cavity_depth + 5  # 腔深 + 5mm 双面余量
+                            _raw_thickness = (int(_raw_thickness // 10) + 1) * 10  # 向上取整到10的倍数
+                            _thickness = max(_thickness, _raw_thickness)
+                    # 掏铣外形检测：文本关键字 OR 几何规则（薄方板：小边≥150mm且长厚比≥20）
+                    _has_profile_mill = any(
+                        "掏铣" in (src or "")
+                        for src in [rag_context, expert_judgment, fused_description]
+                    ) or (
+                        _w >= 150
+                        and _thickness > 0
+                        and _l / _thickness >= 20
+                    )
+                    if _has_profile_mill:
+                        # 三段式：最终外形 → 铣四边中间尺寸 → 毛坯
+                        # 夹持框余量：≤150mm取15，≤300mm取20，>300mm取25（每边）
+                        _frame = 15 if _l <= 150 else (20 if _l <= 300 else 25)
+                        _l_inter = int(_l + _frame * 2)
+                        _w_inter = int(_w + _frame * 2)
+                        _l_blank = _l_inter + 5
+                        _w_blank = _w_inter + 5
+                        _plate_hint = (
+                            f"  三段式计算结果（夹持框每边{_frame}mm）：\n"
+                            f"  毛坯：≠{int(_thickness)}×{_l_blank}×{_w_blank}\n"
+                            f"  铣四边中间尺寸：{_l_inter}×{_w_inter}\n"
+                            f"  最终外形：{int(_l)}×{int(_w)}\n"
+                        )
+                        blank_allowance_section = (
+                            f"\n## 备料余量规则（掏铣外形三段式）\n"
+                            f"当前外形尺寸：{outer_val}\n"
+                            "当前零件为薄板件（需夹持框掏铣外形），必须使用三段式备料策略：\n"
+                            f"{_plate_hint}"
+                            "- 第1步 备料：毛坯按上述尺寸，板厚不加余量，长宽各加(夹持框x2+5)mm\n"
+                            "- 第2步 铣四边：铣到中间尺寸（保留夹持框供后续掏铣装夹），工种写铣\n"
+                            "- 第3步 数控铣：掏铣外形到最终尺寸\n"
+                            "- 工序必须包含：备料->检->铣(铣四边)->钳(去毛刺)->检->数控铣(掏铣外形)\n"
+                            "- 备料工序必须写出具体规格，禁止只写备料二字\n"
+                        )
+                    else:
+                        _l_blank = int(_l + 5) if _l <= 100 else int(_l + 7)
+                        _w_blank = int(_w + 5) if _w <= 100 else int(_w + 7)
+                        blank_allowance_section = (
+                            f"\n## 备料余量规则\n"
+                            f"当前外形尺寸：{outer_val}\n"
+                            f"  备料规格（已锁定）：≠{int(_thickness)}×{_l_blank}×{_w_blank}\n"
+                            "要求：\n"
+                            "- 备料工序**必须使用上述已锁定规格**，禁止自行修改尺寸\n"
+                            "- 此零件小边<150mm，**禁止三段式备料**（无夹持框需求）\n"
+                            "- **禁止**在备料和数控铣之间插入独立的铣四边工序作为夹持框收缩步\n"
+                            "- 备料后直接进数控铣，外形轮廓在数控铣工步内完成\n"
+                        )
+
         prompt = f"""你是一名资深工艺工程师。从候选工艺中选出最合适的蓝本，按最小改动原则输出最终工艺。{geo_summary_line}
 
 ## 模式
@@ -1465,11 +2038,20 @@ class ProcessGenerator:
 - **视图交叉验证（重要）**：蓝本中出现的"按主/俯/仰/左/右视图，钻/铣/攻…"等按视图标注的操作，必须与当前零件的几何描述或专家分析中的视图/孔位信息交叉核对。若当前零件对应视图中不存在这些特征，必须删除该操作或改为适合当前零件的描述。无对应视图信息的蓝本操作不应原样保留
 
 {hard_constr_instruction}
+{material_form_section}
+{heat_treatment_section}
+{surface_treatment_section}
+{cavity_manufacturing_section}
+{flip_face_section}
+{cnc_dim_section}
+{blank_allowance_section}
 {blank_instruction}
 {mill_blank_instruction}
 
 ## 选型规则
 - 工序数为 0 的候选视为无效，不可作为蓝本
+- 优先选择备料工序中≠厚度与当前零件接近、长宽面积量级相当的蓝本
+- 大面积薄板（面积>10万mm²）工艺复杂度接近厚板，不应选用小尺寸薄板蓝本
 - 如果所有候选工序数都为 0，或所有候选图号与当前零件差异过大，请直接从零编制
 - 如果看到 `ENDD$$`，把它当作空格分隔符忽略，不要写进结果
 
@@ -1495,7 +2077,7 @@ class ProcessGenerator:
 {expert_judgment}
 
 ## 当前零件几何描述:
-{fused_description}
+{fused_description[:800]}
 
 ## 输出格式:
 ```markdown
@@ -1509,7 +2091,8 @@ class ProcessGenerator:
 ```
 - **每一道工序必须标注工种**，格式为 （工种：xx），不得省略
 - 若蓝本工序行已有工种则沿用；若无，则根据工序内容推断最合适的工种
-- 常见工种参考：料（备料）、热处理（退火/时效）、铣（铣外形/铣方）、数铣（数控铣/CNC）、车（车削）、钻（钻孔）、钳（去毛刺/攻丝/清洗）、钳装（试装/组合加工/装配）、表处（阳极化/电镀/喷漆）、检（检验/标识入库）"""
+- 常见工种参考：料（备料）、热处理（退火/时效）、铣（铣外形/铣方）、数铣（数控铣/CNC）、车（车削）、钻（钻孔）、钳（去毛刺/攻丝/清洗）、钳装（试装/组合加工/装配）、镀覆（外协镀覆，如AL/Ct.Ocd等规范）、表处（阳极化/化学氧化/喷漆）、检（检验/标识入库）
+- ⚠️ 镀覆与表处区别：外协送镀（AL/Ct、铬酸阳极化等规范+按外协技术协议）→工种填【镀覆】；本厂阳极化/化学氧化/喷漆→工种填【表处】"""
         return prompt
 
     def _build_llm_prompt(
@@ -1520,7 +2103,14 @@ class ProcessGenerator:
         rag_results: Optional[Dict[str, Any]],
     ) -> str:
         """Build LLM prompt with RAG context."""
-        candidates_info = ""
+        curr_t, curr_area = self._parse_structural_dims(fused_description)
+        struct_hint = ""
+        if curr_t is not None:
+            struct_hint = f"当前零件结构维度：厚度≈{curr_t:.0f}mm"
+            if curr_area is not None:
+                struct_hint += f"，面积≈{curr_area / 10000:.1f}万mm²"
+            struct_hint += "\n"
+        candidates_info = struct_hint
         if rag_results and rag_results.get("matches"):
             for i, m in enumerate(rag_results["matches"][:3], 1):
                 candidates_info += f"候选{i}: {m.get('drawing_id')} (相似度:{m.get('similarity'):.3f}, 类型:{m.get('match_type')})\n"
@@ -1532,6 +2122,8 @@ class ProcessGenerator:
 
 ## 选型规则
 - 工序数为 0 的候选视为无效，不可作为蓝本
+- 优先选择备料工序中≠厚度与当前零件接近、长宽面积量级相当的蓝本
+- 大面积薄板（面积>10万mm²）工艺复杂度接近厚板，不应选用小尺寸薄板蓝本
 - 如果所有候选工序数都为 0，或所有候选图号与当前零件差异过大，请直接从零编制
 - 如果看到 `ENDD$$`，把它当作空格分隔符忽略，不要写进结果
 
@@ -1563,7 +2155,7 @@ class ProcessGenerator:
 {expert_judgment}
 
 ## 当前零件几何描述:
-{fused_description}
+{fused_description[:800]}
 
 ## 输出格式:
 ```markdown
@@ -1577,18 +2169,77 @@ class ProcessGenerator:
 ```
 - **每一道工序必须标注工种**，格式为 （工种：xx），不得省略
 - 若蓝本工序行已有工种则沿用；若无，则根据工序内容推断最合适的工种
-- 常见工种参考：料（备料）、热处理（退火/时效）、铣（铣外形/铣方）、数铣（数控铣/CNC）、车（车削）、钻（钻孔）、钳（去毛刺/攻丝/清洗）、钳装（试装/组合加工/装配）、表处（阳极化/电镀/喷漆）、检（检验/标识入库）"""
+- 常见工种参考：料（备料）、热处理（退火/时效）、铣（铣外形/铣方）、数铣（数控铣/CNC）、车（车削）、钻（钻孔）、钳（去毛刺/攻丝/清洗）、钳装（试装/组合加工/装配）、镀覆（外协镀覆，如AL/Ct.Ocd等规范）、表处（阳极化/化学氧化/喷漆）、检（检验/标识入库）
+- ⚠️ 镀覆与表处区别：外协送镀（AL/Ct、铬酸阳极化等规范+按外协技术协议）→工种填【镀覆】；本厂阳极化/化学氧化/喷漆→工种填【表处】"""
         return prompt
 
     def _build_fallback_prompt(
-        self, fused_description: str, expert_judgment: str
+        self, fused_description: str, expert_judgment: str, constraints: dict = None
     ) -> str:
         """Build LLM prompt without RAG context."""
         geo_summary = self._extract_key_geo_fields(fused_description)
         geo_summary_line = f"\n**当前零件关键参数**: {geo_summary}" if geo_summary else ""
 
+        flip_face = ""
+        material_form = ""
+        outer_size = ""
+        if constraints:
+            hard_c = constraints.get("hard_constraints") or {}
+            flip_face = hard_c.get("flip_face", "")
+            material_form = hard_c.get("material_form", "")
+            outer_size = hard_c.get("outer_size", "")
+
+        # fallback 独立检测：若融合特征含 ≠/δ 板厚符号，强制为板料
+        if "板料" not in material_form and re.search(r'[≠δ]\s*\d+', fused_description):
+            material_form = "板料"
+
+        flip_face_section = ""
+        if flip_face:
+            flip_face_section = f"""
+## 吊面/翻面约束（重要，不可省略）
+当前零件存在吊面（背面需加工的特征）：{flip_face}
+⚠️ 工艺规程**必须包含翻面操作**：正面加工完成后增加翻面步骤，背面特征在翻面后工步中单独列出。
+
+**翻面工序格式模板（根据当前零件背面实际特征替换方括号内容，禁止照抄）：**
+写法A（翻面独立工序，背面特征较多时推荐）：
+  00XX  数控铣  以底面定位，铣削正面[特征描述]；钻攻正面[孔规格，如4×M6深10]；
+  00XX  翻面    翻面，以正面为基准重新装夹，压紧底面两侧；
+  00XX  数控铣  铣削背面[平面/槽，注明尺寸和粗糙度]；钻攻背面[孔规格]；
+写法B（翻面作工步，背面特征简单时可合并在同一工序）：
+  00XX  数控铣
+    工步1：以底面定位，铣削正面[特征]；钻攻正面[孔规格]；
+    工步2：翻面，以正面为基准重新装夹；铣削/钻攻背面[背面具体特征]；
+"""
+
+        material_form_section = ""
+        if "板料" in material_form:
+            _thickness_for_mill = None
+            if outer_size and outer_size != "无":
+                _outer_nums = re.findall(r'\d+(?:\.\d+)?', outer_size)
+                _outer_vals = sorted([float(n) for n in _outer_nums if float(n) >= 3])
+                if _outer_vals:
+                    _thickness_for_mill = _outer_vals[0]
+            if _thickness_for_mill and _thickness_for_mill > 40:
+                material_form_section = (
+                    f"\n## 物料形态约束（板料·厚板）\n"
+                    f"当前零件物料形态：**{material_form}**，板厚{_thickness_for_mill:.0f}mm > 40mm，属于厚板\n"
+                    "- 备料（0010）之后**必须**有**铣六面**工序（工种：铣），将毛坯各面铣平，保证尺寸\n"
+                    "- 铣六面是普通铣床工序，工种填**铣**，禁止填数控铣\n"
+                    "- 之后才是数控铣精加工工序\n"
+                )
+            else:
+                material_form_section = (
+                    f"\n## 物料形态约束（板料·薄板）\n"
+                    f"当前零件物料形态：**{material_form}**\n"
+                    "- 备料（0010）之后**必须**有**铣四边**工序（工种：铣），将板料四周铣平，保证平面度和尺寸\n"
+                    "- 铣四边是普通铣床工序，工种填**铣**，禁止填数控铣\n"
+                    "- 铣四边保证尺寸只含长×宽，不含厚度（厚度已由备料保证）\n"
+                    "- 之后才是数控铣精加工工序\n"
+                )
+
         return f"""你是一名工艺工程师。知识库中无匹配参考，根据图纸分析结果从零编制工艺规程。{geo_summary_line}
 
+{flip_face_section}{material_form_section}
 ## 规则
 - 如果看到 `ENDD$$`，把它当作空格分隔符忽略，不要写进结果
 - 只输出能从专家分析或几何描述中直接读到的内容，不得推演或补全未提及的数值
@@ -1598,7 +2249,7 @@ class ProcessGenerator:
 {expert_judgment}
 
 ## 当前零件几何描述:
-{fused_description}
+{fused_description[:800]}
 
 ## 输出格式：
 ```markdown
@@ -1606,4 +2257,5 @@ class ProcessGenerator:
 ...
 ```
 - **每一道工序必须标注工种**，格式为 （工种：xx），不得省略
-- 根据工序内容推断最合适的工种：料（备料）、热（退火/时效）、铣（铣外形/铣方）、车（车削）、钻（钻孔）、攻（攻丝）、钳（去毛刺/试装/清洗）、表处（阳极化/电镀/喷漆）、检（检验/标识入库）"""
+- 根据工序内容推断最合适的工种：料（备料）、热（退火/时效）、铣（铣外形/铣方）、车（车削）、钻（钻孔）、攻（攻丝）、钳（去毛刺/试装/清洗）、镀覆（外协镀覆，如AL/Ct.Ocd等规范）、表处（阳极化/化学氧化/喷漆）、检（检验/标识入库）
+- ⚠️ 镀覆与表处区别：外协送镀（按外协技术协议）→工种填【镀覆】；本厂阳极化/化学氧化/喷漆→工种填【表处】"""

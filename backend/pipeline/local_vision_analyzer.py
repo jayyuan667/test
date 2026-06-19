@@ -238,3 +238,20 @@ class LocalVisionAnalyzer:
 
         print(f"[LocalVision] 所有图片分析完成，共 {len(results)} 页")
         return results
+
+    def analyze_drawing(self, image_paths: List[str]) -> Dict[str, Any]:
+        """兼容 VisionAnalyzer.analyze_drawing() 接口。
+
+        本地模式无双模并行能力，回退为逐页分析后合并描述。
+        """
+        results = self.analyze_images(image_paths)
+        ok_items = [r for r in results if r.get("ok") and r.get("description", "").strip()]
+        merged = "\n".join(r["description"] for r in ok_items)
+        has_error = any(not r.get("ok") for r in results)
+        return {
+            "image_path": image_paths[0] if image_paths else "",
+            "description": merged,
+            "timestamp": results[0]["timestamp"] if results else "",
+            "ok": bool(ok_items),
+            **({"error": "部分页面分析失败"} if has_error else {}),
+        }

@@ -2,12 +2,9 @@
 """Event emitter for SSE real-time progress updates."""
 
 import threading
-import sys
 from datetime import datetime
 from typing import Dict, Any, Callable
 import logging
-
-sys.stdout.reconfigure(encoding="utf-8")
 
 
 logger = logging.getLogger(__name__)
@@ -105,6 +102,19 @@ def emit_image_ready(
     image_path: str,
 ) -> None:
     """Emit an image_ready event when a page image is generated."""
+    import os
+    try:
+        from ..config import OUTPUT_FOLDER
+    except ImportError:
+        from backend.config import OUTPUT_FOLDER
+
+    try:
+        task_dir = os.path.join(OUTPUT_FOLDER, task_id)
+        rel = os.path.relpath(image_path, task_dir).replace("\\", "/")
+        asset_url = f"/api/result/{task_id}/asset/{rel}"
+    except Exception:
+        asset_url = ""
+
     emit_event = create_event_emitter(task_id, event_data, event_locks)
     emit_event(
         "image_ready",
@@ -112,6 +122,7 @@ def emit_image_ready(
             "page": page,
             "total": total,
             "image_path": image_path,
+            "url": asset_url,
             "message": f"第 {page}/{total} 页图片已生成",
         },
     )

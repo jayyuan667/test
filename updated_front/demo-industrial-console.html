@@ -3,16 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>智能工艺系统</title>
+  <title>二维工艺系统</title>
   <script>
-    window.__API_BASE__ = window.__API_BASE__ || 'http://localhost:5000/api';
+    window.__API_BASE__ = window.__API_BASE__ || 'http://localhost:5190/api';
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <script type="importmap">{"imports":{"three":"/dev/js/three.module.min.js"}}</script>
-  <script type="module" src="/dev/js/three-init.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;800&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/industrial-console.css">
+  <link rel="stylesheet" href="css/industrial-console.css?v=2">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">跳到主内容</a>
@@ -21,35 +16,35 @@
       <div class="brand">
         <div class="brand-mark"></div>
         <div>
-          <div class="brand-title">智能工艺系统</div>
-          <div class="brand-subtitle">智能工艺系统 · 生产环境</div>
+          <div class="brand-title">二维工艺系统</div>
+          <div class="brand-subtitle">二维工艺系统 · 生产环境</div>
         </div>
       </div>
 
       <nav class="nav">
         <button class="nav-item active" data-page="page-zip">
-          <span class="nav-icon">⧉</span>
+          <span class="nav-icon">IN</span>
           <span>
             <div class="nav-title">工艺入库</div>
             <div class="nav-subtitle">批次报告与记录浏览</div>
           </span>
         </button>
         <button class="nav-item" data-page="page-generate">
-          <span class="nav-icon">⬚</span>
+          <span class="nav-icon">GN</span>
           <span>
             <div class="nav-title">工艺生成</div>
             <div class="nav-subtitle">模型预览与工艺编制</div>
           </span>
         </button>
         <button class="nav-item" data-page="page-list">
-          <span class="nav-icon">☷</span>
+          <span class="nav-icon">HS</span>
           <span>
             <div class="nav-title">历史记录</div>
             <div class="nav-subtitle">历史输出与特征回看</div>
           </span>
         </button>
         <button class="nav-item" data-page="page-db">
-          <span class="nav-icon">⛁</span>
+          <span class="nav-icon">DB</span>
           <span>
             <div class="nav-title">数据库浏览</div>
             <div class="nav-subtitle">客户可见、支持修改删除</div>
@@ -58,7 +53,7 @@
       </nav>
 
       <div class="sidebar-footer">
-        <div class="sidebar-chip">▤ 导航</div>
+        <div class="sidebar-chip">Process Navigation</div>
         <button class="sidebar-collapse-btn" id="sidebarToggleBtn" type="button" aria-expanded="true">折叠侧栏</button>
       </div>
     </aside>
@@ -66,30 +61,32 @@
     <main class="main" id="mainContent" tabindex="-1">
       <div class="content-scroll">
         <section class="page" id="page-generate">
-          <div class="workspace-card workflow-hud" id="workflowHudCard">
-              <div class="workflow-hud-head">
-                <div style="font-weight:800; color:#1f2d3d;">工艺生成进度</div>
-                <div class="workflow-hud-head-actions">
-                  <div style="font-weight:800; color:#ff6528;" id="workflowPercent">0%</div>
+          <div class="workspace-card generate-workspace">
+            <!-- 统一顶栏：操作按钮 + 进度 HUD 合并 -->
+            <div class="unified-topbar workflow-hud" id="workflowHudCard">
+              <div class="unified-topbar-main">
+                <div class="toolbar-actions">
+                  <button class="button primary" id="uploadGenerateBtn"><span class="btn-full">上传图纸</span><span class="btn-short">上传</span></button>
+                  <button class="button secondary" id="retrievalLibraryBtn"><span class="btn-full">检索库：公共工艺库</span><span class="btn-short">工艺库</span></button>
+                  <button class="button secondary" id="featureCacheToggleBtn" title="开启后，同一份图纸再次上传时跳过 VLM 提取，直接恢复上次分析结果"><span class="btn-full">特征缓存：关</span><span class="btn-short">缓存</span></button>
+                  <button class="button secondary" id="resetGenerateBtn"><span class="btn-full">重置工作区</span><span class="btn-short">重置</span></button>
+                </div>
+                <div class="unified-topbar-right">
+                  <span class="unified-phase-label">工艺生成进度</span>
+                  <div class="unified-percent" id="workflowPercent">0%</div>
                   <button class="button secondary workflow-hud-toggle" id="workflowHudToggleBtn" type="button">收起</button>
                 </div>
               </div>
               <div class="workflow-hud-body">
-                <div id="workflowPhaseHint" class="workflow-phase-hint" aria-live="polite">等待 PRT 进入解析流程</div>
                 <div class="workflow-progress-rail">
                   <div id="workflowProgressBar" class="workflow-progress-bar" style="width:0%;"></div>
                 </div>
-            </div>
-          </div>
-
-          <div class="workspace-card">
-            <div class="workspace-toolbar">
-              <div class="section-label">工艺模型预览</div>
-              <div class="toolbar-actions">
-                <button class="button primary" id="uploadGenerateBtn">⤴ 上传文件</button>
-                <button class="button secondary" id="retrievalLibraryBtn">◉ 检索库：公共工艺库</button>
-                <button class="button secondary" id="resetGenerateBtn">↺ 重置工作区</button>
+                <div id="workflowPhaseHint" class="workflow-phase-hint" aria-live="polite">等待文件进入解析流程</div>
               </div>
+            </div>
+
+            <!-- 视图标签栏 -->
+            <div class="workspace-tabs-bar">
               <div class="result-tabs">
                 <button class="result-tab active" data-result-view="view-review">特征审阅</button>
                 <button class="result-tab" data-result-view="view-process">工艺规程</button>
@@ -100,16 +97,12 @@
               <div class="workbench-panel upload-panel" id="uploadPanel">
                 <div class="upload-panel-body" id="uploadPanelBody">
                   <div class="dropzone" id="dropzone">
-                    <div class="glyph">⌂</div>
-                    <div class="dropzone-title">拖拽上传 PRT 模型</div>
-<div class="dropzone-copy">
-                      <strong>支持 PRT 模型输入</strong>
-                      直接上传 PRT，系统将自动进行模型视图解析与工艺生成。
-                    </div>
+                    <div class="glyph">⬆</div>
+                    <div class="dropzone-title">上传 2D 工艺图纸</div>
+                    <div class="dropzone-copy">支持 PDF、PNG、JPG · 自动提取工艺特征并生成规程</div>
                     <div class="chip-row">
-                      <span class="chip">最大支持 20MB</span>
-                      <span class="chip">支持批量模型预览</span>
-                      <span class="chip">工业风正式版</span>
+                      <span class="chip">最大 20MB</span>
+                      <span class="chip">支持多页 PDF</span>
                     </div>
                   </div>
 
@@ -126,20 +119,28 @@
                           <div>
                             <div class="section-label">特征审阅</div>
                           </div>
-                        <div class="toolbar-actions">
-                          <button class="button secondary" id="reviewContinueBtn">确认特征并继续</button>
-                          <button class="button primary" id="reviewRerunBtn">修改后重新生成</button>
-                        </div>
                       </div>
 
+                      <div id="reviewAnnotationSummary" class="review-ann-summary"></div>
+
+                      <div id="reviewEmptyState" class="review-empty-state">
+                        <div class="glyph blue">◧</div>
+                        <div class="review-empty-title">上传图纸后查看特征</div>
+                        <div class="review-empty-copy">AI 将自动识别尺寸公差、粗糙度、形位公差等关键特征，逐条列出供你确认或修改。</div>
+                      </div>
                       <div class="review-table-shell" id="reviewTableHost"></div>
+                      <div class="review-board-footer">
+                        <button class="button secondary" id="reviewContinueBtn" disabled>确认特征并继续</button>
+                        <button class="button primary" id="reviewRerunBtn" disabled>修改后重新生成</button>
+                      </div>
                     </div>
+
                   </div>
 
                   <div class="result-view" id="view-process">
                     <div class="result-empty" id="processEmpty">
                       <div class="glyph blue">▤</div>
-                      <div class="dropzone-title" style="font-size:26px; margin:0;">请先上传 PRT</div>
+                      <div class="dropzone-title" style="font-size:26px; margin:0;">请先上传文件</div>
                       <div class="dropzone-copy" style="font-size:16px; max-width: 84%;">这里将显示工艺规程、工序步骤卡、推荐工艺路线和可编辑结果区。</div>
                     </div>
                     <div class="result-scroll" id="processResult" style="display:none;">
@@ -150,29 +151,9 @@
                             <button class="button secondary" id="openExportCardBtn">导出工艺文件</button>
                           </div>
                         </div>
-                        <div class="process-steps" id="processStepsList">
-                          <div class="step-row"><div class="step-code">0010</div><div class="step-content">划线、划检，确认毛坯余量、中心孔位置与基准面。</div></div>
-                          <div class="step-row"><div class="step-code">0020</div><div class="step-content">粗车外圆及内腔，各部位单边预留 5mm 加工余量。</div></div>
-                          <div class="step-row"><div class="step-code">0030</div><div class="step-content">F 面打硬度，检查热处理前材料状态并留存检测记录。</div></div>
-                          <div class="step-row"><div class="step-code">0040</div><div class="step-content">粗车、精车基准外圆，完成两端阶梯与 R5 过渡轮廓。</div></div>
-                          <div class="step-row"><div class="step-code">0050</div><div class="step-content">划两端联轴孔线，进行钻孔、扩孔和精镗，保证同轴度要求。</div></div>
-                        </div>
+                        <div class="process-steps" id="processStepsList"></div>
                       </div>
 
-                      <div class="editor-shell" id="editorShell">
-                        <div class="editor-pane">
-                          <h4>工艺文本编辑器</h4>
-                          <textarea class="editor-textarea" id="editorTextarea">- 0010: 划线、划检，确认毛坯余量、中心孔位置与基准面。
-- 0020: 粗车外圆及内腔，各部位单边预留 5mm 加工余量。
-- 0030: F 面打硬度，检查热处理前材料状态并留存检测记录。
-- 0040: 粗车、精车基准外圆，完成两端阶梯与 R5 过渡轮廓。
-- 0050: 划两端联轴孔线，进行钻孔、扩孔和精镗，保证同轴度要求。</textarea>
-                        </div>
-                        <div class="editor-pane">
-                          <h4>工艺预览</h4>
-                          <div class="editor-preview" id="editorPreview"></div>
-                        </div>
-                      </div>
                     </div>
                   </div>
 
@@ -191,7 +172,7 @@
                 <div class="summary-note">按任务、状态和更新时间浏览历史结果，点击快照即可打开分栏预览。</div>
               </div>
               <div class="toolbar-actions">
-                <button class="button secondary" id="historyRefreshBtn">⟳ 刷新历史</button>
+                <button class="button secondary" id="historyRefreshBtn">刷新历史</button>
                 <label class="toolbar-pill" style="gap:8px; padding:10px 12px; align-items:center;">
                   <strong>完成日期</strong>
                   <input id="historyCompletedDateInput" type="date" style="border:none; background:transparent; color:inherit; font:inherit; outline:none; min-width:140px;" />
@@ -268,8 +249,8 @@
                 <div class="section-label">记录检索、编辑与删除确认</div>
               </div>
               <div class="toolbar-actions">
-                <button class="button secondary" id="dbResetBtn">↺ 重置筛选</button>
-                <button class="button primary" id="dbRefreshBtn">⟳ 刷新列表</button>
+                <button class="button secondary" id="dbResetBtn">重置筛选</button>
+                <button class="button primary" id="dbRefreshBtn">刷新列表</button>
                 <button class="button secondary" id="dbDeleteLibraryBtn">删除当前数据库</button>
               </div>
               <div class="toolbar-right">
@@ -431,7 +412,7 @@
                 </label>
               </div>
               <div class="detail-chip-row" style="margin-top:8px;">
-                <span class="detail-chip">SQLite：vector_map_new.db</span>
+                <span class="detail-chip">SQLite：2d-v.db</span>
                 <span class="detail-chip" id="zipActiveLibraryChip">当前目标：未选择</span>
               </div>
               <div class="summary-note" style="margin-top:12px;">数据库浏览页会在至少完成一次 ZIP 入库后解锁，并默认打开你刚刚导入的那一个库。</div>
@@ -444,128 +425,126 @@
               <div class="toolbar-actions">
                 <button class="button secondary" id="zipConflictModeBtn">⇄ 冲突模式：替换入库</button>
               </div>
-              <div class="result-tabs" style="justify-content:flex-end;">
+            </div>
+
+            <!-- hidden elements kept for JS compatibility -->
+            <span id="zipBatchChip" style="display:none;"></span>
+            <span id="zipResultChip" style="display:none;"></span>
+            <span id="zipImportStatus" style="display:none;"></span>
+
+            <!-- 状态区：state-idle / state-running / state-done / state-error -->
+            <div class="zip-status-zone state-idle" id="zipStatusZone">
+              <div class="zip-status-panel zip-idle-panel">
+                <div class="dropzone compact zip-idle-dropzone" id="zipDropzone">
+                  <div class="glyph">⌁</div>
+                  <div class="dropzone-title">拖拽 ZIP 工艺包到此处</div>
+                  <div class=”dropzone-copy”>或点击上方 <strong>”上传工艺包”</strong> 按钮 · 将 PDF 工艺图纸打包为 ZIP 后上传，文件名主干需与图纸编号一致</div>
+                </div>
+              </div>
+
+              <div class="zip-status-panel zip-running-panel">
+                <div class="zip-progress-head">
+                  <div class="zip-phase-wrap">
+                    <span class="zip-pulse-dot"></span>
+                    <span id="zipImportPhase" class="zip-phase-text">等待上传工艺包</span>
+                  </div>
+                  <span id="zipImportPercent" class="zip-progress-pct">0%</span>
+                </div>
+                <div class="zip-progress-rail">
+                  <div id="zipProgressBar" class="zip-progress-bar" style="width:0%;"></div>
+                </div>
+                <div class="zip-stats-row">
+                  <span>总文件 <strong id="zipTotalFiles">0</strong></span>
+                  <span>配对 <strong id="zipMatchedCount">0</strong></span>
+                  <span>未匹配 <strong id="zipUnmatchedCount">0</strong></span>
+                  <span>错误 <strong id="zipErrorCount">0</strong></span>
+                </div>
+              </div>
+
+              <div class="zip-status-panel zip-done-panel">
+                <div class="zip-result-banner" id="zipResultBanner">
+                  <span class="zip-banner-icon" id="zipBannerIcon">✓</span>
+                  <div class="zip-banner-body">
+                    <div class="zip-banner-title" id="zipBannerTitle">入库完成</div>
+                    <div class="zip-banner-sub" id="zipBannerSub"></div>
+                  </div>
+                  <button class="button secondary" id="zipAgainBtn" style="margin-left:auto;">再次上传</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 结果区 -->
+            <div class="zip-result-area">
+              <div class="result-tabs" id="zipResultTabs">
                 <button class="result-tab active" data-zip-view="zip-matched">已匹配记录</button>
                 <button class="result-tab" data-zip-view="zip-unmatched">未匹配项</button>
                 <button class="result-tab" data-zip-view="zip-log">批次日志</button>
               </div>
-            </div>
-
-            <div class="summary-grid" id="zipSummaryGrid">
-              <div class="summary-card"><span>总文件</span><strong id="zipTotalFiles">0</strong><small>PRT + PDF</small></div>
-              <div class="summary-card"><span>配对</span><strong id="zipMatchedCount">0</strong><small>成功匹配组数</small></div>
-              <div class="summary-card"><span>未匹配</span><strong id="zipUnmatchedCount">0</strong><small>待处理记录</small></div>
-              <div class="summary-card"><span>错误</span><strong id="zipErrorCount">0</strong><small>解析异常数</small></div>
-            </div>
-
-            <div class="zip-workbench" id="zipWorkbench">
-              <div class="workbench-panel upload-panel">
-                <div class="workbench-panel-head">
-                  <div class="panel-title">工艺入库总览</div>
-                  <div class="panel-chip" id="zipBatchChip">等待批次</div>
-                </div>
-                <div class="summary-note" id="zipImportStatus" style="margin:0 0 12px;"></div>
-                <div id="zipImportHud" class="zip-import-hud">
-                  <div class="zip-import-head">
-                    <div id="zipImportPhase" class="zip-import-phase">等待上传工艺包</div>
-                    <div id="zipImportPercent" class="zip-import-percent">0%</div>
+              <div class="browser-shell">
+                <div class="browser-view active" id="zip-matched">
+                  <div class="result-empty" id="zipMatchedEmpty">
+                    <div class="glyph blue">▣</div>
+                    <div class="dropzone-title" style="font-size:24px; margin:0;">暂无匹配记录</div>
+                    <div class="dropzone-copy" style="font-size:15px; max-width:84%;">点击”上传工艺包”后，这里会展示目标库、匹配记录卡片、来源文件、工艺条数和状态说明。</div>
                   </div>
-                  <div class="zip-import-rail">
-                    <div id="zipProgressBar" class="zip-import-bar" style="width:0%;"></div>
-                  </div>
-                </div>
-                <div class="upload-panel-body">
-                  <div class="dropzone compact" id="zipDropzone">
-                    <div class="glyph">⌁</div>
-                    <div class="dropzone-title" style="font-size:24px;">等待上传工艺包</div>
-                    <div class=”dropzone-copy” style=”font-size:15px; max-width:88%;”>上传 ZIP 后，后端会解析 PRT + PDF 配对（按文件名主干匹配），这里会展示”已匹配记录””未匹配项”和”批次日志”。</div>
-                  </div>
-
-                </div>
-              </div>
-
-              <div class="resizer" id="zipResizer" aria-hidden="true"></div>
-
-              <div class="workbench-panel result-panel">
-                <div class="workbench-panel-head">
-                  <div class="panel-title">批次记录浏览器</div>
-                  <div class="panel-chip" id="zipResultChip">未开始</div>
-                </div>
-                <div class="result-panel-body">
-                  <div class="browser-shell">
-                    <div class="browser-view active" id="zip-matched">
-                      <div class="result-empty" id="zipMatchedEmpty">
-                        <div class="glyph blue">▣</div>
-                        <div class="dropzone-title" style="font-size:24px; margin:0;">暂无匹配记录</div>
-                         <div class="dropzone-copy" style="font-size:15px; max-width:84%;">点击“上传工艺包”后，这里会展示目标库、匹配记录卡片、来源文件、工艺条数和状态说明。</div>
-                      </div>
-                      <div class="browser-actions" id="zipMatchedPager" style="margin: 0 0 12px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
-                        <div class="browser-indicator" id="zipMatchedPageIndicator">当前页：第 1 / 1 页</div>
-                        <div class="pill-stack">
-                          <button class="button secondary" id="zipMatchedPrevBtn" style="padding:10px 14px;">上一页</button>
-                          <button class="button secondary" id="zipMatchedNextBtn" style="padding:10px 14px;">下一页</button>
-                        </div>
-                      </div>
-                      <div id="zipMatchedCard" style="display:none;">
-                        <div class="match-card">
-                          <div class="match-head">
-                            <div>
-                              <div class="match-title">D125A-181200A003</div>
-                              <div class="match-sub">PRT：D125A-181200A003.prt.5 · PDF：D125A-181200A003.pdf</div>
-                            </div>
-                            <span class="status-badge success">已替换</span>
-                          </div>
-                          <div class="match-columns">
-                            <div class="match-pane">
-                              <h4>已有记录</h4>
-                              <div class="summary-note">旧版工艺共 5 条，最后更新时间 2026-04-18 14:20。</div>
-                            </div>
-                            <div class="match-pane">
-                              <h4>本次导入</h4>
-                              <div class="summary-note">新增热处理要求，工艺调整为 7 条，并保留箱体内腔防腐处理说明。</div>
-                            </div>
-                          </div>
-                          <div class="match-meta-row">
-                            <span class="chip">工序 7 条</span>
-                            <span class="chip">视图页数 3</span>
-                            <span class="chip">冲突模式：替换</span>
-                          </div>
-                        </div>
-                      </div>
+                  <div class="browser-actions" id="zipMatchedPager" style="margin: 0 0 12px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                    <div class="browser-indicator" id="zipMatchedPageIndicator">当前页：第 1 / 1 页</div>
+                    <div class="pill-stack">
+                      <button class="button secondary" id="zipMatchedPrevBtn" style="padding:10px 14px;">上一页</button>
+                      <button class="button secondary" id="zipMatchedNextBtn" style="padding:10px 14px;">下一页</button>
                     </div>
-
-                    <div class="browser-view" id="zip-unmatched">
-                      <div class="browser-actions">
-                        <div class="browser-indicator" id="zipUnmatchedPageIndicator">当前页：第 1 / 1 页</div>
-                        <div class="pill-stack">
-                          <button class="button secondary" id="zipUnmatchedPrevBtn" style="padding:10px 14px;">上一页</button>
-                          <button class="button secondary" id="zipUnmatchedNextBtn" style="padding:10px 14px;">下一页</button>
+                  </div>
+                  <div id="zipMatchedCard" style="display:none;">
+                    <div class="match-card">
+                      <div class="match-head">
+                        <div>
+                          <div class="match-title">D125A-181200A003</div>
+                          <div class="match-sub">PDF：D125A-181200A003.pdf</div>
                         </div>
+                        <span class="status-badge success">已替换</span>
                       </div>
                       <div class="match-columns">
                         <div class="match-pane">
-                          <h4>未匹配 PRT</h4>
-                          <div class="pill-stack">
-                            <span class="chip">UNMATCHED-AX99.prt</span>
-                            <span class="chip">QZ-07-441.prt</span>
-                          </div>
+                          <h4>已有记录</h4>
+                          <div class="summary-note">旧版工艺共 5 条，最后更新时间 2026-04-18 14:20。</div>
                         </div>
                         <div class="match-pane">
-                          <h4>未匹配 PDF</h4>
-                          <div class="pill-stack">
-                            <span class="chip">UNMATCHED-BB99.pdf</span>
-                            <span class="chip">GJ-2024-001.pdf</span>
-                            <span class="chip">D125A-181200A003.pdf</span>
-                          </div>
+                          <h4>本次导入</h4>
+                          <div class="summary-note">新增热处理要求，工艺调整为 7 条，并保留箱体内腔防腐处理说明。</div>
                         </div>
                       </div>
-                    </div>
-
-                    <div class="browser-view" id="zip-log">
-                      <div class="log-list" id="zipLogList">
-                        <div class="log-line"><span class="log-time">10:12:01</span><span>等待工艺包上传。</span></div>
+                      <div class="match-meta-row">
+                        <span class="chip">工序 7 条</span>
+                        <span class="chip">视图页数 3</span>
+                        <span class="chip">冲突模式：替换</span>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                <div class="browser-view" id="zip-unmatched">
+                  <div class="browser-actions">
+                    <div class="browser-indicator" id="zipUnmatchedPageIndicator">当前页：第 1 / 1 页</div>
+                    <div class="pill-stack">
+                      <button class="button secondary" id="zipUnmatchedPrevBtn" style="padding:10px 14px;">上一页</button>
+                      <button class="button secondary" id="zipUnmatchedNextBtn" style="padding:10px 14px;">下一页</button>
+                    </div>
+                  </div>
+                  <div class="match-columns">
+                    <div class="match-pane">
+                      <h4>其他文件</h4>
+                      <div class="pill-stack"></div>
+                    </div>
+                    <div class="match-pane">
+                      <h4>未匹配 PDF</h4>
+                      <div class="pill-stack"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="browser-view" id="zip-log">
+                  <div class="log-list" id="zipLogList">
+                    <div class="log-line"><span class="log-time">--:--:--</span><span>等待工艺包上传。</span></div>
                   </div>
                 </div>
               </div>
@@ -574,6 +553,9 @@
         </section>
 
       </div>
+      <footer class="app-copyright" aria-label="版权信息">
+        Copyright © 四川大学机器学习与工业智能工程研究中心
+      </footer>
     </main>
   </div>
 
@@ -650,7 +632,7 @@
       <div class="review-modal-head">
         <div>
           <div class="review-modal-title">选择检索知识库</div>
-          <div class="review-modal-copy">这里决定 PRT 工艺生成时用于 RAG 检索的知识库，默认使用公共工艺库。</div>
+          <div class="review-modal-copy">这里决定工艺生成时用于 RAG 检索的知识库，默认使用公共工艺库。</div>
         </div>
         <button class="close-button" id="closeRetrievalLibraryModal" type="button" aria-label="关闭检索库选择弹窗">×</button>
       </div>
@@ -678,7 +660,7 @@
           <div class="review-modal-title" id="dbPreviewTitle">库记录快照</div>
           <div class="review-modal-copy" id="dbPreviewMeta">点击按钮打开记录图片快照。</div>
         </div>
-        <button class="close-button" id="closeDbPreviewModal" type="button" aria-label="关闭库快照弹窗" onclick="var m=document.getElementById('dbPreviewModal'); if (m) { m.classList.remove('open'); } document.body.style.overflow='';">×</button>
+        <button class="close-button" id="closeDbPreviewModal" type="button" aria-label="关闭库快照弹窗">×</button>
       </div>
 
       <div class="history-modal-layout db-preview-layout">
@@ -699,7 +681,6 @@
           </div>
 
           <div class="history-preview-stage db-preview-stage">
-            <div id="dbPreview3DContainer" class="modal-3d-stage" style="display:none"></div>
             <img id="dbPreviewImage" class="history-preview-image db-preview-image" alt="库记录图片快照" width="1600" height="1000" />
             <div class="history-preview-empty" id="dbPreviewEmpty">
               <div class="glyph blue">▣</div>
@@ -751,7 +732,6 @@
           </div>
 
           <div class="history-preview-stage">
-            <div id="historySnapshot3DContainer" class="modal-3d-stage" style="display:none"></div>
             <img id="historySnapshotImage" class="history-preview-image" alt="历史工艺快照" width="1600" height="1000" />
             <div class="history-preview-empty" id="historySnapshotEmpty">
               <div class="glyph blue">▣</div>
@@ -819,6 +799,8 @@
     </div>
   </div>
 
+  <script src="js/annotation-tool.js?v=2"></script>
   <script src="js/demo-industrial-console.js"></script>
 </body>
 </html>
+

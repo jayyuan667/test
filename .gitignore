@@ -28,6 +28,9 @@ ENV/
 # =============================================
 .vscode/
 .idea/
+.claude/
+.superpowers/
+.gitnexus/
 *.swp
 *.swo
 
@@ -60,6 +63,18 @@ task_store.db-wal
 logs/
 
 # =============================================
+# Database files (user data - never commit)
+# =============================================
+db_data/*.db
+db_data/*.db-shm
+db_data/*.db-wal
+db_data/kb_previews/
+db_data/output_png/
+db_data/*.json
+data_json/
+db_data/
+
+# =============================================
 # Node / Frontend
 # =============================================
 node_modules/
@@ -67,10 +82,24 @@ dist/
 build/
 
 # =============================================
-# Claude / Agent tools
+# Secrets / License
 # =============================================
-.claude/worktrees/
-.superpowers/
+*.pem
+*.lic
+
+# =============================================
+# Local samples / temporary analysis artifacts
+# =============================================
+prt_test/
+prt_test.zip
+v_model_test/
+--full-page
+temp_*.json
+*TEMPupload_clean.py
+backend/sample_zip/
+updated_front/*.zip
+docs/*.png
+docs/*.pptx
 
 # =============================================
 # OS files

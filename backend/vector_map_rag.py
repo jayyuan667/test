@@ -12,12 +12,20 @@ import json
 import sqlite3
 import re
 import numpy as np
+import requests as req
 from typing import Dict, List, Optional
 from openai import OpenAI
 
 # Use repository-relative paths so the project can move safely.
 BASE_DIR = os.getenv("FEATURIZER_BASE_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "db_data", "vector_map_new.db")
+DB_PATH = os.path.join(BASE_DIR, "db_data", "2d-v.db")
+EMBEDDING_TRUST_ENV = os.getenv("EMBEDDING_TRUST_ENV", "1").strip() not in {"0", "false", "False"}
+
+
+def _embedding_session() -> req.Session:
+    session = req.Session()
+    session.trust_env = EMBEDDING_TRUST_ENV
+    return session
 
 
 def _resolve_library_scope(library_key: str):
@@ -258,8 +266,6 @@ MATERIAL_KEYWORDS = [
 def create_query_vector(text: str) -> Optional[np.ndarray]:
     """从文本创建向量 - 使用豆包多模态Embedding API"""
     try:
-        import requests as req
-
         api_key = os.getenv("EMBEDDING_API_KEY", "")
         base_url = os.getenv(
             "EMBEDDING_BASE_URL",
@@ -283,7 +289,7 @@ def create_query_vector(text: str) -> Optional[np.ndarray]:
             "encoding_format": "float",
         }
 
-        resp = req.post(base_url, headers=headers, json=data).json()
+        resp = _embedding_session().post(base_url, headers=headers, json=data, timeout=60).json()
         return np.array(resp["data"]["embedding"], dtype=np.float32)
     except Exception as e:
         print(f"[RAG] create_query_vector error: {e}")
@@ -369,6 +375,89 @@ def _normalize_prefix_token(prefix: str) -> str:
         return ""
     stem = os.path.splitext(os.path.basename(candidate))[0].strip()
     return (stem or candidate).upper()
+
+
+# ============ 零件类别分类 ============
+
+# 硬不兼容：工艺路线完全不同（旋转体 vs 平板/腔体），降权幅度大
+_CATEGORY_HARD_INCOMPATIBLE: Dict[str, set] = {
+    "板类":   {"轴类", "回转体类"},
+    "腔体类": {"轴类", "回转体类"},
+    "轴类":   {"板类", "腔体类"},
+    "环类":   {"板类", "腔体类"},
+}
+
+# 软不兼容：部分工序重叠但整体路线差异明显，轻度降权
+_CATEGORY_SOFT_INCOMPATIBLE: Dict[str, set] = {
+    "板类":   {"环类", "套类"},
+    "腔体类": {"环类", "套类"},
+    "轴类":   {"支架类", "环类"},
+    "盘类":   {"板类", "腔体类", "支架类"},
+    "套类":   {"板类", "腔体类", "支架类"},
+    "支架类": {"轴类", "套类", "环类"},
+    "环类":   {"支架类", "套类"},
+}
+
+_PENALTY_HARD = 0.45   # 硬不兼容：相似度乘以 0.45
+_PENALTY_SOFT = 0.75   # 软不兼容：相似度乘以 0.75
+
+
+def _get_category_penalty(query_cat: str, candidate_cat: str) -> float:
+    """返回候选类别相对于查询类别的降权系数（1.0 = 不降权）。"""
+    if candidate_cat in _CATEGORY_HARD_INCOMPATIBLE.get(query_cat, set()):
+        return _PENALTY_HARD
+    if candidate_cat in _CATEGORY_SOFT_INCOMPATIBLE.get(query_cat, set()):
+        return _PENALTY_SOFT
+    return 1.0
+
+
+def classify_part_category(features: Dict) -> str:
+    """从零件特征字典推断零件类别。
+
+    解析 【零件名称】【形态】【类型】 三个字段。
+    返回值：轴类 / 盘类 / 板类 / 腔体类 / 套类 / 支架类 / 环类 / 回转体类 / 未知
+    """
+    name = features.get("零件名称", "")
+    shape = features.get("形态", "")
+    part_type = features.get("类型", "")
+    all_text = name + shape + part_type
+
+    if not all_text.strip():
+        return "未知"
+
+    # 腔体类（优先：腔体板也属于腔体类，不能当成普通板类）
+    if re.search(r'腔体|内腔|型腔|空腔|深腔|箱体|缸体|壳体|泵体|阀体', all_text):
+        return "腔体类"
+
+    # 轴类
+    if re.search(r'主轴|传动轴|阶梯轴|心轴|花键轴|光轴|转轴|曲轴|偏心轴|(?<![套承瓦])轴(?![承套瓦类])', all_text):
+        return "轴类"
+
+    # 套类
+    if re.search(r'轴套|衬套|套筒|导套|密封套|内套|外套|[^螺]套(?![类筒管])', all_text):
+        return "套类"
+
+    # 盘类（法兰盘/齿轮/叶轮等回转盘件）
+    if re.search(r'法兰盘|圆盘|齿轮|叶轮|飞轮|端盖|压盖|法兰|盘类|轮盘', all_text):
+        return "盘类"
+
+    # 环类
+    if re.search(r'环形|圆环|法兰环|密封环|锁紧环|挡环|[^密封]环(?![境形])', all_text):
+        return "环类"
+
+    # 支架类
+    if re.search(r'支架|基座|支撑架|转子支架|底座|托架|吊架', all_text):
+        return "支架类"
+
+    # 板类（板状零件，需排除腔体板已被腔体类捕获的情况）
+    if re.search(r'平板|底板|安装板|盖板|支撑板|固定板|导向板|矩形体|方形体|板状|板件|[^刀模]板(?![料状件])', all_text):
+        return "板类"
+
+    # 回转体通用（以上未匹配到，但有回转体特征）
+    if re.search(r'回转体|旋转体|圆柱体|圆柱形', all_text):
+        return "回转体类"
+
+    return "未知"
 
 
 # ============ Reciprocal Rank Fusion ============
@@ -1322,8 +1411,6 @@ def query_by_vector_similarity(
         vector_table = "vectors_v2"
 
     try:
-        import requests as req
-
         api_key = os.getenv("EMBEDDING_API_KEY", "")
         base_url = os.getenv(
             "EMBEDDING_BASE_URL",
@@ -1335,7 +1422,12 @@ def query_by_vector_similarity(
             print("[RAG] ERROR: EMBEDDING_API_KEY not set")
             return []
 
-        key_text = fused_description[:2000]
+        # 原始 VLM 输出含【】字段时，提取标准化特征文本再向量化，
+        # 与数据库构建时的 embedding 方式保持一致，提升检索精度
+        if '【' in fused_description:
+            key_text = extract_key_features_text(fused_description) or fused_description[:4000]
+        else:
+            key_text = fused_description[:4000]
         print(f"[RAG] Query text: {key_text[:100]}...")
 
         headers = {
@@ -1350,7 +1442,12 @@ def query_by_vector_similarity(
             "encoding_format": "float",
         }
 
-        resp = req.post(base_url, headers=headers, json=data).json()
+        raw_resp = _embedding_session().post(base_url, headers=headers, json=data, timeout=60)
+        print(f"[RAG] Embedding API status: {raw_resp.status_code}")
+        if raw_resp.status_code != 200:
+            print(f"[RAG] Embedding API error body: {raw_resp.text[:500]}")
+            return []
+        resp = raw_resp.json()
         query_vector = np.array(resp["data"]["embedding"], dtype=np.float32)
         print(f"[RAG] Query vector shape: {query_vector.shape}")
 
@@ -1811,13 +1908,23 @@ def query_by_fused_text(
                 "process_reference": structured_data.get("process_reference", ""),
                 "structured_filter": structured_data.get("structured_filter", {}),
             }
-        first_record = list(index["records"].values())[0]
+        # 兜底：按零件类别选最近邻，而不是随机取字典第一条
+        query_category_fb = classify_part_category(extracted_features)
+        candidate_records = list(index["records"].values())
+        if query_category_fb != "未知":
+            same_cat = [r for r in candidate_records
+                        if classify_part_category(r.get("key_features", {})) == query_category_fb]
+            if same_cat:
+                candidate_records = same_cat
+        # 从候选中选工序数最多的（工序数多 = 数据更完整）
+        best_fallback = max(candidate_records, key=lambda r: len(r.get("process_list", [])))
+        _log(f"⚠️ 无检索命中，兜底使用同类 [{query_category_fb}] 蓝本: {best_fallback['drawing_id']}")
         all_results = [
             {
-                "drawing_id": first_record["drawing_id"],
+                "drawing_id": best_fallback["drawing_id"],
                 "similarity": 0.1,
                 "matched": ["fallback"],
-                "process_list": first_record["process_list"],
+                "process_list": best_fallback["process_list"],
                 "match_type": "fallback",
             }
         ]
@@ -1879,11 +1986,44 @@ def query_by_fused_text(
                 if all_results.index(r) == 0:
                     r["similarity"] = 1.0
 
+    # ========== 零件类别感知降权 ==========
+    # 推断查询零件的类别，对不兼容类别的候选做软降权（prefix精确匹配豁免）
+    query_category = classify_part_category(extracted_features)
+    _log(f"🏷️ 查询零件类别: {query_category}")
+
+    if query_category != "未知":
+        for r in all_results:
+            # prefix精确匹配豁免降权
+            if "prefix" in r.get("matched", []) or r.get("match_type") == "prefix_exact":
+                r["part_category"] = query_category
+                continue
+            rec = index["records"].get(r["drawing_id"])
+            rec_category = classify_part_category(rec.get("key_features", {}) if rec else {})
+            r["part_category"] = rec_category
+            penalty = _get_category_penalty(query_category, rec_category)
+            if penalty < 1.0:
+                old_sim = r.get("similarity", 0)
+                r["similarity"] = old_sim * penalty
+                if "vector_similarity" in r:
+                    r["vector_similarity"] *= penalty
+                level = "硬" if penalty == _PENALTY_HARD else "软"
+                _log(
+                    f"   ⚠️ {r['drawing_id']} [{level}不兼容] 类别({rec_category})≠查询({query_category})"
+                    f"，相似度 {old_sim:.1%} → {r['similarity']:.1%}"
+                )
+
+        # 降权后重新按相似度排序（prefix精确匹配已在首位，跳过它）
+        prefix_head = [r for r in all_results if "prefix" in r.get("matched", []) or r.get("match_type") == "prefix_exact"]
+        rest = [r for r in all_results if r not in prefix_head]
+        rest.sort(key=lambda x: x.get("similarity", 0), reverse=True)
+        all_results = prefix_head + rest
+
     # 显示top结果
     _log(f"✅ 检索完成！找到 {len(all_results)} 个候选工艺：")
     for i, r in enumerate(all_results, 1):
         vec_sim = r.get("vector_similarity", r.get("similarity", 0))
-        _log(f"   候选{i}: {r['drawing_id']} (匹配度 {vec_sim:.1%})")
+        cat_label = f" [{r['part_category']}]" if r.get("part_category") else ""
+        _log(f"   候选{i}: {r['drawing_id']}{cat_label} (匹配度 {vec_sim:.1%})")
 
     best = all_results[0] if all_results else {}
 

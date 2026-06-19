@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Precision Console Preview</title>
+  <style>
+    :root {
+      --bg: #e9eef3;
+      --panel: #f8fafc;
+      --panel-2: #ffffff;
+      --ink: #11293e;
+      --muted: #627487;
+      --line: #d7e0e8;
+      --line-soft: #e7edf2;
+      --nav: #16324d;
+      --nav-active: #244d73;
+      --nav-muted: #95adc1;
+      --brand: #1b4f83;
+      --accent: #f27b38;
+      --accent-soft: #fff0e7;
+      --warn: #a14b1a;
+      --radius: 24px;
+      --shadow: 0 8px 24px rgba(18, 32, 48, 0.05);
+      --shadow-nav: 0 10px 30px rgba(16, 34, 54, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, #edf2f6 0%, #e6ecf1 100%);
+      color: var(--ink);
+    }
+
+    .page {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .intro {
+      margin-bottom: 22px;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 36px;
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+    }
+
+    .intro p {
+      margin: 0;
+      max-width: 72ch;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 18px;
+      min-height: 760px;
+    }
+
+    .sidebar {
+      background: var(--nav);
+      color: #eaf1f7;
+      border-radius: 24px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: var(--shadow-nav);
+    }
+
+    .brand-mini {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: #8ea6bb;
+      margin-bottom: 10px;
+    }
+
+    .brand-title {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 18px;
+    }
+
+    .nav-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .nav-item {
+      border-radius: 16px;
+      padding: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: transparent;
+    }
+
+    .nav-item.active {
+      background: var(--nav-active);
+    }
+
+    .nav-item strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .nav-item span {
+      font-size: 12px;
+      color: var(--nav-muted);
+    }
+
+    .sidebar-foot {
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 14px;
+      font-size: 12px;
+      color: var(--nav-muted);
+      line-height: 1.6;
+    }
+
+    .main {
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      gap: 16px;
+    }
+
+    .topbar,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      padding: 18px 20px;
+    }
+
+    .topbar-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      padding: 10px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: #24384a;
+      font-size: 13px;
+    }
+
+    .chip.primary {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .progress {
+      min-width: 280px;
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .progress-bar {
+      height: 8px;
+      background: #dfe6ed;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-bar > div {
+      width: 42%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--brand) 0%, var(--accent) 100%);
+      border-radius: 999px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+    }
+
+    .tab {
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: #5c6e80;
+      font-size: 13px;
+    }
+
+    .tab.active {
+      background: var(--nav);
+      border-color: var(--nav);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 0.92fr 1.08fr;
+      gap: 16px;
+    }
+
+    .panel {
+      padding: 18px;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .panel-kicker {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #7a8b9b;
+      margin-bottom: 6px;
+    }
+
+    .panel-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .panel-note {
+      font-size: 12px;
+      color: #6d7e8f;
+    }
+
+    .canvas-shell {
+      min-height: 430px;
+      border: 1px dashed #b9c8d6;
+      border-radius: 20px;
+      background: linear-gradient(180deg, #eef3f7 0%, #e7edf3 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: var(--muted);
+      padding: 24px;
+      line-height: 1.7;
+    }
+
+    .badges {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #e8f0f7;
+      color: #31506a;
+      font-size: 12px;
+    }
+
+    .badge.warn {
+      background: var(--accent-soft);
+      color: var(--warn);
+    }
+
+    .matrix {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      background: var(--panel-2);
+    }
+
+    .matrix-row {
+      display: grid;
+      grid-template-columns: 120px 150px 1fr;
+      font-size: 13px;
+    }
+
+    .matrix-row + .matrix-row {
+      border-top: 1px solid var(--line-soft);
+    }
+
+    .matrix-row.header {
+      background: #eef3f7;
+      color: #5d6f81;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+    }
+
+    .matrix-row > div {
+      padding: 14px;
+    }
+
+    .matrix-row > div:not(:last-child) {
+      border-right: 1px solid var(--line-soft);
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .warn-text {
+      color: var(--warn);
+    }
+
+    .footer-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .button {
+      padding: 10px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: #31506a;
+      font-size: 13px;
+    }
+
+    .button.primary {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .notes {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .note-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .note-card h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+
+    .note-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 1100px) {
+      .layout,
+      .workspace,
+      .notes {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .progress {
+        min-width: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="intro">
+      <div class="eyebrow">Direction A / Precision Console</div>
+      <h1>更克制、更精密的工程控制台</h1>
+      <p>这版不是为了更炫，而是为了把当前界面收成一套成熟的生产工具。重点会放在导航收窄、表格矩阵统一、状态反馈降噪，以及让上传区和审阅区更像工程工作台而不是演示页组件。</p>
+    </div>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div>
+          <div class="brand-mini">2D PROCESS CONSOLE</div>
+          <div class="brand-title">二维工艺系统</div>
+
+          <div class="nav-list">
+            <div class="nav-item">
+              <strong>工艺入库</strong>
+              <span>批次 / 匹配 / 日志</span>
+            </div>
+            <div class="nav-item active">
+              <strong>工艺生成</strong>
+              <span>图纸 / 审阅 / 规程</span>
+            </div>
+            <div class="nav-item">
+              <strong>历史记录</strong>
+              <span>快照 / 状态 / 回看</span>
+            </div>
+            <div class="nav-item">
+              <strong>数据库浏览</strong>
+              <span>记录 / 编辑 / 删除</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-foot">
+          Navigation collapses into a thin rail, not a decorative panel.
+        </div>
+      </aside>
+
+      <div class="main">
+        <div class="topbar">
+          <div class="topbar-row">
+            <div class="actions">
+              <div class="chip primary">上传图纸</div>
+              <div class="chip">检索库 / 公共</div>
+              <div class="chip">缓存 / 关闭</div>
+            </div>
+            <div class="progress">
+              <div class="progress-meta">
+                <span>流程进度</span>
+                <strong>42%</strong>
+              </div>
+              <div class="progress-bar"><div></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active">特征审阅</div>
+          <div class="tab">工艺规程</div>
+        </div>
+
+        <div class="workspace">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-kicker">Drawing Preview</div>
+                <div class="panel-title">图纸工作区</div>
+              </div>
+              <div class="panel-note">A4 / PDF / 3 pages</div>
+            </div>
+            <div class="canvas-shell">
+              Upload area should feel like a calibrated work surface,<br />
+              not a marketing drop zone.
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-kicker">Review Matrix</div>
+                <div class="panel-title">特征审阅矩阵</div>
+              </div>
+              <div class="badges">
+                <div class="badge">12 条特征</div>
+                <div class="badge warn">2 条待确认</div>
+              </div>
+            </div>
+
+            <div class="matrix">
+              <div class="matrix-row header">
+                <div>特征类型</div>
+                <div>数值</div>
+                <div>说明</div>
+              </div>
+              <div class="matrix-row">
+                <div>尺寸公差</div>
+                <div class="mono">0.015</div>
+                <div>主轴端面区域，建议精铣后二次校核</div>
+              </div>
+              <div class="matrix-row">
+                <div>粗糙度</div>
+                <div class="mono">Ra 1.6</div>
+                <div>重点表面，后续工序需保留余量</div>
+              </div>
+              <div class="matrix-row">
+                <div>形位公差</div>
+                <div class="mono warn-text">待确认</div>
+                <div>符号识别可信度不足，需要人工补校</div>
+              </div>
+            </div>
+
+            <div class="footer-actions">
+              <div class="button">确认后继续</div>
+              <div class="button primary">修改后重生成</div>
+            </div>
+          </section>
+        </div>
+
+        <div class="notes">
+          <div class="note-card">
+            <h3>侧栏更窄</h3>
+            <p>弱化厚重渐变和符号感，改成更标准、更耐看的导航节奏。</p>
+          </div>
+          <div class="note-card">
+            <h3>信息矩阵统一</h3>
+            <p>历史页、数据库页、审阅页都会收成同一套表格与状态语言。</p>
+          </div>
+          <div class="note-card">
+            <h3>动效回到辅助位</h3>
+            <p>保留必要过渡，但不再让 sheen、呼吸和悬浮阴影主导界面气质。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

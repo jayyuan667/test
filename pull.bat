@@ -1,18 +1,8 @@
 @echo off
+chcp 65001 >nul 2>&1
 
-echo ============================================
-echo   Git Pull + Submodule Update
-echo ============================================
-echo   Pull: git pull
+echo 开始拉取...
 git pull
-if errorlevel 1 (
-    echo   Pull failed. Check your connection or merge conflicts.
-    pause
-    exit /b 1
-)
-echo   Submodule: git submodule update --remote
-git submodule update --remote
-echo ============================================
-echo   Done.
-echo ============================================
+echo 拉取完成
+
 pause

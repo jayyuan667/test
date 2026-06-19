@@ -709,7 +709,7 @@ def _delete_record(record_id: int, library_key: str = ""):
         if preview_task_id and preview_task_id != source_task_id:
             delete_task_with_files(preview_task_id)
     except Exception as e:
-        print(f"[library] file cleanup failed for record {record_id}: {e}")
+        logger.warning("[library] file cleanup failed for record %s: %s", record_id, e)
 
     invalidate_index_cache()
     return existing
@@ -869,7 +869,7 @@ def _build_draft_from_file(file_storage, prefix: str, source_name: str):
     draft["preview_task_id"] = preview_task_id
     draft["preview_total_pages"] = len(png_paths)
     draft["source_task_id"] = preview_task_id
-    draft["preview_image_urls"] = [f"/api/result/{preview_task_id}/asset/{os.path.basename(path)}" for path in png_paths]
+    draft["preview_image_urls"] = [f"/api/result/{preview_task_id}/asset/{os.path.relpath(path, os.path.join(OUTPUT_FOLDER, preview_task_id)).replace(os.sep, '/')}" for path in png_paths]
     return draft, existing, similar
 
 

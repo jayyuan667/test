@@ -1,20 +1,10 @@
-@echo off
+﻿@echo off
+chcp 65001 >nul 2>&1
 
-echo ============================================
-echo   Git Push
-echo ============================================
-echo   Stage: git add .
+echo 提交开始...
 git add .
-echo   Commit: git commit
 git commit -m "update"
-if errorlevel 1 (
-    echo   Nothing to commit or commit failed.
-    pause
-    exit /b 1
-)
-echo   Push: git push
 git push
-echo ============================================
-echo   Done.
-echo ============================================
+echo 提交完成
+
 pause

@@ -60,6 +60,14 @@ def _task_image_path(task_id: str) -> str:
         )
         if files:
             return os.path.join(output_dir, files[0])
+    pages_dir = os.path.join(output_dir, "pages")
+    if os.path.isdir(pages_dir):
+        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+            files = sorted(
+                [n for n in os.listdir(pages_dir) if n.lower().endswith(ext)]
+            )
+            if files:
+                return os.path.join(pages_dir, files[0])
     creo_dir = os.path.join(output_dir, "creo_views")
     if os.path.isdir(creo_dir):
         for ext in (".jpg", ".jpeg", ".png", ".webp"):
@@ -137,7 +145,7 @@ def _normalize_rows(result_data: Dict[str, Any]) -> List[List[str]]:
         if isinstance(row, dict):
             normalized.append([
                 str(row.get("processNo") or row.get("stepNo") or row.get("code") or "").strip(),
-                str(row.get("trade") or row.get("workCenter") or "").strip(),
+                str(row.get("trade") or row.get("tradeType") or row.get("workCenter") or "").strip(),
                 str(row.get("stepContent") or row.get("content") or row.get("description") or "").strip(),
             ])
             continue
@@ -459,7 +467,7 @@ def _pdf_response(task_id: str, result_data: Dict[str, Any]):
         return jsonify({"error": f"Export failed: {str(e)}"}), 500
 
 
-@export_bp.route("/export/<task_id>", methods=["GET"])
+@export_bp.route("/export/<task_id>", methods=["GET", "POST"])
 def export_result(task_id):
     try:
         result_data = _load_result_data(task_id)
@@ -468,6 +476,14 @@ def export_result(task_id):
 
     if not result_data:
         return jsonify({"error": "Task not found"}), 404
+
+    # POST body may carry user-edited rows — override process_flow with them
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        rows = body.get("rows")
+        if rows and isinstance(rows, list):
+            result_data = dict(result_data)
+            result_data["process_flow"] = {"data": rows}
 
     export_format = (request.args.get("format") or "xlsx").strip().lower()
     if export_format == "pdf":

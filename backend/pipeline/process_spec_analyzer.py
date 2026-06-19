@@ -18,81 +18,83 @@ from typing import List, Dict, Any
 from datetime import datetime
 from openai import OpenAI
 
-from ..config import validate_vision_config
+from ..config import create_openai_client, validate_vision_config
 
 logger = logging.getLogger(__name__)
 
 PROCESS_SPEC_PROMPT = """\
-你是一名机械加工工艺规程解析专家。请从输入的工艺过程卡、工艺规程 PDF 或图片中，准确提取所有"工序"信息，并按指定格式输出。
+你是机械加工工艺规程解析专家。从工艺过程卡图片中准确提取所有工序，按指定格式输出。
 
-【提取目标】
-只提取工序表中的内容，通常位于表格列：
-- 序号
-- 工种
-- 工序内容
+【表格结构】
+工艺规程表通常有四列，从左到右依次为：
+  第1列 工作地   — 车间/部门代号，如"备"、"机加"、"钣机"、"热处"（这是地点，不是工种）
+  第2列 工序号   — 数字，如5、10、15、20（检验行通常为空）
+  第3列 工序名称 — 操作类型，如"备料"、"车"、"铣"、"钻"、"检"、"钳"、"数控冲"（这是工种）
+  第4列 工序(步)内容 — 具体操作描述，可含多行步骤
+
+⚠️ 关键区分（最常见错误）：
+  - 工种 = 第3列"工序名称"的值（车/铣/钳/检/备料/数控冲 等）
+  - 工作地（机加/钣机/备）是车间代号，绝对不能填入工种字段
 
 【输出格式】
-必须只输出 JSON 数组，不要输出解释、不要输出 Markdown、不要输出多余文字。
-
-格式如下（三段式，用 @ 分隔）：
+只输出 JSON 数组，不要有任何解释文字或 Markdown：
 [
-  "0010@工种@工序内容",
-  "0020@工种@工序内容",
-  "0030@工种@工序内容"
+  "NNNN@工种@工序内容",
+  ...
 ]
 
-工种字段规则：
-- 直接读取工序表"工种"列的原始值，如：料、热、铣、数铣、车、钻、检、刻字 等。
-- 如果该工序没有工种列，或工种单元格为空，则输出空字符串，格式为 "0010@@工序内容"。
-- 不要推断或补充工种，只填写表中已有的值。
-- 工种值本身不得包含 @ 符号。
+【工序号规则】
+1. 读取第2列原始数字（如 5、10、15、20）
+2. 转换：原号 × 10，补足四位
+   5 → 0050，10 → 0100，15 → 0150，20 → 0200
+3. 原文已是 0010/0050 等四位编号则保持原样
+4. 检验行（工种为"检"）无工序号时，用上一道工序号+5：
+   上一道 0050 → 检验行用 0055；上一道 0100 → 用 0105
+5. 跨页工序不得遗漏
 
-【编号规则】
-1. 原表中的序号如果是 1、2、3……，请转换为四位工序号：
-   1 → 0010
-   2 → 0020
-   3 → 0030
-   10 → 0100
-2. 编号规则为：原序号 × 10，然后补足四位。
-3. 如果原文已经是 0010、0020 这类编号，则保持原编号。
-4. 不要遗漏跨页延续的工序。
+【工种字段规则】
+- 填写第3列"工序名称"的原始值（料/热/铣/车/钻/检/钳/数控冲 等）
+- 无工种单元格或为空时，填空字符串：NNNN@@工序内容
+- 工种值不得含 @ 符号
 
 【内容合并规则】
-1. 每一道工序只输出一条字符串。
-2. 工序内容如果分多行、多条 1）、2）、3），需要合并到同一条中。
-3. 合并时保留原文含义，尽量保留原始数字、尺寸、公差、符号、孔数、螺纹规格等。
-4. 可以去掉明显的换行和多余空格。
-5. 工序内容中不要重复写入工种名称。
-6. 不要提取材料栏、标题栏、签名栏、更改栏、页码、产品名称、产品代号等非工序内容。
+1. 每道工序输出一条字符串
+2. 多行步骤（-1. …；-2. … 或 1）…；2）…）合并为一行，用"；"连接，但必须保留原始编号（-1./-2. 或 1）/2））不得删除
+3. 保留原始符号（Φ/φ/δ/≠/±/Ra/M/H7/h6/G1/2/N·m 等）不得替换或省略
+4. 不要重复写工种名称
+5. 不提取材料栏、标题栏、签名栏、更改栏、页码等非工序内容
+
+【符号说明】
+- φ/Φ = 直径符号（轴类件备料规格常见，如 φ65×L）→ 必须原样输出 φ 或 Φ
+- δ 或 ≠ = 板厚符号（板类件备料规格常见，如 ≠3×250×260 或 δ3×250×260）→ 原样输出
+- 不得将 φ 改成 ≠，也不得将 ≠ 改成 φ；按原图读取
 
 【严格要求】
-1. 不得编造图中没有的工序。
-2. 不得改写技术参数。
-3. 不得把 Φ、±、M、H7、h7、G1/2、N·m 等符号改错。
-4. 如果某行被遮挡或无法识别，请输出：
-   "编号@工种@【无法确认】原文可见部分"
-5. 如果某道工序跨页显示，必须结合上下页合并。
-6. 最终只输出 JSON 数组。
+1. 不得编造工序
+2. 不得改写尺寸、公差等技术参数
+3. 遮挡或无法识别的行：输出 "NNNN@工种@【无法确认】可见部分"
+4. 最终只输出 JSON 数组
 
 【示例】
-输入中如果看到：
-序号 1，工种：料，工序内容：备料：δ30×250×173=1。
-序号 2，工种：热，工序内容：去应力退火。
-序号 3，工种：铣，工序内容：
-1）按工艺说明图，余量均分，铣方至尺寸27±0.1×246±0.1×169±0.1；
-2）钻攻对6-M5螺纹孔，底孔深4.8；
-3）锐边倒钝，去除毛刺。
-序号 4，工种列为空，工序内容：按图检验。
+原表内容：
+  备(工作地) 5(工序号) 备料(工序名称) φ65×L，L=120
+  (无)       (无)      检             材料牌号、规格及备料尺寸
+  机加       10        车             -1.装夹找正；-2.车端面；-3.车外圆φ63.17；-4.钻孔φ46.5，深17
+  (无)       (无)      检             检以上工步所涉及图纸尺寸
 
-则输出：
+正确输出：
 [
-  "0010@料@备料：δ30×250×173=1。",
-  "0020@热@去应力退火。",
-  "0030@铣@按工艺说明图，余量均分，铣方至尺寸27±0.1×246±0.1×169±0.1；钻攻对6-M5螺纹孔，底孔深4.8；锐边倒钝，去除毛刺。",
-  "0040@@按图检验。"
+  "0050@备料@φ65×L，L=120",
+  "0055@检@材料牌号、规格及备料尺寸",
+  "0100@车@-1.装夹找正；-2.车端面；-3.车外圆φ63.17；-4.钻孔φ46.5，深17",
+  "0105@检@检以上工步所涉及图纸尺寸"
 ]
 
-请优先读取表格线内"工种"和"工序内容"列，不要根据图纸内容自行生成加工路线；你只负责提取，不负责推理。\
+错误示例（不要这样输出）：
+  "0050@机加@..."  ← 错误：机加是工作地，不是工种
+  "0060@检@..."    ← 错误：检验行应用 0055（上一道0050+5），不是顺序编号
+
+请只读取表格中的内容，不要根据图纸内容推理加工路线。\
 """
 
 
@@ -121,17 +123,33 @@ class ProcessSpecAnalyzer:
         model_param = os.getenv("VISION_MODEL_ID", "")
         self.model = model_param.replace("model_id=", "").strip()
         self.max_tokens = min(int(os.getenv("VISION_MAX_TOKENS", "4096")), 4096)
-        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        self.client = create_openai_client(self.api_key, self.base_url)
 
-    def analyze_page(self, image_path: str, page_num: int = 0, total: int = 0) -> Dict[str, Any]:
-        """分析工艺规程的单页图片（独立识别，不依赖其他页上下文）。"""
+    def analyze_page(self, image_path: str, page_num: int = 0, total: int = 0,
+                     prev_tail: List[str] = None) -> Dict[str, Any]:
+        """分析工艺规程的单页图片，支持跨页上下文传递。
+
+        Args:
+            prev_tail: 上一页最后几条工序行，用于跨页连接提示。
+        """
         logger.info("[ProcessSpec] 分析页面: %s", image_path)
         try:
             with open(image_path, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode("utf-8")
 
             if total > 1:
-                user_text = f"请识别本页（第{page_num}/{total}页）工艺规程表格，按要求输出每道工序。如果某道工序跨页（本页开头是上一页末尾的延续），请输出完整的工序内容。"
+                if prev_tail:
+                    # 把上页末尾工序格式化给模型，帮助识别跨页延续内容
+                    tail_text = "\n".join(f"  {r}" for r in prev_tail)
+                    user_text = (
+                        f"请识别本页（第{page_num}/{total}页）工艺规程表格，按要求输出每道工序。\n"
+                        f"上一页末尾工序为：\n{tail_text}\n"
+                        f"若本页开头是上一页最后一道工序的延续内容（跨页），"
+                        f"请将其合并到该工序的内容中一起输出（保持原工序号）；"
+                        f"若本页开头是全新的工序，则正常输出新工序。"
+                    )
+                else:
+                    user_text = f"请识别本页（第{page_num}/{total}页）工艺规程表格，按要求输出每道工序。"
             else:
                 user_text = "请识别工艺规程表格，按要求输出每道工序。"
 
@@ -161,12 +179,15 @@ class ProcessSpecAnalyzer:
             return {"image_path": image_path, "raw": "", "rows": [], "ok": False, "error": str(exc)}
 
     def analyze_pages(self, image_paths: List[str]) -> List[Dict[str, Any]]:
-        """逐页独立分析（不传跨页上下文，避免记忆锚定导致幻觉）。"""
+        """逐页分析，将上一页末尾工序作为跨页连接上下文传入下一页。"""
         results = []
         total = len(image_paths)
+        prev_tail: List[str] = []   # 上一页最后 3 条工序，用于跨页连接提示
         for i, path in enumerate(image_paths):
-            result = self.analyze_page(path, page_num=i + 1, total=total)
+            result = self.analyze_page(path, page_num=i + 1, total=total, prev_tail=prev_tail)
             results.append(result)
+            # 取本页最后 3 条工序备用
+            prev_tail = result.get("rows", [])[-3:] if result.get("rows") else []
             logger.info("[ProcessSpec] 进度 %d/%d", i + 1, total)
         return results
 
@@ -232,25 +253,109 @@ def _parse_process_rows(raw: str) -> List[str]:
     return rows
 
 
+def _fix_inspection_codes(rows: List[str]) -> List[str]:
+    """将检验行的工序号修正为上一道主工序号+5。
+
+    模型有时仍输出顺序编号（0060/0110），而非规范的 上一工序+5。
+    判断依据：工种字段含"检"，且工序号尾部为 0（即整十数），说明是模型顺序填充的。
+    """
+    if not rows:
+        return rows
+
+    result = []
+    last_main_code = 0  # 上一道非检验工序的数值
+
+    for row in rows:
+        parts = row.split("@", 2)
+        if len(parts) < 3:
+            result.append(row)
+            continue
+
+        code_str, trade, content = parts
+        trade_stripped = trade.strip()
+
+        # 是否是检验行
+        is_inspection = "检" in trade_stripped or (not trade_stripped and "检" in content[:4])
+
+        try:
+            code_int = int(code_str)
+        except ValueError:
+            result.append(row)
+            continue
+
+        if not is_inspection:
+            last_main_code = code_int
+            result.append(row)
+        else:
+            # 检验行：若当前编号是整十数（模型顺序填充），改为上一主工序+5
+            expected = last_main_code + 5
+            if last_main_code > 0 and code_int % 10 == 0 and code_int != expected:
+                new_code = str(expected).zfill(4)
+                result.append(f"{new_code}@{trade}@{content}")
+            else:
+                result.append(row)
+
+    return result
+
+
 def merge_multipage_rows(page_results: List[Dict[str, Any]]) -> List[str]:
+    """合并多页结果，按工序号排序去重。
+
+    同一工序号跨页重复出现时，保留内容更长的版本（而非第一次出现），
+    以避免跨页截断导致保留不完整内容。
     """
-    合并多页结果，按工序号排序去重。
-    同一工序号跨页重复出现时保留先出现的版本（通常是更完整的那页）。
-    """
-    seen_codes = set()
-    all_rows: List[str] = []
+    # code → 已收集的最长行
+    best_by_code: Dict[str, str] = {}
+    no_code_rows: List[str] = []
+
     for result in page_results:
         for row in result.get("rows", []):
             code = row.split("@")[0] if "@" in row else ""
-            if code and code in seen_codes:
+            if not code:
+                no_code_rows.append(row)
                 continue
-            if code:
-                seen_codes.add(code)
-            all_rows.append(row)
+            if code not in best_by_code or len(row) > len(best_by_code[code]):
+                best_by_code[code] = row
 
     # 按工序号数值排序
-    def _sort_key(row: str) -> int:
-        m = re.match(r'^(\d{4})', row)
-        return int(m.group(1)) if m else 9999
+    def _sort_key(code: str) -> int:
+        try:
+            return int(code)
+        except ValueError:
+            return 9999
 
-    return sorted(all_rows, key=_sort_key)
+    sorted_rows = [best_by_code[c] for c in sorted(best_by_code.keys(), key=_sort_key)]
+    all_rows = sorted_rows + no_code_rows
+
+    all_rows = _fix_inspection_codes(all_rows)
+    _warn_sequence_gaps(all_rows)
+    return all_rows
+
+
+def _warn_sequence_gaps(rows: List[str]) -> None:
+    """检测工序号中可疑的大跳跃，记录警告便于排查漏项。
+
+    正常节奏：相邻主工序间隔 50（0050→0100→0150）。
+    若间隔 > 150 说明中间可能有工序未被识别。
+    """
+    main_codes: List[int] = []
+    for row in rows:
+        parts = row.split("@", 2)
+        if len(parts) < 3:
+            continue
+        code_str, trade, _ = parts
+        if "检" in trade:
+            continue  # 跳过检验行
+        try:
+            main_codes.append(int(code_str))
+        except ValueError:
+            pass
+
+    for i in range(len(main_codes) - 1):
+        diff = main_codes[i + 1] - main_codes[i]
+        if diff > 150:
+            logger.warning(
+                "[ProcessSpec] ⚠️ 工序号跳跃过大：%04d → %04d（间隔%d），"
+                "可能存在漏识别工序，请人工核对原件",
+                main_codes[i], main_codes[i + 1], diff
+            )

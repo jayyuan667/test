@@ -5,7 +5,7 @@ import os
 import json
 from flask import Blueprint, jsonify, send_from_directory
 
-from ..config import OUTPUT_FOLDER
+from ..config import OUTPUT_FOLDER, KB_PREVIEW_FOLDER
 from ._response import fail, ERR_TASK_NOT_FOUND
 
 
@@ -18,6 +18,8 @@ tasks = {}
 
 
 def _result_dir(task_id: str):
+    if task_id.startswith("kb_"):
+        return os.path.join(KB_PREVIEW_FOLDER, task_id)
     return os.path.join(OUTPUT_FOLDER, task_id)
 
 
@@ -28,21 +30,28 @@ def _collect_image_files(task_id: str, task_data: dict | None = None):
     seen = set()
     image_files = []
 
+    result_dir = _result_dir(task_id)
     for path in (task_data or {}).get("png_paths", []) or []:
         if not path:
             continue
-        filename = os.path.basename(path)
+        filename = os.path.relpath(path, result_dir)
         if filename.lower().endswith(IMAGE_EXTS) and filename not in seen:
             seen.add(filename)
             image_files.append(filename)
 
-    result_dir = _result_dir(task_id)
     if os.path.isdir(result_dir):
         # Top-level images first
         for filename in sorted(os.listdir(result_dir)):
             if filename.lower().endswith(IMAGE_EXTS) and filename not in seen:
                 seen.add(filename)
                 image_files.append(filename)
+        # Subdirectory: pages (common for PDF page renders)
+        pages_dir = os.path.join(result_dir, "pages")
+        if os.path.isdir(pages_dir):
+            for filename in sorted(os.listdir(pages_dir)):
+                if filename.lower().endswith(IMAGE_EXTS) and filename not in seen:
+                    seen.add(filename)
+                    image_files.append("pages/" + filename)
         # Subdirectory: creo_views (common for Creo screenshots)
         creo_dir = os.path.join(result_dir, "creo_views")
         if os.path.isdir(creo_dir):

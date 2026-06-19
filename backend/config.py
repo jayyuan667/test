@@ -4,8 +4,13 @@
 import os
 import json
 from typing import Dict, Any
+from urllib.parse import urlparse
+
+import httpx
+from openai import OpenAI
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+DIRECT_OPENAI_HOSTS = {"ark.cn-beijing.volces.com"}
 
 
 def load_config() -> Dict[str, Any]:
@@ -137,6 +142,30 @@ def init_config() -> None:
                     print(f"  [from config.json] {key}: {preview}")
 
 
+def create_openai_client(api_key: str | None, base_url: str | None) -> OpenAI:
+    """Build an OpenAI-compatible client.
+
+    Some vision/embedding providers are unstable behind the user's local proxy.
+    For known direct-connect hosts, bypass environment proxy settings explicitly
+    while keeping the default behavior for all other providers.
+    """
+    host = ""
+    if base_url:
+        try:
+            host = (urlparse(base_url).hostname or "").lower()
+        except ValueError:
+            host = ""
+
+    if host in DIRECT_OPENAI_HOSTS:
+        return OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            http_client=httpx.Client(trust_env=False),
+        )
+
+    return OpenAI(api_key=api_key, base_url=base_url)
+
+
 def _iter_extra_paths(raw_value: str):
     """Split POPPLER_PATH or similar env values into individual existing paths."""
     if not raw_value:
@@ -168,8 +197,17 @@ def ensure_poppler_path() -> None:
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 OUTPUT_FOLDER = os.path.join(BASE_DIR, "output")
+KB_PREVIEW_FOLDER = os.path.join(BASE_DIR, "db_data", "kb_previews")
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024
 MAX_HISTORY_COUNT = 50
+
+# ============ YOLO 预标注配置 ============
+YOLO_WEIGHT_PATH = os.getenv("YOLO_WEIGHT_PATH", os.path.join(BASE_DIR, "db_data", "best.pt"))
+YOLO_ONNX_PATH   = os.getenv("YOLO_ONNX_PATH",   os.path.join(BASE_DIR, "db_data", "best.onnx"))
+YOLO_CONF        = float(os.getenv("YOLO_CONF", "0.25"))
+YOLO_IOU         = float(os.getenv("YOLO_IOU",  "0.45"))
+YOLO_IMG_SIZE    = int(os.getenv("YOLO_IMG_SIZE", "1280"))
+YOLO_DEVICE      = os.getenv("YOLO_DEVICE", "cpu")
 
 # ============ FreeCAD / OnShape 配置 ============
 

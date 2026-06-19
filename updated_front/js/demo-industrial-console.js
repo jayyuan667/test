@@ -1,21 +1,35 @@
 ﻿
+    // ── Toast 通知系统 ──
+    let _toastStack = null;
+    function ensureToastStack() {
+      if (!_toastStack || !document.contains(_toastStack)) {
+        _toastStack = document.createElement('div');
+        _toastStack.className = 'toast-stack';
+        document.body.appendChild(_toastStack);
+      }
+      return _toastStack;
+    }
+    function showToast(message, type) {
+      var stack = ensureToastStack();
+      var el = document.createElement('div');
+      el.className = 'toast-item toast-' + (type || 'error');
+      el.textContent = message;
+      stack.appendChild(el);
+      el.addEventListener('animationend', function(e) {
+        if (e.animationName === 'toast-out') { el.remove(); }
+      });
+    }
+
     const navItems = [...document.querySelectorAll('.nav-item')];
     const topTabs = [...document.querySelectorAll('.top-tab')];
     const pages = [...document.querySelectorAll('.page')];
-    const resultTabs = [...document.querySelectorAll('.result-tab')];
-    const resultViews = [...document.querySelectorAll('.result-view')];
+    const resultTabs = [...document.querySelectorAll('#page-generate [data-result-view]')];
+    const resultViews = [...document.querySelectorAll('#page-generate .result-view')];
 
-    const demoStatusValue = document.getElementById('demoStatusValue');
-    const demoHitValue = document.getElementById('demoHitValue');
-    const demoStepValue = document.getElementById('demoStepValue');
-    const demoResultChip = document.getElementById('generateResultChip');
-    const workflowPhase = document.getElementById('workflowPhase');
     const workflowPhaseHint = document.getElementById('workflowPhaseHint');
     const workflowPercent = document.getElementById('workflowPercent');
     const workflowProgressBar = document.getElementById('workflowProgressBar');
-    const workflowLiveBadge = null;
     const workflowThinkingLine = workflowPhaseHint;
-    const workflowLiveStream = null;
     const processEmpty = document.getElementById('processEmpty');
     const processResult = document.getElementById('processResult');
     const stageCards = [...document.querySelectorAll('.stage-card')];
@@ -29,13 +43,17 @@
     const reviewStayBtn = document.getElementById('reviewStayBtn');
     const reviewConfirmBtn = document.getElementById('reviewConfirmBtn');
     const reviewTableHost = document.getElementById('reviewTableHost');
+    const reviewEmptyState = document.getElementById('reviewEmptyState');
     const reviewTextarea = document.getElementById('reviewTextarea');
     const reviewSourceNote = document.getElementById('reviewSourceNote');
     const reviewStatusBadge = document.getElementById('reviewStatusBadge');
     const reviewStepLabel = document.getElementById('reviewStepLabel');
     const reviewContinueBtn = document.getElementById('reviewContinueBtn');
     const reviewRerunBtn = document.getElementById('reviewRerunBtn');
+    let _annotateTool = null;
+    let _annotateActive = false;
     const retrievalLibraryBtn = document.getElementById('retrievalLibraryBtn');
+    const featureCacheToggleBtn = document.getElementById('featureCacheToggleBtn');
     const retrievalLibraryModal = document.getElementById('retrievalLibraryModal');
     const closeRetrievalLibraryModalBtn = document.getElementById('closeRetrievalLibraryModal');
     const cancelRetrievalLibraryBtn = document.getElementById('cancelRetrievalLibraryBtn');
@@ -50,6 +68,9 @@
     const historyClearFilterBtn = document.getElementById('historyClearFilterBtn');
     const historyTableBody = document.getElementById('historyTableBody');
     const historyTableMeta = document.getElementById('historyTableMeta');
+    const reducedMotionQuery = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)')
+      : null;
     const historyRecordCount = document.getElementById('historyRecordCount');
     const historyPageIndicator = document.getElementById('historyPageIndicator');
     const historyTotalValue = document.getElementById('historyTotalValue');
@@ -82,7 +103,8 @@
     let taskPreviewZoomLabel = document.getElementById('taskPreviewZoomLabel');
     let taskPreviewFullscreenImage = document.getElementById('taskPreviewFullscreenImage');
     let taskPreviewFullscreenCounter = document.getElementById('taskPreviewFullscreenCounter');
-    let taskPreviewFullscreenZoomLabel = document.getElementById('taskPreviewFullscreenZoomLabel');
+    let taskPreviewFullscreenPrevBtn = document.getElementById('taskPreviewFullscreenPrevBtn');
+    let taskPreviewFullscreenNextBtn = document.getElementById('taskPreviewFullscreenNextBtn');
     const taskPreviewPrevBtn = document.getElementById('taskPreviewPrevBtn');
     const taskPreviewNextBtn = document.getElementById('taskPreviewNextBtn');
     const taskPreviewZoomOutBtn = document.getElementById('taskPreviewZoomOutBtn');
@@ -90,21 +112,10 @@
     const taskPreviewResetBtn = document.getElementById('taskPreviewResetBtn');
     const taskPreviewFullscreenBtn = document.getElementById('taskPreviewFullscreenBtn');
 
-    function setDemoStatusText(value) {
-      if (demoStatusValue) demoStatusValue.textContent = value;
-    }
-
-    function setDemoHitText(value) {
-      if (demoHitValue) demoHitValue.textContent = value;
-    }
-
-    function setDemoStepText(value) {
-      if (demoStepValue) demoStepValue.textContent = value;
-    }
-
-    function setDemoResultChipText(value) {
-      if (demoResultChip) demoResultChip.textContent = value;
-    }
+    function setDemoStatusText() {}
+    function setDemoHitText() {}
+    function setDemoStepText() {}
+    function setDemoResultChipText() {}
 
     function setWorkflowThinkingLine(value) {
       if (workflowThinkingLine) workflowThinkingLine.textContent = String(value || '').trim() || '等待任务启动';
@@ -147,27 +158,11 @@
       return clean;
     }
 
-    function renderWorkflowLiveStream() {
-      if (!workflowLiveStream) return;
-      const items = backendState.workflowLiveEntries.slice(-6);
-      if (!items.length) {
-        workflowLiveStream.innerHTML = '<div class="workflow-live-item dim"><span class="tag">SYSTEM</span><span class="text">等待后端日志...</span></div>';
-        return;
-      }
-      workflowLiveStream.innerHTML = items.map((item) => `
-        <div class="workflow-live-item${item.tone ? ` is-${escapeHtml(item.tone)}` : ''}">
-          <span class="tag">${escapeHtml(item.tag || 'LOG')}</span>
-          <span class="text">${escapeHtml(item.text || '')}</span>
-        </div>
-      `).join('');
-      workflowLiveStream.scrollTop = workflowLiveStream.scrollHeight;
-    }
+    function renderWorkflowLiveStream() {}
 
     function resetWorkflowLiveConsole() {
       backendState.workflowLiveEntries = [];
-      if (workflowLiveBadge) workflowLiveBadge.textContent = 'LIVE';
       setWorkflowThinkingLine('等待任务启动');
-      renderWorkflowLiveStream();
     }
 
     function appendWorkflowLiveEntry(tag, text, tone = 'normal') {
@@ -190,10 +185,22 @@
       if (node.disabled !== next) node.disabled = next;
     }
 
+    function debounce(fn, wait) {
+      let timer = null;
+      return function debounced(...args) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          timer = null;
+          fn.apply(this, args);
+        }, wait);
+      };
+    }
+
     function refreshTaskPreviewFullscreenRefs() {
       taskPreviewFullscreenImage = document.getElementById('taskPreviewFullscreenImage');
       taskPreviewFullscreenCounter = document.getElementById('taskPreviewFullscreenCounter');
-      taskPreviewFullscreenZoomLabel = document.getElementById('taskPreviewFullscreenZoomLabel');
+      taskPreviewFullscreenPrevBtn = document.getElementById('taskPreviewFullscreenPrevBtn');
+      taskPreviewFullscreenNextBtn = document.getElementById('taskPreviewFullscreenNextBtn');
     }
 
     function refreshTaskPreviewRefs() {
@@ -280,7 +287,6 @@
     const dbPreviewMeta = document.getElementById('dbPreviewMeta');
     const dbPreviewSource = document.getElementById('dbPreviewSource');
     const dbPreviewImage = document.getElementById('dbPreviewImage');
-    const dbPreview3DContainer = document.getElementById('dbPreview3DContainer');
     const dbPreviewEmpty = document.getElementById('dbPreviewEmpty');
     const dbPreviewCounter = document.getElementById('dbPreviewCounter');
     const dbPreviewFeature = document.getElementById('dbPreviewFeature');
@@ -292,7 +298,6 @@
     const dbPreviewResetBtn = document.getElementById('dbPreviewResetBtn');
     const dbPreviewZoomLabel = document.getElementById('dbPreviewZoomLabel');
     const dbEditorShell = document.getElementById('dbEditorShell');
-    const dbEditorTextarea = document.getElementById('dbEditorTextarea');
     const dbEditorPreview = document.getElementById('dbEditorPreview');
     const dbEditorProductType = document.getElementById('dbEditorProductType');
     const dbEditorContent = document.getElementById('dbEditorContent');
@@ -327,10 +332,17 @@
     const viewMyDbFromLockBtn = document.getElementById('viewMyDbFromLockBtn');
     const dbBrowseBanner = document.getElementById('dbBrowseBanner');
     const dbUnlockHintBtn = document.getElementById('dbUnlockHintBtn');
-    const zipImportHud = document.getElementById('zipImportHud');
+    const zipImportHud = document.getElementById('zipImportHud'); // may be null (removed from HTML)
     const zipImportPhase = document.getElementById('zipImportPhase');
     const zipImportPercent = document.getElementById('zipImportPercent');
     const zipProgressBar = document.getElementById('zipProgressBar');
+    const zipStatusZone = document.getElementById('zipStatusZone');
+    const zipResultTabs = document.getElementById('zipResultTabs');
+    const zipResultBanner = document.getElementById('zipResultBanner');
+    const zipBannerIcon = document.getElementById('zipBannerIcon');
+    const zipBannerTitle = document.getElementById('zipBannerTitle');
+    const zipBannerSub = document.getElementById('zipBannerSub');
+    const zipAgainBtn = document.getElementById('zipAgainBtn');
     const exportModal = document.getElementById('exportModal');
     const exportModalCloseBtn = document.getElementById('exportModalCloseBtn');
     const exportCancelBtn = document.getElementById('exportCancelBtn');
@@ -344,8 +356,6 @@
     let libraryReady = false;
     let dbDetailPreviewRequestToken = 0;
     let dbPreviewZoom = 1;
-    const historyViewer = make3DViewer();
-    const dbViewer = make3DViewer();
 
     const initialUploadPanelHTML = uploadPanelBody?.innerHTML || '';
     const initialProcessPanelHTML = processResult?.innerHTML || '';
@@ -395,7 +405,7 @@
         meta: '模型编号：QZ-07-441 · 当前版本：v0.1 · 最近更新：未开始',
         status: '待上传',
         statusClass: 'danger',
-        stage: '尚未接收 PRT 模型文件，无法进入解析链路。',
+        stage: '尚未接收文件，无法进入解析链路。',
         hit: '无命中记录，待上传后开始检索。',
         feature: '暂无结构化特征。',
         count: '尚未生成工序。',
@@ -463,7 +473,7 @@
       removed: new Set(),
     };
 
-    const API_BASE = window.__API_BASE__ || 'http://localhost:5000/api';
+    const API_BASE = window.__API_BASE__ || 'http://localhost:5190/api';
     const ZIP_UNLOCK_SESSION_KEY = 'industrial_console_zip_unlocked';
     const ZIP_SCOPE_SESSION_KEY = 'industrial_console_active_scope';
     const RETRIEVAL_SCOPE_SESSION_KEY = 'industrial_console_retrieval_scope';
@@ -497,7 +507,10 @@
       zipConflictMode: 'replace',
       taskBusy: false,
       taskProgress: 0,
-      taskPhase: '等待上传 PRT',
+      taskPhase: '等待上传文件',
+      workflowDisplayedProgress: 0,
+      workflowLastProgressUpdateAt: 0,
+      workflowProgressAnimationFrame: 0,
       previewImages: [],
       previewTaskId: '',
       previewIndex: 0,
@@ -514,6 +527,7 @@
       twCurrentTr: null,
       twDoneFlag: false,
       twAllDoneHandled: false,
+      pendingPollResult: null,
       workflowLiveEntries: [],
       resultByTaskId: {},
       historyPage: 1,
@@ -521,9 +535,15 @@
       historyCompletedDate: '',
       historySelected: new Set(),
       historySnapshot: null,
+      dbDetailRenderKey: '',
       taskPollTimer: null,
       reviewEventSource: null,
       initialized: false,
+      featureCacheEnabled: false,
+      annotationAnalyzed: false,
+      annotateRestoredFor: '',
+      annotationReturnMode: 'pending',
+      preferredResultView: 'view-review',
     };
     backendState.retrievalLibraryKey = getSessionRetrievalScopeKey() || 'public';
     backendState.retrievalLibraryName = resolveLibraryScopeLabel(backendState.retrievalLibraryKey);
@@ -549,6 +569,84 @@
       return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
+    function getWorkflowDisplayTarget(now = performance.now()) {
+      const actual = Math.max(0, Math.min(100, Number(backendState.taskProgress) || 0));
+      if (reducedMotionQuery?.matches) return actual;
+      if (!backendState.taskBusy || actual >= 100) return actual;
+      if (actual >= 85) return actual;
+
+      const lastUpdateAt = Number(backendState.workflowLastProgressUpdateAt) || now;
+      const idleMs = Math.max(0, now - lastUpdateAt);
+      const maxLead = actual < 35 ? 6.5 : (actual < 60 ? 5.2 : 3.6);
+      const leadWindow = actual < 35 ? 2200 : (actual < 60 ? 2600 : 3200);
+      const driftRatio = Math.min(idleMs / leadWindow, 1);
+      const lead = maxLead * driftRatio;
+      return Math.min(actual + lead, 84);
+    }
+
+    function paintWorkflowProgress(progressValue) {
+      const next = Math.max(0, Math.min(100, Number(progressValue) || 0));
+      setTextIfChanged(workflowPercent, `${Math.round(next)}%`);
+      if (workflowProgressBar) {
+        workflowProgressBar.style.width = `${next}%`;
+      }
+      if (workflowHudCard) {
+        const actual = Math.max(0, Math.min(100, Number(backendState.taskProgress) || 0));
+        const breathing = backendState.taskBusy && actual > 0 && actual < 100 && !reducedMotionQuery?.matches;
+        workflowHudCard.classList.toggle('progress-breathing', breathing);
+        workflowHudCard.style.setProperty('--workflow-progress', next.toFixed(2));
+      }
+    }
+
+    function stopWorkflowProgressAnimation() {
+      if (!backendState.workflowProgressAnimationFrame) return;
+      cancelAnimationFrame(backendState.workflowProgressAnimationFrame);
+      backendState.workflowProgressAnimationFrame = 0;
+    }
+
+    function runWorkflowProgressAnimation(now = performance.now()) {
+      backendState.workflowProgressAnimationFrame = 0;
+      const current = Math.max(0, Math.min(100, Number(backendState.workflowDisplayedProgress) || 0));
+      const target = getWorkflowDisplayTarget(now);
+      const delta = target - current;
+
+      let next = current;
+      if (Math.abs(delta) <= 0.05) {
+        next = target;
+      } else {
+        const easing = !backendState.taskBusy && target < current
+          ? 0.26
+          : (backendState.taskProgress >= 85 ? 0.16 : 0.1);
+        next = current + delta * easing;
+      }
+
+      if (!backendState.taskBusy && backendState.taskProgress === 0 && target === 0) {
+        next = 0;
+      }
+      if (!backendState.taskBusy && backendState.taskProgress >= 100 && next > 99.4) {
+        next = 100;
+      }
+
+      backendState.workflowDisplayedProgress = Math.max(0, Math.min(100, next));
+      paintWorkflowProgress(backendState.workflowDisplayedProgress);
+
+      const needsAnotherFrame = backendState.taskBusy || Math.abs(target - backendState.workflowDisplayedProgress) > 0.05;
+      if (needsAnotherFrame) {
+        backendState.workflowProgressAnimationFrame = requestAnimationFrame(runWorkflowProgressAnimation);
+      }
+    }
+
+    function ensureWorkflowProgressAnimation() {
+      if (reducedMotionQuery?.matches) {
+        backendState.workflowDisplayedProgress = Math.max(0, Math.min(100, Number(backendState.taskProgress) || 0));
+        stopWorkflowProgressAnimation();
+        paintWorkflowProgress(backendState.workflowDisplayedProgress);
+        return;
+      }
+      if (backendState.workflowProgressAnimationFrame) return;
+      backendState.workflowProgressAnimationFrame = requestAnimationFrame(runWorkflowProgressAnimation);
+    }
+
     function updateNavigationLockState() {
       navItems.forEach((item) => {
         const pageId = item.dataset.page;
@@ -562,6 +660,11 @@
         tab.disabled = disabled;
         tab.classList.toggle('disabled', disabled);
       });
+    }
+
+    function setZipState(state) {
+      if (zipStatusZone) zipStatusZone.className = `zip-status-zone state-${state}`;
+      if (zipResultTabs) zipResultTabs.classList.toggle('tabs-inactive', state === 'idle');
     }
 
     function updateZipConflictModeButton() {
@@ -701,7 +804,9 @@
       if (!retrievalLibraryBtn) return;
       const key = backendState.retrievalLibraryKey || getSessionRetrievalScopeKey() || 'public';
       const label = resolveLibraryScopeLabel(key);
-      retrievalLibraryBtn.textContent = `◉ 检索库：${label}`;
+      const fullSpan = retrievalLibraryBtn.querySelector('.btn-full');
+      if (fullSpan) fullSpan.textContent = `◉ 检索库：${label}`;
+      else retrievalLibraryBtn.textContent = `◉ 检索库：${label}`;
       if (retrievalLibraryInfo) {
         retrievalLibraryInfo.textContent = `${label}｜${key}`;
       }
@@ -777,14 +882,19 @@
     }
 
     function setWorkflowState(phase, progress = 0, busy = false) {
-      backendState.taskPhase = phase || '等待上传 PRT';
+      backendState.taskPhase = phase || '等待上传文件';
       backendState.taskProgress = Math.max(0, Math.min(100, Number(progress) || 0));
       backendState.taskBusy = !!busy;
-      setTextIfChanged(workflowPhase, backendState.taskPhase);
-      setTextIfChanged(workflowPercent, `${backendState.taskProgress}%`);
-      if (workflowProgressBar) {
-        const nextWidth = `${backendState.taskProgress}%`;
-        if (workflowProgressBar.style.width !== nextWidth) workflowProgressBar.style.width = nextWidth;
+      backendState.workflowLastProgressUpdateAt = performance.now();
+      if (typeof backendState.workflowDisplayedProgress !== 'number') {
+        backendState.workflowDisplayedProgress = backendState.taskProgress;
+      }
+      if (!backendState.taskBusy && backendState.taskProgress === 0) {
+        backendState.workflowDisplayedProgress = 0;
+        stopWorkflowProgressAnimation();
+        paintWorkflowProgress(0);
+      } else {
+        ensureWorkflowProgressAnimation();
       }
       if (workflowHudCard) {
         workflowHudCard.classList.toggle('busy', backendState.taskBusy);
@@ -795,7 +905,8 @@
       }
       if (workflowPhaseHint) {
         const hintMap = [
-          [/等待上传/, '等待 PRT 进入解析流程'],
+          [/等待上传/, '等待文件进入解析流程'],
+          [/图纸分析|图纸特征/, '2D 图纸正在提取特征，请稍候'],
           [/PRT.*批量|批量分析/, '批量 PRT 模型正在分拣与排队'],
           [/PRT.*分析/, 'PRT 正在解析并生成预览视图'],
           [/视觉|模型|特征/, '模型视图特征正在整理成结构化字段'],
@@ -861,9 +972,10 @@
       setTextIfChanged(taskPreviewCounter, images.length ? `${backendState.previewIndex + 1} / ${images.length}` : '0 / 0');
       setTextIfChanged(taskPreviewFullscreenCounter, images.length ? `${backendState.previewIndex + 1} / ${images.length}` : '0 / 0');
       setTextIfChanged(taskPreviewZoomLabel, `${Math.round((backendState.previewZoom || 1) * 100)}%`);
-      setTextIfChanged(taskPreviewFullscreenZoomLabel, `${Math.round((backendState.previewZoom || 1) * 100)}%`);
       setDisabledIfChanged(taskPreviewPrevBtn, images.length <= 1 || backendState.previewIndex <= 0);
       setDisabledIfChanged(taskPreviewNextBtn, images.length <= 1 || backendState.previewIndex >= images.length - 1);
+      setDisabledIfChanged(taskPreviewFullscreenPrevBtn, images.length <= 1 || backendState.previewIndex <= 0);
+      setDisabledIfChanged(taskPreviewFullscreenNextBtn, images.length <= 1 || backendState.previewIndex >= images.length - 1);
       setDisabledIfChanged(taskPreviewZoomOutBtn, !images.length);
       setDisabledIfChanged(taskPreviewZoomInBtn, !images.length);
       setDisabledIfChanged(taskPreviewResetBtn, !images.length);
@@ -900,22 +1012,10 @@
       host.className = 'task-preview-fullscreen';
       host.innerHTML = `
         <div class="task-preview-fullscreen-shell">
-          <div class="task-preview-fullscreen-head">
-            <div>
-              <div class="section-label">模型视图全屏预览</div>
-              <div class="summary-note">按 ESC 或点击右上角关闭</div>
-            </div>
-            <div class="task-preview-fullscreen-toolbar">
-              <button class="button secondary task-preview-overlay-btn" id="taskPreviewFullscreenPrevBtn">← 上一页</button>
-              <button class="button secondary task-preview-overlay-btn" id="taskPreviewFullscreenNextBtn">下一页 →</button>
-              <button class="button secondary task-preview-overlay-btn" id="taskPreviewFullscreenZoomOutBtn">缩小</button>
-              <span class="task-preview-zoom" id="taskPreviewFullscreenZoomLabel">100%</span>
-              <button class="button secondary task-preview-overlay-btn" id="taskPreviewFullscreenZoomInBtn">放大</button>
-              <button class="button secondary task-preview-overlay-btn" id="taskPreviewFullscreenResetBtn">重置</button>
-              <span class="task-preview-counter" id="taskPreviewFullscreenCounter">0 / 0</span>
-              <button class="button secondary" id="taskPreviewFullscreenCloseBtn">关闭</button>
-            </div>
-          </div>
+          <button class="task-preview-fs-prev" id="taskPreviewFullscreenPrevBtn">&#10094;</button>
+          <button class="task-preview-fs-next" id="taskPreviewFullscreenNextBtn">&#10095;</button>
+          <button class="task-preview-fs-close" id="taskPreviewFullscreenCloseBtn">✕</button>
+          <span class="task-preview-fs-counter" id="taskPreviewFullscreenCounter">0 / 0</span>
           <div class="task-preview-fullscreen-stage">
             <img id="taskPreviewFullscreenImage" class="task-preview-fullscreen-image" alt="模型视图全屏预览" />
           </div>
@@ -925,21 +1025,30 @@
       host.addEventListener('click', (event) => {
         if (event.target === host) closePreviewFullscreen();
       });
-      host.addEventListener('click', (event) => {
-        const button = event.target instanceof Element ? event.target.closest('.task-preview-overlay-btn') : null;
-        if (!button) return;
-        if (button.id === 'taskPreviewFullscreenPrevBtn') backendState.previewIndex = Math.max(0, backendState.previewIndex - 1);
-        if (button.id === 'taskPreviewFullscreenNextBtn') backendState.previewIndex = Math.min(Math.max((backendState.previewImages || []).length - 1, 0), backendState.previewIndex + 1);
-        if (button.id === 'taskPreviewFullscreenZoomInBtn') backendState.previewZoom = Math.min(2.4, (backendState.previewZoom || 1) + 0.2);
-        if (button.id === 'taskPreviewFullscreenZoomOutBtn') backendState.previewZoom = Math.max(0.6, (backendState.previewZoom || 1) - 0.2);
-        if (button.id === 'taskPreviewFullscreenResetBtn') {
-          backendState.previewZoom = 1;
-          backendState.previewIndex = 0;
-        }
+      const prevBtn = host.querySelector('#taskPreviewFullscreenPrevBtn');
+      const nextBtn = host.querySelector('#taskPreviewFullscreenNextBtn');
+      const closeBtn = host.querySelector('#taskPreviewFullscreenCloseBtn');
+      if (prevBtn) prevBtn.addEventListener('click', () => {
+        backendState.previewIndex = Math.max(0, backendState.previewIndex - 1);
         updateTaskPreviewSurface();
       });
-      const closeBtn = host.querySelector('#taskPreviewFullscreenCloseBtn');
+      if (nextBtn) nextBtn.addEventListener('click', () => {
+        backendState.previewIndex = Math.min(Math.max((backendState.previewImages || []).length - 1, 0), backendState.previewIndex + 1);
+        updateTaskPreviewSurface();
+      });
       if (closeBtn) closeBtn.addEventListener('click', closePreviewFullscreen);
+
+      // 滚轮缩放
+      const stage = host.querySelector('.task-preview-fullscreen-stage');
+      if (stage) {
+        stage.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          const delta = e.deltaY < 0 ? 0.15 : -0.15;
+          backendState.previewZoom = Math.min(4.0, Math.max(0.3, (backendState.previewZoom || 1) + delta));
+          updateTaskPreviewSurface();
+        }, { passive: false });
+      }
+
       refreshTaskPreviewFullscreenRefs();
       return host;
     }
@@ -960,8 +1069,8 @@
     }
 
     function focusProcessWorkspace() {
-      const processTab = document.querySelector('.result-tab[data-result-view="view-process"]');
-      const processView = document.getElementById('view-process');
+      const processTab = document.querySelector('#page-generate .result-tab[data-result-view="view-process"]');
+      const processView = document.querySelector('#page-generate #view-process');
       if (processTab && typeof processTab.scrollIntoView === 'function') {
         processTab.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
@@ -1068,24 +1177,6 @@
     function updateHistorySnapshotSurface() {
       const state = backendState.historySnapshot || { images: [], index: 0, zoom: 1 };
       const images = Array.isArray(state.images) ? state.images : [];
-      const gltfUrl = state.result?.gltf_url || '';
-      const container3D = document.getElementById('historySnapshot3DContainer');
-
-      if (gltfUrl) {
-        // PRT task — show 3D viewer
-        if (container3D) { container3D.style.display = 'block'; historyViewer.render(gltfUrl, container3D); }
-        if (historySnapshotImage) { historySnapshotImage.style.display = 'none'; historySnapshotImage.removeAttribute('src'); }
-        if (historySnapshotEmpty) historySnapshotEmpty.style.display = 'none';
-        if (historySnapshotCounter) historySnapshotCounter.textContent = '3D 模型';
-        if (historySnapshotZoomLabel) historySnapshotZoomLabel.textContent = '拖拽旋转';
-        [historySnapshotPrevBtn, historySnapshotNextBtn, historySnapshotZoomInBtn, historySnapshotZoomOutBtn, historySnapshotResetBtn]
-          .forEach((btn) => { if (btn) btn.disabled = true; });
-        return;
-      }
-
-      // No gltf_url — fall back to PNG image display
-      historyViewer.dispose();
-      if (container3D) container3D.style.display = 'none';
       const activeUrl = images[state.index] || '';
       const zoom = state.zoom || 1;
       if (historySnapshotCounter) historySnapshotCounter.textContent = images.length ? `${state.index + 1} / ${images.length}` : '0 / 0';
@@ -1153,7 +1244,7 @@
         if (backendState.latestTaskId === taskId) backendState.latestTaskId = null;
         renderHistoryPage();
       } catch (error) {
-        alert(`删除失败：${error.message}`);
+        showToast('删除失败：' + error.message, 'error');
         if (buttonEl) {
           buttonEl.disabled = false;
           buttonEl.textContent = '删除';
@@ -1163,7 +1254,7 @@
 
     function openHistorySnapshot(taskId) {
       if (!taskId || !historySnapshotModal) return;
-      const historyItem = (Array.isArray(backendState.history) ? backendState.history : []).find((item) => item.task_id === taskId) || { task_id: task_id };
+      const historyItem = (Array.isArray(backendState.history) ? backendState.history : []).find((item) => item.task_id === taskId) || { task_id: taskId };
       const cachedResult = getHistoryTaskResult(taskId);
       const apply = (result = {}) => {
         const nextResult = result || cachedResult || {};
@@ -1216,12 +1307,16 @@
       backendState.historyPage = Math.min(Math.max(Number(backendState.historyPage) || 1, 1), totalPages);
       const start = (backendState.historyPage - 1) * pageSize;
       const pageItems = entries.slice(start, start + pageSize);
+      const selectedPageSignature = pageItems
+        .map(({ card }) => `${card.taskId}:${backendState.historySelected.has(card.taskId) ? 1 : 0}`)
+        .join('|');
       const historyRenderKey = [
         backendState.historyPage,
         pageSize,
         total,
         backendState.historyCompletedDate,
         entries.map((entry) => `${entry.card.taskId}:${entry.card.status}:${entry.card.count}`).join('|'),
+        selectedPageSignature,
       ].join('::');
       if (backendState.historyRenderKey === historyRenderKey) {
         return;
@@ -1312,8 +1407,17 @@
 
     function processContentForDisplay(content) {
       if (!content) return '';
+      // Insert \n before -2. -3. -4. ... (sub-steps like -1.准备；-2.冲孔)
+      content = content.replace(/([；;])\s*(-\d+[.．])/g, '\n$2');
       // Insert \n before 2）3）4）... that follow a ；or ; delimiter
-      return content.replace(/([；;])\s*(\d+[）)])/g, '$1\n$2');
+      content = content.replace(/([；;])\s*(\d+[）)])/g, '$1\n$2');
+      // Insert \n before 工步2/工步3... so merged stream rows still display as step blocks
+      content = content.replace(/([；;])\s*(工步\s*\d+\s*[：:])/g, '$1\n$2');
+      content = content.replace(/\s+(工步\s*\d+\s*[：:])/g, '\n$1');
+      // Insert \n before N. step markers (1-2 digit number + period) after ；
+      // Lookahead (?=[^\d]) prevents matching dimension values like ；88.42
+      content = content.replace(/([；;])\s*(\d{1,2}[.．])(?=[^\d])/g, '$1\n$2');
+      return content;
     }
 
     function formatContentHtml(content) {
@@ -1503,8 +1607,13 @@
       return cleaned;
     }
 
+    const _FEATURE_NOISE_LABELS = new Set(['报告名称', '页数', '图号', '图号保留', '零件名称', '毛坯类型']);
+    function _isFeatureNoiseLabel(label) {
+      return _FEATURE_NOISE_LABELS.has(label) || /^第\d+页摘要$/.test(label);
+    }
+
     function parseFeatureFieldPairs(text = '') {
-      const cleaned = String(text || '').trim().replace(/\ufeff/g, '').replace(/^\[Pasted/i, '');
+      const cleaned = String(text || '').trim().replace(/\ufeff/g, '').replace(/^\[Pasted/i, '').replace(/\s*##+\s*$/g, '');
       if (!cleaned) return [];
       const pairs = [];
       const matches = [...cleaned.matchAll(/【([^】]+)】/g)];
@@ -1515,8 +1624,8 @@
           const start = match.index + match[0].length;
           const end = index + 1 < matches.length ? matches[index + 1].index : cleaned.length;
           const label = normalizeFeatureLabel(match[1]);
-          const value = cleaned.slice(start, end).trim();
-          if (label) pairs.push({ label, value });
+          const value = _cleanFieldValue(cleaned.slice(start, end));
+          if (label && !_isFeatureNoiseLabel(label)) pairs.push({ label, value });
         });
         return pairs;
       }
@@ -1527,8 +1636,8 @@
         const match = current.match(/^【([^】]+)】\s*(.*)$/) || current.match(/^([^:：]{1,32})[：:]\s*(.*)$/);
         if (!match) return;
         const label = normalizeFeatureLabel(match[1]);
-        const value = String(match[2] || '').trim();
-        if (label) pairs.push({ label, value });
+        const value = _cleanFieldValue(match[2]);
+        if (label && !_isFeatureNoiseLabel(label)) pairs.push({ label, value });
       });
 
       return pairs;
@@ -1554,53 +1663,39 @@
     function normalizeDbFeatureReportPages(item = {}) {
       const report = item.featureReportJson && typeof item.featureReportJson === 'object' ? item.featureReportJson : {};
 
-      // ── PRT 几何链路（独立于 PDF 视觉链路）──────────────────────────────────
-      // source_type="prt" 时，featureReportText 直接是几何分析器的结构化输出
-      // （【字段】\nvalue 多行格式），parseFeatureFieldPairs 可正确解析为多字段卡片。
+      // ── PRT 几何链路 ────────────────────────────────────────────────────────
       if (String(item.sourceType || '').toLowerCase() === 'prt') {
         const geoText = String(item.featureReportText || report.report_text || '').trim();
         if (!geoText) return [];
         return [{ page: 1, description: geoText, summary: geoText.slice(0, 200), image_path: '' }];
       }
 
-      // ── PDF / 视觉分析链路 ──────────────────────────────────────────────────
+      // ── PDF / ZIP 图纸链路 ──────────────────────────────────────────────────
       const mergedText = String(report.report_text || item.featureReportText || '').trim();
       const rawPages = Array.isArray(report.pages) ? report.pages : [];
-      if (rawPages.length && !mergedText) {
-        // Only fall back to raw per-page text when no reviewed/merged text is available
-        return rawPages.map((page, index) => {
-          const description = normalizeDbFeatureReportPageText(page) || '';
-          return {
-            ...page,
-            page: Number(page.page || page._page_number || index + 1) || index + 1,
-            description,
-            summary: String(page.summary || description || '').trim(),
-            image_path: page.image_path || page.source_path || '',
-          };
-        });
+
+      // ① 优先：rawPages 有实际 【字段】 内容（新入库记录，per-page breakdown）
+      if (rawPages.length) {
+        const pagesWithContent = rawPages
+          .map((page, index) => {
+            const description = normalizeDbFeatureReportPageText(page) || '';
+            return {
+              ...page,
+              page: Number(page.page || page._page_number || index + 1) || index + 1,
+              description,
+              summary: String(page.summary || description || '').trim(),
+              image_path: page.image_path || page.source_path || '',
+            };
+          })
+          .filter((p) => p.description);
+        if (pagesWithContent.length) return pagesWithContent;
       }
 
+      // ② 回退：把 mergedText（完整结构化报告）整体作为单页展示
+      //    不再走 summaryMatches 路径——摘要文本是截断的，【字段】解析会失败
       const fallbackText = mergedText || String(item.keyFeatures || item.summary || item.content || '').trim();
-      if (!fallbackText) {
-        return [];
-      }
-
-      const summaryMatches = [...fallbackText.matchAll(/【第(\d+)页摘要】([^\n]+)/g)];
-      if (summaryMatches.length) {
-        return summaryMatches.map((match) => ({
-          page: Number(match[1]) || 1,
-          description: String(match[2] || '').trim(),
-          summary: String(match[2] || '').trim(),
-          image_path: '',
-        }));
-      }
-
-      return [{
-        page: 1,
-        description: fallbackText,
-        summary: fallbackText,
-        image_path: '',
-      }];
+      if (!fallbackText) return [];
+      return [{ page: 1, description: fallbackText, summary: fallbackText.slice(0, 200), image_path: '' }];
     }
 
     function renderDbFeatureReportView(item = {}, options = {}) {
@@ -1738,10 +1833,14 @@
             : `- ${normalized.content}`;
         }).join('\n');
       }
-      return editorTextarea.value;
+      return editorTextarea?.value || '';
     }
 
     function resetProcessStreamState(taskId = '') {
+      if (backendState._pollSafetyTimer) {
+        clearTimeout(backendState._pollSafetyTimer);
+        backendState._pollSafetyTimer = null;
+      }
       backendState.processStreamTaskId = String(taskId || '');
       backendState.processStreamText = '';
       backendState.processStreamRows = [];
@@ -1765,10 +1864,14 @@
       backendState.twDoneFlag = false;
       backendState.twAllDoneHandled = false;
       backendState.streamingZoneActive = false;
+      backendState.pendingPollResult = null;
       const list = processResult?.querySelector('#processStepsList');
       if (list) {
         const typingTr = list.querySelector('.tw-typing-tr');
         if (typingTr) typingTr.remove();
+        // 清空已渲染行，确保重新生成时不残留旧数据
+        const tbody = list.querySelector('tbody');
+        if (tbody) tbody.innerHTML = '';
       }
     }
 
@@ -1969,6 +2072,16 @@
       if (processEmpty) processEmpty.style.display = 'none';
       if (processResult) processResult.style.display = 'block';
 
+      // poll 结果已经就绪（被暂存避免打断打字机），直接用它做最终渲染
+      if (backendState.pendingPollResult) {
+        const r = backendState.pendingPollResult;
+        backendState.pendingPollResult = null;
+        renderProcessFromResult(r);
+        renderReviewFromResult(r, { activate: false });
+        applyTaskDetail('spindle');
+        return;
+      }
+
       // Append any rows from processStreamText not yet typed — dedup by code
       const list = processResult?.querySelector('#processStepsList');
       const tbody = list?.querySelector('tbody');
@@ -2038,6 +2151,10 @@
           if (!result) return;
           backendState.latestResult = result;
           cacheHistoryResult(capturedTaskId, result);
+          if (result.process_flow) {
+            renderProcessFromResult(result);
+            applyTaskDetail('spindle');
+          }
           renderReviewFromResult(result, { activate: false });
           renderHistoryPage();
         }).catch(() => {});
@@ -2088,6 +2205,72 @@
         rows.push([code, '', value]);
       });
       return rows;
+    }
+
+    const PROCESS_PRESET_TRADES = ['划线工','车工','铣工','钻工','镗工','磨工','钳工','热处理','检验','其他'];
+    const PROCESS_TRADE_COLOR = { '热处理': 'green', '检验': 'orange' };
+
+    function openProcessRowEdit(tr) {
+      if (!tr) return;
+      const openRow = tr.closest('table')?.querySelector('tr.process-row-editing');
+      if (openRow && openRow !== tr) closeProcessRowEdit(openRow, false);
+      tr.classList.add('process-row-editing');
+      const trade = tr.dataset.trade || '';
+      const content = tr.dataset.content || tr.querySelector('[data-process-content]')?.textContent.trim() || '';
+      const code = tr.querySelector('.step-no')?.textContent.trim() || tr.dataset.processRow || '';
+      tr.dataset.origTrade = trade;
+      tr.dataset.origContent = content;
+      const isCustom = trade && !PROCESS_PRESET_TRADES.slice(0, -1).includes(trade);
+      const selVal = isCustom ? '其他' : trade;
+      const tradeCell = tr.querySelector('td.step-trade');
+      const contentCell = tr.querySelector('td.step-content-cell');
+      const opCell = tr.querySelector('td.step-op');
+      if (tradeCell) {
+        tradeCell.innerHTML = `<div class="trade-edit"><select class="process-trade-select">${PROCESS_PRESET_TRADES.map((t) => `<option${t === selVal ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select><input type="text" class="process-custom-trade" placeholder="输入工种名称" value="${escapeHtml(isCustom ? trade : '')}" style="display:${isCustom ? 'block' : 'none'}"/></div>`;
+      }
+      if (contentCell) {
+        contentCell.innerHTML = `<textarea class="process-content-edit">${escapeHtml(content)}</textarea>`;
+      }
+      if (opCell) {
+        opCell.innerHTML = `<div class="step-edit-actions"><button class="button primary sm" data-process-save="${escapeHtml(code)}">保存</button><button class="button secondary sm" data-process-cancel="${escapeHtml(code)}">取消</button></div>`;
+      }
+    }
+
+    function closeProcessRowEdit(tr, save) {
+      if (!tr) return;
+      tr.classList.remove('process-row-editing');
+      const tradeSelect = tr.querySelector('.process-trade-select');
+      const customInput = tr.querySelector('.process-custom-trade');
+      const contentTextarea = tr.querySelector('.process-content-edit');
+      const code = tr.querySelector('.step-no')?.textContent.trim() || tr.dataset.processRow || '';
+      let trade = tr.dataset.origTrade || '';
+      let content = tr.dataset.origContent || '';
+      if (save) {
+        if (tradeSelect) {
+          trade = tradeSelect.value;
+          if (trade === '其他' && customInput) trade = customInput.value.trim() || '其他';
+        }
+        if (contentTextarea) content = contentTextarea.value;
+        tr.dataset.trade = trade;
+        tr.dataset.content = content;
+      }
+      const badgeClass = PROCESS_TRADE_COLOR[trade] || 'blue';
+      const tradeCell = tr.querySelector('td.step-trade');
+      const contentCell = tr.querySelector('td.step-content-cell');
+      const opCell = tr.querySelector('td.step-op');
+      if (tradeCell) tradeCell.innerHTML = `<span class="trade-badge trade-badge-${badgeClass}">${escapeHtml(trade)}</span>`;
+      if (contentCell) {
+        const div = document.createElement('div');
+        div.className = 'step-content';
+        div.setAttribute('data-process-content', '');
+        div.contentEditable = 'true';
+        div.spellcheck = false;
+        div.textContent = content;
+        contentCell.innerHTML = '';
+        contentCell.appendChild(div);
+      }
+      if (opCell) opCell.innerHTML = `<button class="step-edit-btn" data-process-edit="${escapeHtml(code)}">编辑</button>`;
+      if (save) syncProcessTableToEditor();
     }
 
     function renderProcessRowsSurface(rows = [], options = {}) {
@@ -2179,7 +2362,8 @@
         if (result.task_id) backendState.currentProcessTaskId = result.task_id;
         cacheHistoryResult(result.task_id || backendState.latestTaskId, result);
         renderUploadedPreviewFromResult(result);
-        dispose3DPreview(); setTimeout(() => render3DPreview(result.gltf_url || null, "model3DContainer"), 100);
+        activateGenerateResultView('view-process');
+        focusProcessWorkspace();
         if (processEmpty) processEmpty.style.display = 'flex';
         if (processResult) processResult.style.display = 'none';
         setWorkflowState(result.status === 'completed' ? '工艺生成完成' : '工艺生成中', result.status === 'completed' ? 100 : (Number(result.progress) || backendState.taskProgress || 0), false);
@@ -2195,9 +2379,8 @@
 
       setWorkflowState(result.status === 'completed' ? '工艺生成完成' : '工艺生成中', result.status === 'completed' ? 100 : (Number(result.progress) || backendState.taskProgress || 0), false);
       renderUploadedPreviewFromResult(result);
-      dispose3DPreview(); setTimeout(() => render3DPreview(result.gltf_url || null, "model3DContainer"), 100);
       renderProcessRowsSurface(rows, { result, markdown: buildProcessMarkdown(result), live: false });
-      activateResultView('view-process');
+      activateGenerateResultView('view-process');
       focusProcessWorkspace();
     }
 
@@ -2208,26 +2391,37 @@
       const isSamePreviewTask = !!nextPreviewTaskId && backendState.previewTaskId === nextPreviewTaskId;
       const existingShell = uploadPanelBody?.querySelector('.task-preview-shell');
       backendState.previewTaskId = nextPreviewTaskId;
-      backendState.previewImages = normalizePreviewImages(result);
+      const newPreviewImages = normalizePreviewImages(result);
+      if (newPreviewImages.length > 0) {
+        backendState.previewImages = newPreviewImages;
+      }
       clampPreviewIndex();
-      if (!isSamePreviewTask || !existingShell) {
+      if (uploadPanelBody && (!isSamePreviewTask || !existingShell)) {
         uploadPanelBody.innerHTML = `
         <div class="task-preview-shell">
           <div class="task-preview-head">
             <div>
-              <div class="section-label">工艺模型预览</div>
+              <div class="section-label">图纸预览</div>
               <div class="summary-note">${escapeHtml(fileName)}</div>
             </div>
             <div class="task-preview-toolbar">
-              <span style="font-size:13px; color: var(--text-muted, #8899aa);">拖拽旋转 · 滚轮缩放</span>
+              <button class="button secondary task-preview-btn" id="taskPreviewPrevBtn">← 上页</button>
+              <span class="task-preview-counter" id="taskPreviewCounter">0 / 0</span>
+              <button class="button secondary task-preview-btn" id="taskPreviewNextBtn">下页 →</button>
+              <button class="button secondary task-preview-btn" id="taskPreviewZoomOutBtn">缩小</button>
+              <span class="task-preview-zoom" id="taskPreviewZoomLabel">100%</span>
+              <button class="button secondary task-preview-btn" id="taskPreviewZoomInBtn">放大</button>
+              <button class="button secondary task-preview-btn" id="taskPreviewResetBtn">重置</button>
+              <button class="button secondary task-preview-btn" id="taskPreviewFullscreenBtn">全屏</button>
             </div>
           </div>
-          <div class="model-3d-stage" id="model3DContainer">
-            <div class="task-preview-empty" id="model3DEmpty">
+          <div class="task-preview-stage">
+            <div class="task-preview-empty" id="taskPreviewEmpty">
               <div class="glyph blue">▣</div>
-              <div class="dropzone-title" style="font-size:22px; margin:0;">正在加载 3D 模型</div>
-              <div class="dropzone-copy" style="font-size:14px; max-width:90%;">glTF 模型加载完成后将显示可交互的 3D 预览，支持拖拽旋转与滚轮缩放。</div>
+              <div class="dropzone-title" style="font-size:22px; margin:0;">等待图纸解析</div>
+              <div class="dropzone-copy" style="font-size:14px; max-width:90%;">图纸页面生成后将自动显示在此处。</div>
             </div>
+            <img id="taskPreviewImage" class="task-preview-image" alt="图纸预览" style="display:none;" />
           </div>
         </div>
       `;
@@ -2236,6 +2430,16 @@
         if (summary) summary.textContent = fileName;
       }
       setStageState(3);
+      updateTaskPreviewSurface();
+    }
+
+    function _cleanFieldValue(raw) {
+      let v = String(raw || '').trim();
+      // Strip trailing ## markers
+      v = v.replace(/\s*##+\s*$/g, '');
+      // Strip leading colon/full-colon (from 【label】: value format)
+      v = v.replace(/^[\s：:]+/, '');
+      return v.trim();
     }
 
     function parseReviewFields(text = '') {
@@ -2246,27 +2450,49 @@
         if (!trimmed) return;
         const match = trimmed.match(/^【([^】]+)】\s*(.*)$/);
         if (match) {
-          current = { label: match[1].trim(), value: match[2].trim() };
+          const label = match[1].trim();
+          if (_isFeatureNoiseLabel(label)) { current = null; return; }
+          current = { label, value: _cleanFieldValue(match[2]) };
           fields.push(current);
         } else if (current) {
-          current.value = current.value ? current.value + '\n' + trimmed : trimmed;
+          const cleaned = _cleanFieldValue(trimmed);
+          if (cleaned) current.value = current.value ? current.value + '\n' + cleaned : cleaned;
         }
       });
       if (!fields.length) {
-        const raw = String(text || '').trim();
+        const raw = String(text || '').trim().replace(/\s*##+\s*$/g, '');
         if (raw) fields.push({ label: '审阅内容', value: raw });
       }
       return fields;
     }
 
-    function serializeReviewFields(fields = []) {
-      return fields
-        .map((field) => `【${field.label || '未命名'}】${field.value || ''}`)
-        .join('\n');
-    }
-
     function currentExportTaskId() {
       return backendState.currentProcessTaskId || backendState.latestResult?.task_id || backendState.currentReviewTaskId || backendState.latestTaskId || '';
+    }
+
+    async function downloadExport(format) {
+      const taskId = currentExportTaskId();
+      if (!taskId) return;
+      const rows = readProcessTable();
+      const url = `${API_BASE}/export/${encodeURIComponent(taskId)}?format=${format}`;
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows }),
+        });
+        if (!resp.ok) { console.error('Export failed', resp.status); return; }
+        const blob = await resp.blob();
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = (format === 'pdf' ? 'ProcessCard' : 'Process') + '_' + taskId.slice(0, 8) + '.' + format;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 1000);
+      } catch (e) {
+        console.error('Export error', e);
+      }
     }
 
     function updateExportCardButtonState() {
@@ -2296,15 +2522,22 @@
       }
       exportModalInfo.innerHTML = infoHtml || '暂无信息';
 
-      // Image from creo_views
-      const imageUrl = API_BASE + '/result/' + encodeURIComponent(taskId) + '/asset/creo_views/' + encodeURIComponent('全部默认.jpg');
+      // Use API-provided preview URL (covers both PDF pages/ and PRT creo_views/)
+      const preferredUrl = result.image_url
+        || (result.preview_image_urls && result.preview_image_urls.length > 0 ? result.preview_image_urls[0] : '');
+      let imageUrl;
+      if (preferredUrl) {
+        imageUrl = API_BASE.replace(/\/api$/, '') + preferredUrl;
+      } else {
+        imageUrl = API_BASE + '/result/' + encodeURIComponent(taskId) + '/asset/pages/page_1.png';
+      }
       exportModalImage.src = imageUrl;
       exportModalImage.style.display = 'block';
       exportModalImagePlaceholder.style.display = 'none';
       exportModalImage.onerror = function() {
         exportModalImage.style.display = 'none';
         exportModalImagePlaceholder.style.display = 'block';
-        exportModalImagePlaceholder.textContent = '未找到 creo_views/全部默认.jpg';
+        exportModalImagePlaceholder.textContent = '未找到预览图';
       };
 
       // Process table
@@ -2354,17 +2587,28 @@
         }
         return;
       }
+      // Snapshot current DOM rows now (sync) so user edits are captured
+      const domRows = readProcessTable().map(function(r) {
+        return [r.code, r.tradeType || '', r.content];
+      });
+
       exportModalMeta.textContent = '加载任务 ' + taskId + ' 数据...';
       exportModalImage.style.display = 'none';
       exportModalImagePlaceholder.style.display = 'block';
       exportModalImagePlaceholder.textContent = '加载中...';
       exportModalInfo.innerHTML = '加载中...';
-      exportModalTable.querySelector('tbody').innerHTML = '<tr><td colspan="2" class="empty-row">加载中...</td></tr>';
+      exportModalTable.querySelector('tbody').innerHTML = '<tr><td colspan="3" class="empty-row">加载中...</td></tr>';
       document.body.style.overflow = 'hidden';
       exportModal.classList.add('open');
 
       apiFetch('/result/' + encodeURIComponent(taskId)).then(function(result) {
         if (!result) { fillExportModalFallback(taskId); return; }
+        // Prefer live DOM rows over stored result so edits are always reflected
+        if (domRows.length) {
+          result = Object.assign({}, result, {
+            process_flow: Object.assign({}, result.process_flow || {}, { data: domRows }),
+          });
+        }
         fillExportModal(taskId, result);
         cacheHistoryResult(taskId, result);
       }).catch(function() {
@@ -2374,14 +2618,86 @@
 
     function readReviewTable() {
       if (!reviewTableHost) return [];
-      return [...reviewTableHost.querySelectorAll('tbody tr')].map((row) => {
+      const rows = [...reviewTableHost.querySelectorAll('tbody tr')];
+      const hasSections = rows.some(function(r) { return r.hasAttribute('data-review-section'); });
+
+      if (hasSections) {
+        return readReviewTableSections(rows);
+      }
+
+      return rows.map(function(row) {
         const index = Number(row.getAttribute('data-review-index') || '0');
         const labelEl = row.querySelector('[data-review-label]');
         const valueEl = row.querySelector('[data-review-value]');
-        const label = (labelEl?.textContent || '').trim();
-        const value = (valueEl && 'value' in valueEl ? valueEl.value : valueEl?.textContent || '').trim();
-        return { index, label, value };
-      }).filter((field) => field.label || field.value);
+        const label = (labelEl && labelEl.textContent || '').trim();
+        const value = (valueEl && 'value' in valueEl ? valueEl.value : valueEl && valueEl.textContent || '').trim();
+        return { index: index, label: label, value: value };
+      }).filter(function(field) { return field.label || field.value; });
+    }
+
+    function serializeReviewFields(fields, sections) {
+      // If sections are provided, output v5 section-delimited format
+      if (sections && sections.length) {
+        return serializeReviewSections(sections);
+      }
+      return (fields || [])
+        .map(function(field) { return '【' + (field.label || '未命名') + '】' + (field.value || ''); })
+        .join('\n');
+    }
+
+    function readReviewTableSections(rows) {
+      // Reconstruct sections from DOM rows with data-review-section attr
+      var sections = [];
+      var sectionMap = {};
+      rows.forEach(function(row) {
+        var sectionIdx = row.getAttribute('data-review-section');
+        if (!sectionIdx) return;
+        var key = String(sectionIdx);
+        if (!sectionMap[key]) {
+          sectionMap[key] = { title: '', fields: [], subSections: [], uncertainItems: [] };
+        }
+        var labelEl = row.querySelector('[data-review-label]');
+        var valueEl = row.querySelector('[data-review-value]');
+        var label = (labelEl && labelEl.textContent || '').trim();
+        var value = (valueEl && 'value' in valueEl ? valueEl.value : valueEl && valueEl.textContent || '').trim();
+        if (!label && !value) return;
+        sectionMap[key].fields.push({ label: label, value: value });
+      });
+      // Read section titles from separator rows
+      rows.forEach(function(row) {
+        var sectionIdx = row.getAttribute('data-section-idx');
+        if (sectionIdx !== null && sectionIdx !== undefined) {
+          var key = String(sectionIdx);
+          if (sectionMap[key]) {
+            sectionMap[key].title = (row.textContent || '').trim();
+          }
+        }
+      });
+      // Preserve section order
+      var seen = {};
+      rows.forEach(function(row) {
+        var sectionIdx = row.getAttribute('data-review-section');
+        if (!sectionIdx) return;
+        var key = String(sectionIdx);
+        if (!seen[key]) {
+          seen[key] = true;
+          sections.push(sectionMap[key]);
+        }
+      });
+      return sections;
+    }
+
+    function serializeReviewSections(sections) {
+      var lines = [];
+      sections.forEach(function(section, si) {
+        if (section.title) {
+          lines.push('━━━ ' + section.title + ' ━━━');
+        }
+        (section.fields || []).forEach(function(f) {
+          lines.push('【' + (f.label || '') + '】' + (f.value || ''));
+        });
+      });
+      return lines.join('\n');
     }
 
     function readProcessTable() {
@@ -2389,10 +2705,14 @@
       if (!list) return [];
       return [...list.querySelectorAll('[data-process-row]')].map((row) => {
         const code = String(row.getAttribute('data-process-row') || row.querySelector('.step-no')?.textContent || '').trim();
-        const tradeEl = row.querySelector('[data-step-trade]');
-        const tradeType = String(tradeEl?.textContent || '').trim();
+        const tradeType = String(row.dataset.trade || row.querySelector('[data-step-trade]')?.textContent || '').trim();
         const contentEl = row.querySelector('[data-process-content]');
-        const content = String(contentEl?.textContent || '').trim();
+        const rawHtml = contentEl ? contentEl.innerHTML : '';
+        const content = String(
+          rawHtml
+            ? rawHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
+            : row.dataset.content || ''
+        ).trim();
         return { code, tradeType, content };
       }).filter((row) => row.code || row.content);
     }
@@ -2437,21 +2757,13 @@
       backendState.currentReviewTaskId = payload.task_id || backendState.currentReviewTaskId || backendState.latestTaskId || '';
       const content = payload.content || payload.review_text || payload.raw_content || backendState.latestResult?.review_text || '';
       const fields = parseReviewFields(content);
-      let renamedFirstDrawingNo = false;
-      const displayFields = fields.map((field) => {
-        const label = String(field.label || '').trim();
-        if (!renamedFirstDrawingNo && label === '图号') {
-          renamedFirstDrawingNo = true;
-          return { ...field, label: 'PRT 名称' };
-        }
-        return field;
-      });
       backendState.latestReviewPayload = {
         ...payload,
         content,
         fields,
       };
 
+      if (reviewEmptyState) reviewEmptyState.style.display = 'none';
       if (reviewTableHost) {
         reviewTableHost.innerHTML = `
           <table class="step-table review-table">
@@ -2466,7 +2778,7 @@
               </tr>
             </thead>
             <tbody>
-              ${displayFields.map((field, index) => `
+              ${fields.map((field, index) => `
                 <tr data-review-row="${index}">
                   <td class="step-no" data-review-label>${escapeHtml(field.label)}</td>
                   <td><div class="step-content review-content" data-review-value contenteditable="true" spellcheck="false">${escapeHtml(field.value)}</div></td>
@@ -2478,17 +2790,18 @@
       }
 
       if (reviewTextarea) {
-        reviewTextarea.value = serializeReviewFields(displayFields);
+        reviewTextarea.value = serializeReviewFields(fields);
       }
       if (reviewSourceNote) {
         reviewSourceNote.textContent = payload.message || `已收到 ${fields.length} 项特征，内容可编辑，字段名固定。`;
       }
       backendState.reviewDirty = false;
-      if (reviewContinueBtn) reviewContinueBtn.disabled = false;
-      if (reviewRerunBtn) reviewRerunBtn.disabled = false;
+      if (reviewContinueBtn) { reviewContinueBtn.disabled = false; reviewContinueBtn.title = ''; }
+      if (reviewRerunBtn) { reviewRerunBtn.disabled = false; reviewRerunBtn.title = ''; }
       if (options.activate !== false) {
-        activateResultView('view-review');
+        activateGenerateResultView('view-review');
       }
+      try { renderReviewAnnotationSummary(); } catch (_) {}
     }
 
     function renderReviewFromResult(result = {}, options = {}) {
@@ -2501,7 +2814,7 @@
         message: result.status === 'completed' ? '后端工艺已完成，可继续查看或编辑特征。' : '已从后端加载审阅结果。',
       }, { activate: options.activate });
       if (options.activate !== false) {
-        activateResultView('view-review');
+        activateGenerateResultView('view-review');
       }
       renderHistoryPage();
     }
@@ -2510,6 +2823,19 @@
       if (reviewSourceNote) {
         reviewSourceNote.textContent = stepMessage || message;
       }
+    }
+
+    function openProcessWorkspaceShell(title = '工艺正在生成', copy = '特征已确认，后端正在继续生成工艺规程，请稍候。') {
+      activateGenerateResultView('view-process');
+      focusProcessWorkspace();
+      if (processEmpty) {
+        processEmpty.style.display = 'flex';
+        const titleEl = processEmpty.querySelector('.dropzone-title');
+        const copyEl = processEmpty.querySelector('.dropzone-copy');
+        if (titleEl) titleEl.textContent = title;
+        if (copyEl) copyEl.textContent = copy;
+      }
+      if (processResult) processResult.style.display = 'none';
     }
 
     async function fetchReviewTaskSnapshot(taskId) {
@@ -2524,14 +2850,13 @@
 
     async function submitReview(action) {
       const taskId = backendState.latestReviewPayload?.task_id || backendState.currentReviewTaskId || backendState.latestTaskId;
-      activateResultView('view-process');
-      focusProcessWorkspace();
-      backendState.streamingDone = false;
-      resetProcessStreamState(taskId);
       if (!taskId) {
         setReviewFeedback('暂无可继续的任务', 'danger');
         return;
       }
+      backendState.annotateRestoredFor = '';
+      // Set early so SSE review_required events don't switch the tab back while awaiting
+      backendState.reviewSubmittedForTaskId = taskId;
 
       const fields = readReviewTable();
       const reviewText = serializeReviewFields(fields).trim() || (backendState.latestReviewPayload?.content || '').trim();
@@ -2540,19 +2865,39 @@
         return;
       }
 
+      openProcessWorkspaceShell(
+        action === 'rerun' ? '工艺重新生成准备中' : '工艺正在生成',
+        action === 'rerun'
+          ? '已提交修改后的特征，正在准备重新生成工艺规程。'
+          : '特征已确认，正在准备继续生成工艺规程。'
+      );
+
       const taskSnapshot = await fetchReviewTaskSnapshot(taskId);
       const currentStatus = String(taskSnapshot?.status || '').trim();
       if (action !== 'rerun' && currentStatus && currentStatus !== 'awaiting_review') {
+        if (currentStatus === 'completed') {
+          const completedResult = taskSnapshot?.process_flow ? taskSnapshot : (backendState.latestResult || taskSnapshot || {});
+          renderProcessFromResult(completedResult);
+          setReviewFeedback('该任务已经生成完成，已切换到工艺规程。', 'warn');
+          return;
+        }
         const detail = currentStatus === 'completed'
           ? '该任务已经完成工艺生成，请不要再提交旧审阅。'
           : `该任务当前状态为 ${currentStatus}，不是等待审阅状态。`;
         setReviewFeedback('任务不在待审阅状态', 'danger', detail);
+        // 校验不通过 → 将这条 task 从已提交标记中移除，避免后续 SSE 被阻塞
+        if (backendState.reviewSubmittedForTaskId === taskId) backendState.reviewSubmittedForTaskId = null;
+        activateGenerateResultView('view-review');
         return;
       }
       if (action === 'rerun' && currentStatus && !['completed', 'error', 'processing', 'awaiting_review'].includes(currentStatus)) {
         setReviewFeedback('任务当前不可重新生成', 'danger', `后端状态为 ${currentStatus}，暂时不能执行重新生成。`);
+        if (backendState.reviewSubmittedForTaskId === taskId) backendState.reviewSubmittedForTaskId = null;
+        activateGenerateResultView('view-review');
         return;
       }
+      backendState.streamingDone = false;
+      resetProcessStreamState(taskId);
 
       if (reviewContinueBtn) reviewContinueBtn.disabled = true;
       if (reviewRerunBtn) reviewRerunBtn.disabled = true;
@@ -2569,16 +2914,12 @@
 
       setWorkflowState(action === 'rerun' ? '重新生成中' : '等待后端继续生成', action === 'rerun' ? 65 : 55, true);
       updateExportCardButtonState();
-      if (processEmpty) {
-        processEmpty.style.display = 'flex';
-        const title = processEmpty.querySelector('.dropzone-title');
-        const copy = processEmpty.querySelector('.dropzone-copy');
-        if (title) title.textContent = '工艺正在生成';
-        if (copy) copy.textContent = action === 'rerun'
+      openProcessWorkspaceShell(
+        '工艺正在生成',
+        action === 'rerun'
           ? '已提交修改后的特征，后端正在重新生成工艺规程。'
-          : '特征已确认，后端正在继续生成工艺规程，请稍候。';
-      }
-      if (processResult) processResult.style.display = 'none';
+          : '特征已确认，后端正在继续生成工艺规程，请稍候。'
+      );
 
       try {
         await apiFetch(`/review/${encodeURIComponent(taskId)}`, {
@@ -2595,7 +2936,6 @@
         };
         backendState.reviewDirty = false;
         backendState.reviewRenderedForTask = '';
-        backendState.reviewSubmittedForTaskId = taskId;
 
         followTaskProgress(taskId);
       } catch (error) {
@@ -2603,9 +2943,7 @@
         if (reviewContinueBtn) reviewContinueBtn.disabled = false;
         if (reviewRerunBtn) reviewRerunBtn.disabled = false;
         setWorkflowState('等待审阅', 50, false);
-        activateResultView('view-review');
-        if (processEmpty) processEmpty.style.display = 'none';
-        if (processResult) processResult.style.display = 'none';
+        activateGenerateResultView('view-review');
         setReviewFeedback('审阅提交失败', 'danger', error.message || '后端拒绝了本次审阅提交。');
       }
     }
@@ -2630,7 +2968,8 @@
           backendState.currentReviewTaskId = taskId;
           // Always update latestReviewPayload so submitReview has the right task_id,
           // but skip re-rendering the table if user already confirmed this review.
-          if (!backendState.reviewSubmittedForTaskId || backendState.reviewSubmittedForTaskId !== taskId) {
+          const alreadySubmitted = backendState.reviewSubmittedForTaskId === taskId;
+          if (!alreadySubmitted) {
             backendState.latestReviewPayload = payload;
           }
           backendState.reviewRenderedForTask = taskId;
@@ -2639,18 +2978,67 @@
           setDemoStatusText('等待审阅');
           setDemoResultChipText('特征待确认');
           appendWorkflowLiveEntry('REVIEW', payload.message || '特征已提取，等待确认', 'step');
-          // 左侧面板：建立 3D 容器，有 glTF 则渲染真实模型，无则占位方块
           renderUploadedPreviewFromResult({ task_id: taskId, pdf_name: payload.title || taskId });
-          dispose3DPreview();
-          setTimeout(() => render3DPreview(payload.gltf_url || null, "model3DContainer"), 150);
           // Don't overwrite user edits if they've already submitted this review
-          if (backendState.reviewSubmittedForTaskId !== taskId) {
+          if (!alreadySubmitted) {
             renderReviewTable(payload);
           }
           renderHistoryPage();
         } catch (error) {
           console.warn('[demo] review_required parse failed:', error);
         }
+      });
+
+      source.addEventListener('annotation_required', (event) => {
+        try {
+          const payload = JSON.parse(event.data || '{}');
+          backendState.latestTaskId = taskId;
+          backendState.currentReviewTaskId = taskId;
+          backendState.annotationSummary = payload.summary || {};
+          backendState.annotationPages = payload.pages || 0;
+          backendState.annotateVisitedOnce = false;
+          backendState.annotateRestoredFor = taskId;
+          // 新任务进入标注阶段 → 清掉上一轮遗留的 review 状态
+          // 否则 poll 中 reviewRenderedForTask 残留会阻止 review table 渲染
+          backendState.reviewSubmittedForTaskId = null;
+          backendState.reviewRenderedForTask = '';
+          backendState.reviewDirty = false;
+          setWorkflowState('等待人工补全标注', 35, false);
+          setDemoStatusText('等待标注');
+          setDemoResultChipText('YOLO 已预标注');
+          appendWorkflowLiveEntry('ANNOTATE', `YOLO 检出 ${(payload.summary?.chamfer||0)+(payload.summary?.threaded_hole||0)+(payload.summary?.circle_hole||0)} 处，请人工核对`, 'step');
+          renderUploadedPreviewFromResult({ task_id: taskId, pdf_name: payload.title || taskId });
+          renderAnnotationPendingPanel();
+          backendState.annotationAnalyzed = true;
+          renderReviewAnnotationSummary();
+          activateGenerateResultView('view-review');
+        } catch (error) {
+          console.warn('[demo] annotation_required parse failed:', error);
+        }
+      });
+
+      source.addEventListener('yolo_progress', (event) => {
+        try {
+          const p = JSON.parse(event.data || '{}');
+          appendWorkflowLiveEntry('YOLO', `第 ${p.page}/${p.total} 页：${p.detections?.chamfer||0}倒角 / ${p.detections?.threaded_hole||0}螺纹孔 / ${p.detections?.circle_hole||0}圆孔`, 'log');
+        } catch (e) { /* noop */ }
+      });
+
+      source.addEventListener('preview_updated', (event) => {
+        try {
+          const p = JSON.parse(event.data || '{}');
+          const urls = p.preview_image_urls || [];
+          if (!urls.length) return;
+          backendState.previewImages = urls;
+          if (backendState.latestResult) {
+            backendState.latestResult.preview_image_urls = urls;
+          }
+          // Bust cache and refresh visible preview
+          const bust = '?v=' + Date.now();
+          backendState.previewImages = urls.map(u => u.includes('?') ? u : u + bust);
+          updateTaskPreviewSurface();
+          appendWorkflowLiveEntry('PREVIEW', '已加载带标注框的图纸视图', 'log');
+        } catch (e) { console.warn('[preview_updated] parse failed', e); }
       });
 
       source.addEventListener('step_start', (event) => {
@@ -2675,6 +3063,11 @@
         try {
           const payload = JSON.parse(event.data || '{}');
           appendWorkflowLiveEntry(`PAGE ${payload.page || 0}/${payload.total || 0}`, payload.message || '页面已生成', 'step');
+          const url = payload.url ? (API_BASE.replace('/api', '') + payload.url) : '';
+          if (url && !backendState.previewImages.includes(url)) {
+            backendState.previewImages.push(url);
+            updateTaskPreviewSurface();
+          }
         } catch (error) {
           console.warn('[demo] image_ready parse failed:', error);
         }
@@ -2693,6 +3086,11 @@
       });
 
       source.addEventListener('complete', () => {
+        // Clear safety timer from poll path
+        if (backendState._pollSafetyTimer) {
+          clearTimeout(backendState._pollSafetyTimer);
+          backendState._pollSafetyTimer = null;
+        }
         // Stop task poll — SSE stream is ending
         if (backendState.taskPollTimer) {
           clearInterval(backendState.taskPollTimer);
@@ -2714,6 +3112,14 @@
         // If the queue is already drained, finalize now.
         // Otherwise twKick() → twOnAllRowsDone() naturally after the last row.
         backendState.twDoneFlag = true;
+        // Only fetch if poll hasn't stashed a result already
+        if (!backendState.pendingPollResult && taskId) {
+          apiFetch(`/result/${encodeURIComponent(taskId)}`).then((result) => {
+            if (result && result.process_flow) {
+              backendState.pendingPollResult = result;
+            }
+          }).catch(() => {});
+        }
         if (!backendState.twIsTyping && !backendState.twRowQueue.length) {
           twOnAllRowsDone();
         }
@@ -2796,6 +3202,7 @@
       renderLibraryScopes();
       const records = await apiFetch(`/library/records?page=1&page_size=50&library_key=${encodeURIComponent(backendState.activeLibraryKey || 'public')}`);
       ingestLibraryRecords(records.items || []);
+      backendState.dbDetailRenderKey = '';
       if (Array.isArray(records.product_types) && records.product_types.length) {
         const currentType = dbTypeSelect.value || '全部';
         const uniqueTypes = [...new Set(records.product_types.filter(Boolean))];
@@ -2818,7 +3225,7 @@
         if (sessionScope) backendState.activeLibraryKey = sessionScope;
         await Promise.all([loadBackendHistory().catch(() => null), loadBackendLibrary().catch(() => null)]);
         renderTaskCards();
-        setWorkflowState('等待上传 PRT', 0, false);
+        setWorkflowState('等待上传文件', 0, false);
         setDemoStatusText('已接入后端');
         refreshCadPanel();
         updateZipConflictModeButton();
@@ -2919,7 +3326,7 @@
             loadZipLibraryList();
           }
           const hasPrt = (report.summary?.prt_count || 0) > 0;
-          setZipImportState('知识库解析中', `已解析 ${hasPrt ? `PRT×${report.summary.prt_count} + ` : ''}${report.zip_name || files[0].name}，正在整理匹配关系...`);
+          setZipImportState('知识库解析中', `已解析 ${hasPrt ? `图纸×${report.summary.prt_count} + ` : ''}${report.zip_name || files[0].name}，正在整理匹配关系...`);
           await sleep(600);
           renderZipReport(report);
           setZipImportState('知识库入库中', `批次 ${report.batch_id || '-'} 已匹配 ${report.summary?.matched_pairs || 0} 组，正在写入目标库...`);
@@ -2938,6 +3345,21 @@
       resetWorkflowLiveConsole();
       const form = new FormData();
       const prtFiles = files.filter((file) => /\.prt(\.\d+)?$/i.test(file.name));
+      const drawingFiles = files.filter((file) => /\.(pdf|png|jpg|jpeg|dxf|dwg)$/i.test(file.name));
+
+      // 2D drawing (PDF / PNG / JPG) — single file, dedicated endpoint
+      if (drawingFiles.length > 0) {
+        form.append('file', drawingFiles[0]);
+        form.append('library_key', backendState.retrievalLibraryKey || 'public');
+        form.append('use_cache', backendState.featureCacheEnabled ? '1' : '0');
+        setWorkflowState('图纸分析准备中', 10, true);
+        const result = await apiFetch('/upload_drawing', { method: 'POST', body: form });
+        if (result.task_id) backendState.currentProcessTaskId = result.task_id;
+        setWorkflowState('图纸特征提取中', 20, true);
+        followTaskProgress(result.task_id);
+        return result;
+      }
+
       if (files.length > 1 || prtFiles.length > 1) {
         prtFiles.forEach((file) => form.append('files', file));
         form.append('library_key', backendState.retrievalLibraryKey || 'public');
@@ -2995,33 +3417,7 @@
       zipBrowserState.matchedPage = clampZipPage(zipBrowserState.matchedPage, matchedTotalPages);
       zipBrowserState.unmatchedPage = clampZipPage(zipBrowserState.unmatchedPage, unmatchedTotalPages);
 
-      const dropzoneTitle = document.querySelector('#zipDropzone .dropzone-title');
-      const dropzoneCopy = document.querySelector('#zipDropzone .dropzone-copy');
-      if (dropzoneTitle) {
-        dropzoneTitle.textContent = report.batch_id ? '知识库已入库' : '等待上传知识库压缩包';
-      }
-      if (dropzoneCopy) {
-        dropzoneCopy.textContent = report.batch_id
-          ? `批次 ${report.batch_id} 已完成导入，已写入 ${backendState.activeLibraryName || '目标库'}。这里展示的是知识库结果，不是模型分析结果。`
-          : '上传 ZIP 后会自动导入知识库内容；要分析 PRT 模型，请到“工艺生成”页上传 PRT。';
-      }
-
-      const steps = [...document.querySelectorAll('#zipWorkbench .batch-step')];
-      const stepMeta = [
-        [`文件解压`, `总文件 ${summary.total_files || 0} 个`],
-        [`模型编号提取`, `PRT ${summary.prt_count || 0} / PDF ${summary.pdf_count || 0}`],
-        [`PRT 匹配`, `匹配 ${summary.matched_pairs || 0} 组`],
-        [`报告生成`, `错误 ${summary.error_count || 0} 项`],
-      ];
-      steps.forEach((step, index) => {
-        const titleEl = step.querySelector('strong');
-        const descEl = step.querySelector('span');
-        const hasProgress = !!report.batch_id;
-        step.classList.toggle('active', hasProgress);
-        step.classList.toggle('done', hasProgress && index < 3);
-        if (titleEl) titleEl.textContent = stepMeta[index][0];
-        if (descEl) descEl.textContent = report.batch_id ? stepMeta[index][1] : descEl.textContent;
-      });
+      // (dropzone text and batch-step updates removed — handled by setZipState / banner)
 
       updateZipPager(zipMatchedPrevBtn, zipMatchedNextBtn, zipMatchedPageIndicator, zipBrowserState.matchedPage, matchedTotalPages);
       updateZipPager(zipUnmatchedPrevBtn, zipUnmatchedNextBtn, zipUnmatchedPageIndicator, zipBrowserState.unmatchedPage, unmatchedTotalPages);
@@ -3041,7 +3437,7 @@
               <div class="match-head">
                 <div>
                   <div class="match-title">${escapeHtml(pair.prefix || '未命名模型')}</div>
-                <div class="match-sub">PRT：${escapeHtml(prtNames || '无')} · PDF：${escapeHtml(pdfSrcNames || '无')}</div>
+                <div class="match-sub">图纸：${escapeHtml(prtNames || '无')} · 工艺：${escapeHtml(pdfSrcNames || '无')}</div>
                 </div>
                 <span class="status-badge ${pair.status === 'skipped' ? 'warn' : 'success'}">${escapeHtml(pair.status || 'imported')}</span>
               </div>
@@ -3086,38 +3482,55 @@
 
       const logLines = [
         `接收到 ZIP 批次 ${report.zip_name || '工艺包.zip'}。`,
-        `PRT ${summary.prt_count || 0} 个，PDF ${summary.pdf_count || 0} 个。`,
+        `图纸 ${summary.prt_count || 0} 个，PDF ${summary.pdf_count || 0} 个。`,
         `已匹配 ${summary.matched_pairs || 0} 组，导入 ${summary.imported_count || 0} 条。`,
-        `未匹配 PRT ${unmatchedPrts.length} 项，未匹配 PDF ${unmatchedPdfs.length} 项。`,
+        `未匹配图纸 ${unmatchedPrts.length} 项，未匹配 PDF ${unmatchedPdfs.length} 项。`,
         ...errors.slice(0, 3).map((err) => `错误：${err.prefix || err.pdf_name || err.prt_name || '批次项'} - ${err.error || err.message || '解析失败'}`),
       ];
-      zipLogList.innerHTML = logLines.map((text, index) => `<div class="log-line"><span class="log-time">10:12:${String(1 + index * 5).padStart(2, '0')}</span><span>${escapeHtml(text)}</span></div>`).join('');
+      const _logBase = new Date();
+      zipLogList.innerHTML = logLines.map((text, index) => {
+        const d = new Date(_logBase.getTime() + index * 1000);
+        const ts = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+        return `<div class="log-line"><span class="log-time">${ts}</span><span>${escapeHtml(text)}</span></div>`;
+      }).join('');
       activateZipView('zip-matched');
     }
 
     function setZipImportState(phase, detail) {
-      const busyPhase = /上传中|解析中|入库中/.test(String(phase || ''));
+      const phaseStr = String(phase || '');
+      const busyPhase = /上传中|解析中|入库中/.test(phaseStr);
+      const isDone = /已完成/.test(phaseStr);
+      const isIdle = !busyPhase && !isDone;
       const thinkingText = getZipPhaseLabel(phase);
+
       setTextIfChanged(zipImportStatus, detail || phase || '等待工艺入库');
       setTextIfChanged(zipImportPhase, thinkingText);
-      const progress = /上传中/.test(String(phase || '')) ? 18 : (/解析中/.test(String(phase || '')) ? 48 : (/入库中/.test(String(phase || '')) ? 78 : (/已完成/.test(String(phase || '')) ? 100 : 0)));
-      setTextIfChanged(zipImportPercent, `${Math.max(0, Math.min(100, progress))}%`);
+
+      const progress = /上传中/.test(phaseStr) ? 18 : (/解析中/.test(phaseStr) ? 48 : (/入库中/.test(phaseStr) ? 78 : (isDone ? 100 : 0)));
+      setTextIfChanged(zipImportPercent, `${progress}%`);
       if (zipProgressBar) {
-        const nextWidth = `${Math.max(0, Math.min(100, progress))}%`;
+        const nextWidth = `${progress}%`;
         if (zipProgressBar.style.width !== nextWidth) zipProgressBar.style.width = nextWidth;
       }
-      if (zipImportHud) {
-        zipImportHud.classList.toggle('busy', busyPhase);
-        zipImportHud.classList.toggle('completed', /已完成/.test(String(phase || '')));
+
+      // Drive the state zone
+      if (busyPhase) {
+        setZipState('running');
+      } else if (isDone) {
+        setZipState('done');
+        if (zipResultBanner) zipResultBanner.className = 'zip-result-banner success';
+        if (zipBannerIcon) zipBannerIcon.textContent = '✓';
+        if (zipBannerTitle) zipBannerTitle.textContent = `入库完成 — ${backendState.activeLibraryName || '目标库'}`;
+        if (zipBannerSub) zipBannerSub.textContent = detail || '';
+      } else if (isIdle) {
+        setZipState('idle');
       }
+
       setTextIfChanged(zipBatchChip, phase || '等待知识库批次');
       setTextIfChanged(zipResultChip, phase && phase !== '等待批次' ? '处理中' : '未开始');
-      const uploadBtn = zipRunBtn;
-      const resetBtn = zipResetBtn;
-      const conflictBtn = zipConflictModeBtn;
-      setDisabledIfChanged(uploadBtn, busyPhase);
-      setDisabledIfChanged(resetBtn, busyPhase);
-      setDisabledIfChanged(conflictBtn, busyPhase);
+      setDisabledIfChanged(zipRunBtn, busyPhase);
+      setDisabledIfChanged(zipResetBtn, busyPhase);
+      setDisabledIfChanged(zipConflictModeBtn, busyPhase);
     }
 
     async function followTaskProgress(taskId) {
@@ -3136,10 +3549,6 @@
         try {
           const result = await apiFetch(`/result/${encodeURIComponent(taskId)}`);
           if (backendState.taskPollSession !== pollSession || generation !== pollGeneration) return;
-          if (result?.gltf_url && result.gltf_url !== backendState.lastPreviewUrls) {
-            backendState.lastPreviewUrls = result.gltf_url;
-            dispose3DPreview(); setTimeout(() => render3DPreview(result.gltf_url, "model3DContainer"), 100);
-          }
           if (result && result.process_flow) {
             backendState.latestTaskId = taskId;
             backendState.latestResult = result;
@@ -3147,23 +3556,31 @@
             cacheHistoryResult(taskId, result);
             backendState.taskMap.spindle = normalizeTaskCard({ task_id: taskId, pdf_name: result.pdf_name, created_at: result.created_at }, result);
             taskData.spindle = backendState.taskMap.spindle;
-            setWorkflowState('工艺生成完成', 100, false);
             renderTaskCards();
-            // Stop streaming before full render so replayed process_stream events don't overwrite it
-            backendState.streamingDone = true;
-            twDrainAll();
-            renderProcessFromResult(result);
-            renderReviewFromResult(result, { activate: false });
-            applyTaskDetail('spindle');
-            setDemoStatusText('生成完成');
-            setDemoResultChipText('工艺已生成');
-            disconnectTaskEvents();
+            // Stop poll but keep SSE alive — let 'complete' event drive finalization
             if (backendState.taskPollTimer) {
               clearInterval(backendState.taskPollTimer);
               backendState.taskPollTimer = null;
             }
-            backendState.taskPollSession = null;
             renderHistoryPage();
+
+            // Stash result for twOnAllRowsDone to use when streaming finishes
+            backendState.pendingPollResult = result;
+
+            // Safety: if SSE 'complete' never arrives (connection drop),
+            // force completion after a generous timeout
+            if (!backendState._pollSafetyTimer) {
+              backendState._pollSafetyTimer = setTimeout(() => {
+                backendState._pollSafetyTimer = null;
+                if (backendState.streamingDone) return;  // SSE complete already fired
+                backendState.streamingDone = true;
+                backendState.twDoneFlag = true;
+                disconnectTaskEvents();
+                if (!backendState.twIsTyping && !backendState.twRowQueue.length && !backendState.twAllDoneHandled) {
+                  twOnAllRowsDone();
+                }
+              }, 8000);
+            }
             return;
           }
           const nextProgress = Math.max(Number(result.progress || 0), backendState.taskProgress || 0);
@@ -3182,9 +3599,43 @@
           }
           const phase = result.status === 'processing'
             ? '工艺生成中'
-            : (result.status === 'awaiting_review' ? '等待审阅' : '处理中');
-          setWorkflowState(phase, nextProgress, result.status !== 'awaiting_review');
+            : (result.status === 'awaiting_review' ? '等待审阅'
+            : (result.status === 'awaiting_annotation' ? '等待标注' : '处理中'));
+          setWorkflowState(phase, nextProgress, !['awaiting_review','awaiting_annotation'].includes(result.status));
           setDemoStatusText(result.status || '处理中');
+
+          // Restore awaiting_annotation UI (page refresh / browser reopen scenario)
+          if (result.status === 'awaiting_annotation' && backendState.annotateRestoredFor !== taskId) {
+            backendState.annotateRestoredFor = taskId;
+            backendState.currentReviewTaskId = taskId;
+            backendState.currentProcessTaskId = taskId;
+            backendState.latestTaskId = taskId;
+            // Re-derive summary from saved annotations
+            (async () => {
+              try {
+                const r = await fetch(`${API_BASE}/annotations/${encodeURIComponent(taskId)}`);
+                const data = await r.json();
+                // 内建三类先以 0 占位；自定义类按 label 动态累加（含从 LS 缓存的类型名）
+                const sum = { chamfer: 0, threaded_hole: 0, circle_hole: 0 };
+                let pageCount = 0;
+                Object.values(data.pages || {}).forEach((p) => {
+                  pageCount += 1;
+                  (p.shapes || []).forEach((s) => {
+                    if (!s || !s.label) return;
+                    sum[s.label] = (sum[s.label] || 0) + 1;
+                  });
+                });
+                backendState.annotationSummary = sum;
+                backendState.annotationPages = pageCount;
+                backendState.annotateVisitedOnce = false;
+                backendState.annotationAnalyzed = true;
+                renderAnnotationPendingPanel();
+                renderReviewAnnotationSummary();
+                activateGenerateResultView('view-review');
+              } catch (e) { console.warn('[restore awaiting_annotation] failed', e); }
+            })();
+          }
+
           if (result.status === 'awaiting_review') {
             backendState.latestResult = {
               ...(backendState.latestResult || {}),
@@ -3192,7 +3643,8 @@
               task_id: taskId,
             };
             cacheHistoryResult(taskId, backendState.latestResult);
-            if (!backendState.reviewDirty && !backendState.reviewRenderedForTask
+            const reviewAlreadySubmitted = backendState.reviewSubmittedForTaskId === taskId;
+            if (!reviewAlreadySubmitted && !backendState.reviewDirty && !backendState.reviewRenderedForTask
                 && (result.review_text || result.feature_report || result.raw_review_text)) {
               backendState.reviewRenderedForTask = taskId;
               renderReviewTable({
@@ -3203,7 +3655,7 @@
                 failures: result.vision_failures || [],
                 message: '任务正在等待特征确认。',
               });
-            } else if (!backendState.reviewDirty && backendState.latestReviewPayload?.content) {
+            } else if (!reviewAlreadySubmitted && !backendState.reviewDirty && backendState.latestReviewPayload?.content) {
               renderReviewTable({ ...backendState.latestReviewPayload, task_id: taskId });
             }
             renderHistoryPage();
@@ -3264,12 +3716,14 @@
       backendState.lastPreviewUrls = '';
       backendState.resultRenderedForTask = '';
       backendState.reviewSubmittedForTaskId = '';
+      backendState.annotateRestoredFor = '';
+      backendState.preferredResultView = 'view-review';
       backendState.streamingDone = false;
       backendState.pollFailCount = 0;
-      dispose3DPreview();
+      exitAnnotateMode();
       backendState.taskBusy = false;
       backendState.taskProgress = 0;
-      backendState.taskPhase = '等待上传 PRT';
+      backendState.taskPhase = '等待上传文件';
       resetProcessStreamState('');
       disconnectTaskEvents();
       if (backendState.taskPollTimer) {
@@ -3277,7 +3731,7 @@
         backendState.taskPollTimer = null;
       }
 
-      setWorkflowState('等待上传 PRT', 0, false);
+      setWorkflowState('等待上传文件', 0, false);
       if (workflowHudCard) workflowHudCard.classList.remove('collapsed');
       if (workflowHudToggleBtn) workflowHudToggleBtn.textContent = '收起';
       setDemoStatusText('待上传');
@@ -3293,6 +3747,7 @@
       if (processResult) processResult.style.display = 'none';
 
       if (reviewTableHost) reviewTableHost.innerHTML = '';
+      if (reviewEmptyState) reviewEmptyState.style.display = '';
       if (reviewStatusBadge) {
         reviewStatusBadge.textContent = '未开始';
         reviewStatusBadge.className = 'status-badge warn';
@@ -3308,8 +3763,16 @@
     }
 
     function activateResultView(viewId) {
+      backendState.preferredResultView = viewId || backendState.preferredResultView || 'view-review';
       resultTabs.forEach(tab => tab.classList.toggle('active', tab.dataset.resultView === viewId));
       resultViews.forEach(view => view.classList.toggle('active', view.id === viewId));
+    }
+
+    function activateGenerateResultView(viewId) {
+      if (document.getElementById('page-generate') && !document.getElementById('page-generate').classList.contains('active')) {
+        activatePage('page-generate');
+      }
+      activateResultView(viewId);
     }
 
     function activateZipView(viewId) {
@@ -3350,10 +3813,11 @@
     }
 
     function refreshEditorPreview() {
-      editorPreview.textContent = editorTextarea.value;
+      if (editorPreview && editorTextarea) editorPreview.textContent = editorTextarea.value;
     }
 
     function toggleEditor() {
+      if (!editorShell) return;
       const active = editorShell.classList.toggle('active');
       if (active) refreshEditorPreview();
     }
@@ -3405,53 +3869,40 @@
       return [];
     }
 
-    function renderDbPreviewSurface(item = {}, images = [], index = 0, statusText = '', gltfUrl = '') {
+    function renderDbPreviewSurface(item = {}, images = [], index = 0, statusText = '') {
       const list = Array.isArray(images) ? images.filter(Boolean) : [];
       const safeIndex = list.length ? Math.min(Math.max(Number(index) || 0, 0), list.length - 1) : 0;
       const label = statusText || (list.length ? `${safeIndex + 1} / ${list.length}` : '暂无可用图片');
 
-      if (dbPreviewModal) dbPreviewModal.dataset.previewLoaded = (list.length || gltfUrl) ? '1' : '0';
+      if (dbPreviewModal) dbPreviewModal.dataset.previewLoaded = list.length ? '1' : '0';
       if (dbPreviewMeta) dbPreviewMeta.textContent = label;
       if (dbPreviewSource) dbPreviewSource.textContent = item.title ? `${item.title} · ${item.sourceType || item.source || '记录快照'}` : label;
 
-      if (gltfUrl) {
-        if (dbPreviewCounter) dbPreviewCounter.textContent = '3D 模型';
-        if (dbPreviewZoomLabel) dbPreviewZoomLabel.textContent = '拖拽旋转';
-        [dbPreviewPrevBtn, dbPreviewNextBtn, dbPreviewZoomOutBtn, dbPreviewZoomInBtn, dbPreviewResetBtn]
-          .forEach((btn) => { if (btn) btn.disabled = true; });
-        if (dbPreview3DContainer) { dbPreview3DContainer.style.display = 'block'; dbViewer.render(gltfUrl, dbPreview3DContainer); }
-        if (dbPreviewImage) { dbPreviewImage.style.display = 'none'; dbPreviewImage.removeAttribute('src'); }
-        if (dbPreviewEmpty) dbPreviewEmpty.style.display = 'none';
-      } else {
-        dbViewer.dispose();
-        if (dbPreview3DContainer) dbPreview3DContainer.style.display = 'none';
-        if (dbPreviewCounter) dbPreviewCounter.textContent = list.length ? `${safeIndex + 1} / ${list.length}` : '0 / 0';
-        if (dbPreviewZoomLabel) dbPreviewZoomLabel.textContent = `${Math.round(dbPreviewZoom * 100)}%`;
-        if (dbPreviewPrevBtn) dbPreviewPrevBtn.disabled = list.length <= 1 || safeIndex <= 0;
-        if (dbPreviewNextBtn) dbPreviewNextBtn.disabled = list.length <= 1 || safeIndex >= list.length - 1;
-        if (dbPreviewZoomOutBtn) dbPreviewZoomOutBtn.disabled = !list.length;
-        if (dbPreviewZoomInBtn) dbPreviewZoomInBtn.disabled = !list.length;
-        if (dbPreviewResetBtn) dbPreviewResetBtn.disabled = !list.length;
-        if (dbPreviewImage) {
-          if (list.length) {
-            dbPreviewImage.src = list[safeIndex];
-            dbPreviewImage.style.display = 'block';
-            dbPreviewImage.style.transform = `scale(${dbPreviewZoom})`;
-          } else {
-            dbPreviewImage.removeAttribute('src');
-            dbPreviewImage.style.display = 'none';
-          }
+      if (dbPreviewCounter) dbPreviewCounter.textContent = list.length ? `${safeIndex + 1} / ${list.length}` : '0 / 0';
+      if (dbPreviewZoomLabel) dbPreviewZoomLabel.textContent = `${Math.round(dbPreviewZoom * 100)}%`;
+      if (dbPreviewPrevBtn) dbPreviewPrevBtn.disabled = list.length <= 1 || safeIndex <= 0;
+      if (dbPreviewNextBtn) dbPreviewNextBtn.disabled = list.length <= 1 || safeIndex >= list.length - 1;
+      if (dbPreviewZoomOutBtn) dbPreviewZoomOutBtn.disabled = !list.length;
+      if (dbPreviewZoomInBtn) dbPreviewZoomInBtn.disabled = !list.length;
+      if (dbPreviewResetBtn) dbPreviewResetBtn.disabled = !list.length;
+      if (dbPreviewImage) {
+        if (list.length) {
+          dbPreviewImage.src = list[safeIndex];
+          dbPreviewImage.style.display = 'block';
+          dbPreviewImage.style.transform = `scale(${dbPreviewZoom})`;
+        } else {
+          dbPreviewImage.removeAttribute('src');
+          dbPreviewImage.style.display = 'none';
         }
-        if (dbPreviewEmpty) {
-          dbPreviewEmpty.style.display = list.length ? 'none' : 'flex';
-        }
+      }
+      if (dbPreviewEmpty) {
+        dbPreviewEmpty.style.display = list.length ? 'none' : 'flex';
       }
 
       backendState.dbDetailPreview = {
         key: item.key || item.id || '',
         images: list,
         index: safeIndex,
-        gltfUrl,
       };
     }
 
@@ -3509,38 +3960,6 @@
     async function loadDbRecordPreview(item = {}) {
       const inlineImages = normalizePreviewUrlList(item.previewImageUrls || item.preview_image_urls);
       const previewTaskId = String(item.previewTaskId || item.preview_task_id || item.sourceTaskId || item.source_task_id || '').trim();
-      const isPrt = String(item.sourceType || '').toLowerCase() === 'prt';
-
-      // PRT records: always try to fetch gltf_url first; fall back to inline images if unavailable
-      if (isPrt && previewTaskId) {
-        const token = ++dbDetailPreviewRequestToken;
-        renderDbPreviewSurface(item, [], 0, '正在加载 3D 模型...');
-        try {
-          const result = await apiFetch(`/result/${encodeURIComponent(previewTaskId)}`);
-          if (token !== dbDetailPreviewRequestToken) return;
-          const gltfUrl = String(result?.gltf_url || result?.gltfUrl || '').trim();
-          const fetchedImages = normalizePreviewUrlList(result?.previewImageUrls || result?.preview_image_urls);
-          if (gltfUrl) {
-            renderDbPreviewSurface(item, fetchedImages.length ? fetchedImages : inlineImages, 0, '3D 模型预览', gltfUrl);
-          } else if (fetchedImages.length) {
-            renderDbPreviewSurface(item, fetchedImages, 0, `${fetchedImages.length} 张图片`);
-          } else if (inlineImages.length) {
-            renderDbPreviewSurface(item, inlineImages, 0, `${inlineImages.length} 张图片`);
-          } else {
-            renderDbPreviewSurface(item, [], 0, '暂无可显示的模型或图片');
-          }
-        } catch {
-          if (token !== dbDetailPreviewRequestToken) return;
-          if (inlineImages.length) {
-            renderDbPreviewSurface(item, inlineImages, 0, `${inlineImages.length} 张图片`);
-          } else {
-            renderDbPreviewSurface(item, [], 0, '模型加载失败');
-          }
-        }
-        return;
-      }
-
-      // Non-PRT: inline images take priority (original behavior)
       if (inlineImages.length) {
         renderDbPreviewSurface(item, inlineImages, 0, `${inlineImages.length} 张图片`);
         return;
@@ -3556,11 +3975,8 @@
       try {
         const result = await apiFetch(`/result/${encodeURIComponent(previewTaskId)}`);
         if (token !== dbDetailPreviewRequestToken) return;
-        const gltfUrl = String(result?.gltf_url || result?.gltfUrl || '').trim();
         const nextImages = normalizePreviewUrlList(result?.previewImageUrls || result?.preview_image_urls);
-        if (gltfUrl) {
-          renderDbPreviewSurface(item, nextImages, 0, '3D 模型预览', gltfUrl);
-        } else if (nextImages.length) {
+        if (nextImages.length) {
           renderDbPreviewSurface(item, nextImages, 0, `${nextImages.length} 张图片`);
         } else {
           renderDbPreviewSurface(item, [], 0, '未找到可显示的图片');
@@ -3583,8 +3999,6 @@
       if (!dbPreviewModal) return;
       dbPreviewModal.classList.remove('open');
       document.body.style.overflow = '';
-      dbViewer.dispose();
-      if (dbPreview3DContainer) dbPreview3DContainer.style.display = 'none';
     }
 
     function updateDbPreviewTitle(item = {}, images = []) {
@@ -3599,12 +4013,9 @@
     function openDbPreviewFromCurrent() {
       const preview = backendState.dbDetailPreview || { images: [], index: 0, key: '' };
       const item = dbRecords[preview.key] || dbRecords[dbState.selectedKey] || {};
-      const storedGltfUrl = String(preview.gltfUrl || '').trim();
-      const statusText = storedGltfUrl
-        ? '3D 模型预览'
-        : (preview.images?.length ? `${(preview.index || 0) + 1} / ${preview.images.length}` : '暂无可用图片');
+      const statusText = preview.images?.length ? `${(preview.index || 0) + 1} / ${preview.images.length}` : '暂无可用图片';
       updateDbPreviewTitle(item, preview.images || []);
-      renderDbPreviewSurface(item, preview.images || [], preview.index || 0, statusText, storedGltfUrl);
+      renderDbPreviewSurface(item, preview.images || [], preview.index || 0, statusText);
       openDbPreviewModal();
     }
 
@@ -3659,6 +4070,27 @@
       const nextPreviewKey = String(item.key || item.id || '');
       const previousPreviewKey = String(backendState.dbDetailPreview?.key || '');
       const isSamePreview = !!nextPreviewKey && previousPreviewKey === nextPreviewKey;
+      const detailRenderKey = [
+        nextPreviewKey,
+        backendState.activeLibraryKey || 'public',
+        browseOnly ? 'browse-only' : 'editable',
+        item.title || '',
+        item.meta || '',
+        item.status || '',
+        item.statusClass || '',
+        item.type || '',
+        item.sourceType || item.source || '',
+        item.content || item.processSummary || item.summary || '',
+        item.featureReportText || item.keyFeatures || item.key_features || '',
+        Array.isArray(item.previewImageUrls) ? item.previewImageUrls.join('|') : '',
+        item.previewTaskId || item.preview_task_id || item.sourceTaskId || item.source_task_id || '',
+      ].join('::');
+      if (backendState.dbDetailRenderKey === detailRenderKey && isSamePreview) {
+        updateDbDeleteState();
+        updateDbDeleteLibraryState();
+        return;
+      }
+      backendState.dbDetailRenderKey = detailRenderKey;
       if (!isSamePreview) {
         dbDetailPreviewRequestToken += 1;
         dbPreviewZoom = 1;
@@ -3731,8 +4163,11 @@
           }
         }
       }
-      renderDbPreviewSurface(item, isSamePreview ? (backendState.dbDetailPreview?.images || []) : [], isSamePreview ? (backendState.dbDetailPreview?.index || 0) : 0, item.previewImageUrls?.length ? '正在准备图片预览' : '暂无可用图片');
-      loadDbRecordPreview(item).catch(() => null);
+      const cachedPreviewImages = isSamePreview ? (backendState.dbDetailPreview?.images || []) : [];
+      renderDbPreviewSurface(item, cachedPreviewImages, isSamePreview ? (backendState.dbDetailPreview?.index || 0) : 0, item.previewImageUrls?.length ? '正在准备图片预览' : '暂无可用图片');
+      if (!isSamePreview || !cachedPreviewImages.length) {
+        loadDbRecordPreview(item).catch(() => null);
+      }
       updateDbDeleteState();
       updateDbDeleteLibraryState();
     }
@@ -3873,7 +4308,7 @@
       const current = dbRecords[key];
       if (isPublicLibraryActive()) {
         closeDbDeleteModal();
-        alert('公共工艺库只读，不能删除废表。');
+        showToast('公共工艺库只读，不能删除废表。', 'warn');
         return;
       }
       if (current?.id) {
@@ -3881,7 +4316,7 @@
           .then(() => loadBackendLibrary(backendState.activeLibraryKey))
           .catch((error) => {
             console.error(error);
-            alert(error.message || '删除失败');
+            showToast(error.message || '删除失败', 'error');
           })
           .finally(closeDbDeleteModal);
         return;
@@ -3910,7 +4345,7 @@
     async function confirmDbDeleteLibrary() {
       if (isPublicLibraryActive()) {
         closeDbDeleteLibraryModal();
-        alert('公共工艺库只读，不能删除当前数据库。');
+        showToast('公共工艺库只读，不能删除当前数据库。', 'warn');
         return;
       }
 
@@ -3922,7 +4357,7 @@
         renderDbList();
       } catch (error) {
         console.error(error);
-        alert(error.message || '删除当前数据库失败');
+        showToast(error.message || '删除当前数据库失败', 'error');
       }
     }
 
@@ -4050,47 +4485,13 @@
       stageCards.forEach((card, index) => card.classList.toggle('active', index === activeIndex));
     }
 
-    function renderUploadedPreview() {
-      uploadPanelBody.innerHTML = `
-        <div class="preview-files">
-          <div class="file-card">
-            <div class="file-card-title">已接收 PRT 模型</div>
-            <div class="file-card-meta">1F16800.prt</div>
-            <div class="chip-row" style="justify-content:flex-start; margin-top:auto;">
-              <span class="chip">PRT</span>
-              <span class="chip">1 页</span>
-            </div>
-          </div>
-          <div class="file-card">
-            <div class="file-card-title">特征摘要</div>
-            <div class="file-card-meta">主轴类 / 阶梯内孔 / R5 过渡 / 调质</div>
-            <div class="chip-row" style="justify-content:flex-start; margin-top:auto;">
-              <span class="chip">模型编号</span>
-              <span class="chip">1F16800</span>
-            </div>
-          </div>
-        </div>
-        <div class="dropzone compact ready">
-          <div class="glyph" style="margin-bottom:16px;">✓</div>
-          <div class="dropzone-title" style="font-size:24px;">文件已载入</div>
-          <div class="dropzone-copy" style="font-size:15px; max-width: 88%;">当前为演示态：已跳过真实上传，只模拟“PRT 接收 → 模型视图解析 → 专家判断 → 工艺生成”的完整链路。</div>
-        </div>
-        <div class="stage-strip">
-          <div class="stage-card"><div class="stage-name">文件接收</div><div class="stage-desc">上传完成</div></div>
-          <div class="stage-card"><div class="stage-name">模型解析</div><div class="stage-desc">字段识别</div></div>
-          <div class="stage-card"><div class="stage-name">专家判断</div><div class="stage-desc">工艺归纳</div></div>
-          <div class="stage-card"><div class="stage-name">工艺生成</div><div class="stage-desc">路线输出</div></div>
-        </div>
-      `;
-      setStageState(3);
-    }
 
 function runGenerateFlow() {
-      createHiddenFileInput('.prt,.prt.1,.prt.2,.prt.3,.prt.4,.prt.5,.prt.6,.prt.7,.prt.8,.prt.9', true)
+      createHiddenFileInput('.prt,.prt.1,.prt.2,.prt.3,.prt.4,.prt.5,.prt.6,.prt.7,.prt.8,.prt.9,.pdf,.png,.jpg,.jpeg,.dxf,.dwg', true)
         .then((files) => uploadToBackend(files).catch((error) => {
           console.error(error);
           setDemoStatusText('上传失败');
-          setWorkflowState('等待上传 PRT', 0, false);
+          setWorkflowState('等待上传文件', 0, false);
         }));
     }
 
@@ -4102,6 +4503,11 @@ function runGenerateFlow() {
       createHiddenFileInput('.zip', false)
         .then((files) => uploadToBackend(files).catch((error) => {
           console.error(error);
+          setZipState('error');
+          if (zipResultBanner) zipResultBanner.className = 'zip-result-banner error';
+          if (zipBannerIcon) zipBannerIcon.textContent = '✗';
+          if (zipBannerTitle) zipBannerTitle.textContent = '入库失败';
+          if (zipBannerSub) zipBannerSub.textContent = error?.message || '请检查 ZIP 文件格式后重试';
           zipBatchChip.textContent = '入库失败';
           backendState.zipBusy = false;
           updateNavigationLockState();
@@ -4110,6 +4516,7 @@ function runGenerateFlow() {
     }
 
     function resetZipFlow() {
+      setZipState('idle');
       setZipImportState('等待批次', '等待上传工艺包');
       renderZipReport(backendState.latestZipReport || {});
       bootstrapBackend().catch(() => null);
@@ -4122,7 +4529,24 @@ function runGenerateFlow() {
 
 if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFlow);
     if (resetGenerateBtn) resetGenerateBtn.addEventListener('click', resetGenerateFlow);
+    if (featureCacheToggleBtn) featureCacheToggleBtn.addEventListener('click', () => {
+      backendState.featureCacheEnabled = !backendState.featureCacheEnabled;
+      const on = backendState.featureCacheEnabled;
+      const fullSpan = featureCacheToggleBtn.querySelector('.btn-full');
+      if (fullSpan) fullSpan.textContent = `⚡ 特征缓存：${on ? '开' : '关'}`;
+      else featureCacheToggleBtn.textContent = `⚡ 特征缓存：${on ? '开' : '关'}`;
+      featureCacheToggleBtn.classList.toggle('is-active', on);
+    });
     zipRunBtn.addEventListener('click', runZipFlow);
+    if (zipAgainBtn) zipAgainBtn.addEventListener('click', () => {
+      backendState.latestZipReport = null;
+      backendState.zipBrowserState = { matchedPage: 1, unmatchedPage: 1 };
+      setZipState('idle');
+      renderZipReport({});
+      runZipFlow();
+    });
+    const zipIdleDropzone = document.getElementById('zipDropzone');
+    if (zipIdleDropzone) zipIdleDropzone.addEventListener('click', () => { if (!backendState.zipBusy) runZipFlow(); });
 
     // Detect backend restart and clear stale visual state
     checkStartupToken();
@@ -4191,7 +4615,7 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         if (!preview || !preview.images || preview.index <= 0) return;
         preview.index -= 1;
         const item = dbRecords[preview.key] || dbRecords[dbState.selectedKey] || {};
-        renderDbPreviewSurface(item, preview.images, preview.index, '', preview.gltfUrl || '');
+        renderDbPreviewSurface(item, preview.images, preview.index, '');
       });
     }
     if (dbPreviewNextBtn) {
@@ -4200,7 +4624,7 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         if (!preview || !preview.images || preview.index >= preview.images.length - 1) return;
         preview.index += 1;
         const item = dbRecords[preview.key] || dbRecords[dbState.selectedKey] || {};
-        renderDbPreviewSurface(item, preview.images, preview.index, '', preview.gltfUrl || '');
+        renderDbPreviewSurface(item, preview.images, preview.index, '');
       });
     }
     if (dbPreviewZoomOutBtn) {
@@ -4209,7 +4633,7 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         if (!preview || !preview.images || !preview.images.length) return;
         dbPreviewZoom = Math.max(0.5, Math.round((dbPreviewZoom - 0.1) * 10) / 10);
         const item = dbRecords[preview.key] || dbRecords[dbState.selectedKey] || {};
-        renderDbPreviewSurface(item, preview.images, preview.index, '', preview.gltfUrl || '');
+        renderDbPreviewSurface(item, preview.images, preview.index, '');
       });
     }
     if (dbPreviewZoomInBtn) {
@@ -4218,7 +4642,7 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         if (!preview || !preview.images || !preview.images.length) return;
         dbPreviewZoom = Math.min(2, Math.round((dbPreviewZoom + 0.1) * 10) / 10);
         const item = dbRecords[preview.key] || dbRecords[dbState.selectedKey] || {};
-        renderDbPreviewSurface(item, preview.images, preview.index, '', preview.gltfUrl || '');
+        renderDbPreviewSurface(item, preview.images, preview.index, '');
       });
     }
     if (dbPreviewResetBtn) {
@@ -4227,7 +4651,7 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         if (!preview || !preview.images || !preview.images.length) return;
         dbPreviewZoom = 1;
         const item = dbRecords[preview.key] || dbRecords[dbState.selectedKey] || {};
-        renderDbPreviewSurface(item, preview.images, preview.index, '', preview.gltfUrl || '');
+        renderDbPreviewSurface(item, preview.images, preview.index, '');
       });
     }
     closeReviewModal.addEventListener('click', closeModal);
@@ -4242,6 +4666,329 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
     if (reviewRerunBtn) {
       reviewRerunBtn.addEventListener('click', () => submitReview('rerun').catch((error) => console.error(error)));
     }
+
+    function ensureAnnotateFullscreen() {
+      let host = document.getElementById('annotateFullscreen');
+      if (host) return host;
+      host = document.createElement('div');
+      host.id = 'annotateFullscreen';
+      host.className = 'annotate-fullscreen';
+      host.innerHTML = `
+        <div class="annotate-fs-layout">
+          <div class="annotate-fs-scroll" id="annotateFsScroll">
+            <div class="annotate-fs-img-wrap" id="annotateFsImgWrap">
+              <img id="annotateFsImage" class="annotate-fs-image" alt="标注图纸" draggable="false" />
+              <svg id="annotateFsSvg" class="annotate-fs-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+          </div>
+          <div class="annotate-fs-sidebar" id="annotateFsSidebar">
+            <div class="annotate-fs-head">
+              <span class="section-label" style="font-size:13px;">标注工具</span>
+              <button class="button secondary annotate-btn-sm" id="annotateFsExitBtn">✕ 退出</button>
+            </div>
+            <div style="font-size:11px;color:#6b7280;padding:6px 14px 2px;">右键框删除 · 自动保存 · Ctrl+滚轮缩放</div>
+            <div class="annotate-fs-zoom-toolbar" style="display:flex;gap:4px;align-items:center;padding:6px 12px;border-top:1px solid #e8edf5;">
+              <button class="button secondary annotate-btn-sm" id="annotateFsZoomOutBtn">−</button>
+              <span id="annotateFsZoomLabel" style="font-size:11px;min-width:46px;text-align:center;color:#374151;">100%</span>
+              <button class="button secondary annotate-btn-sm" id="annotateFsZoomInBtn">+</button>
+              <button class="button secondary annotate-btn-sm" id="annotateFsZoomFitBtn">适配</button>
+              <button class="button secondary annotate-btn-sm" id="annotateFsZoomOneBtn">1:1</button>
+            </div>
+            <div class="annotate-toolbar" style="border-top:1px solid #e8edf5;">
+              <div class="annotate-label-row" id="annotateFsLabelRow"></div>
+              <button class="button secondary annotate-btn-sm" id="annotateFsAddTypeBtn">+ 类型</button>
+            </div>
+            <div class="annotate-list-head" style="border-top:1px solid #e8edf5;">
+              标注列表 <span id="annotateFsCount">(0)</span>
+            </div>
+            <div class="annotate-list-body" id="annotateFsListBody"></div>
+            <div class="annotate-fs-footer">
+              <button class="button secondary annotate-btn-sm" id="annotateFsPagePrev">← 上页</button>
+              <span id="annotateFsPageCounter" style="font-size:12px;color:#6b7280;">1/1</span>
+              <button class="button secondary annotate-btn-sm" id="annotateFsPageNext">下页 →</button>
+              <button class="button secondary" id="annotateFsExportBtn" style="width:100%;margin-top:8px;">↓ 下载标注包</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(host);
+
+      const exitBtn = host.querySelector('#annotateFsExitBtn');
+      if (exitBtn) exitBtn.addEventListener('click', exitAnnotateMode);
+
+      return host;
+    }
+
+    // Safety net: if the user reloads / closes the tab while annotating, flush
+    // their current state synchronously via sendBeacon (HTTP fetch dies on unload).
+    window.addEventListener('beforeunload', () => {
+      if (_annotateActive && _annotateTool && typeof _annotateTool.sendBeaconSave === 'function') {
+        try { _annotateTool.sendBeaconSave(); } catch (_) { /* noop */ }
+      }
+    });
+
+    function enterAnnotateMode(returnMode = 'pending') {
+      if (_annotateActive) return;
+      _annotateActive = true;
+      backendState.annotationReturnMode = returnMode === 'review' ? 'review' : 'pending';
+
+      const host    = ensureAnnotateFullscreen();
+      const imgEl   = host.querySelector('#annotateFsImage');
+      const svgEl   = host.querySelector('#annotateFsSvg');
+      const sidebar = host.querySelector('#annotateFsSidebar');
+
+      host.classList.add('open');
+      document.body.style.overflow = 'hidden';
+
+      if (typeof AnnotationTool !== 'undefined') {
+        if (!_annotateTool) _annotateTool = new AnnotationTool(sidebar, window.__API_BASE__ || '/api');
+        const taskId = backendState.currentProcessTaskId || backendState.latestResult?.task_id || backendState.latestTaskId || '';
+        const urls   = (backendState.previewImages && backendState.previewImages.length)
+                         ? backendState.previewImages
+                         : (backendState.latestResult && backendState.latestResult.preview_image_urls) || [];
+        _annotateTool.activate(taskId, urls, imgEl, svgEl);
+      }
+    }
+
+    async function exitAnnotateMode() {
+      if (!_annotateActive) return;
+      _annotateActive = false;
+
+      const exitBtn = document.getElementById('annotateFsExitBtn');
+      const originalText = exitBtn ? exitBtn.textContent : null;
+      if (exitBtn) {
+        exitBtn.disabled = true;
+        exitBtn.textContent = '保存中…';
+      }
+
+      // Wait for save to finish AND force a min 350ms hold so the user can
+      // actually see the "保存中…" state (fetch often completes in <100ms).
+      const minDelay = new Promise((r) => setTimeout(r, 350));
+      try {
+        if (_annotateTool) await _annotateTool.deactivate();
+      } catch (e) { console.warn('[exitAnnotateMode] save failed:', e); }
+      await minDelay;
+
+      const host = document.getElementById('annotateFullscreen');
+      if (host) host.classList.remove('open');
+      document.body.style.overflow = '';
+
+      if (exitBtn) {
+        exitBtn.disabled = false;
+        if (originalText) exitBtn.textContent = originalText;
+      }
+
+      // Refresh summary so it reflects user's edits instead of the original YOLO count.
+      if (_annotateTool && typeof _annotateTool.getSummary === 'function') {
+        const s = _annotateTool.getSummary();
+        // 完整透传 getSummary 的所有 label（含自定义类型），不再硬编码三类丢失自定义计数
+        const { pages: _pages, ...counts } = s;
+        backendState.annotationSummary = counts;
+        if (_pages) backendState.annotationPages = _pages;
+        backendState.annotateVisitedOnce = true;
+        try { renderReviewAnnotationSummary(); } catch (_) {}
+        if (backendState.annotationReturnMode === 'pending') {
+          try { renderAnnotationPendingPanel(); } catch (_) {}
+        }
+      }
+    }
+
+    function renderReviewAnnotationSummary() {
+      const host = document.getElementById('reviewAnnotationSummary');
+      if (!host) return;
+      const s = backendState.annotationSummary || {};
+      // 特征审阅表格未渲染或分析未完成时，隐藏汇总卡片
+      const tableReady = reviewTableHost && reviewTableHost.querySelector('table');
+      if (!backendState.annotationAnalyzed || !tableReady) {
+        host.innerHTML = '';
+        return;
+      }
+      const meta = (typeof window.getAnnotationLabelMeta === 'function')
+        ? window.getAnnotationLabelMeta()
+        : { chamfer:{zh:'倒角',color:'#f59e0b'}, threaded_hole:{zh:'螺纹孔',color:'#6366f1'}, circle_hole:{zh:'圆孔',color:'#10b981'} };
+      const keys = new Set(['chamfer','threaded_hole','circle_hole']);
+      Object.keys(s).forEach((k) => { if ((s[k]||0) > 0) keys.add(k); });
+      let total = 0;
+      const tabsHtml = Array.from(keys).map((k) => {
+        const cnt = s[k] || 0; total += cnt;
+        const m = meta[k] || { zh: k, color: '#9ca3af' };
+        return `<div class="ann-tab" style="--ann-color:${m.color}">
+          <span class="ann-tab-dot" style="background:${m.color}"></span>
+          <span class="ann-tab-label">${m.zh}</span>
+          <span class="ann-tab-count">${cnt}</span>
+        </div>`;
+      }).join('');
+      const pages = backendState.annotationPages || 0;
+      host.innerHTML = `
+        <div class="ann-summary-header">
+          <div class="ann-summary-header-main">
+            <span class="ann-summary-title">标注汇总</span>
+            <span class="ann-summary-total">${total > 0 ? `共 ${total} 处 · ${pages} 页` : '暂无标注数据'}</span>
+          </div>
+          <div class="ann-summary-actions">
+            <button class="button secondary ann-summary-btn" id="reviewBackToAnnotateBtn" type="button">返回 YOLO 标注</button>
+          </div>
+        </div>
+        <div class="ann-tabs-row">${tabsHtml}</div>`;
+      const backBtn = document.getElementById('reviewBackToAnnotateBtn');
+      if (backBtn) {
+        backBtn.addEventListener('click', () => {
+          backendState.annotateVisitedOnce = true;
+          enterAnnotateMode('review');
+        });
+      }
+    }
+
+    function renderAnnotationPendingPanel() {
+      const host = document.getElementById('reviewTableHost');
+      const empty = document.getElementById('reviewEmptyState');
+      if (empty) empty.style.display = 'none';
+      if (!host) return;
+      // YOLO 审阅尚未完成 → 强制禁用「确认特征并继续 / 修改后重新生成」
+      // 否则用户点击会把任务推到 awaiting_review 分支，出 bug
+      if (reviewContinueBtn) {
+        reviewContinueBtn.disabled = true;
+        reviewContinueBtn.title = '请先完成标注核对';
+      }
+      if (reviewRerunBtn) {
+        reviewRerunBtn.disabled = true;
+        reviewRerunBtn.title = '请先完成标注核对';
+      }
+      const s = backendState.annotationSummary || {};
+      // 自定义类型的颜色/中文名从 annotation-tool 暴露的元数据里取（来源：localStorage）
+      const meta = (typeof window.getAnnotationLabelMeta === 'function')
+        ? window.getAnnotationLabelMeta()
+        : { chamfer:{zh:'倒角',color:'#f59e0b'}, threaded_hole:{zh:'螺纹孔',color:'#6366f1'}, circle_hole:{zh:'圆孔',color:'#10b981'} };
+      // 内建三类即使为 0 也保留显示；自定义类必须 count>0 才出现，避免空类型常驻
+      const keys = new Set(['chamfer','threaded_hole','circle_hole']);
+      Object.keys(s).forEach((k) => { if ((s[k]||0) > 0) keys.add(k); });
+      let total = 0;
+      const tabsHtml = Array.from(keys).map((k) => {
+        const cnt = s[k] || 0; total += cnt;
+        const m   = meta[k] || { zh: k, color: '#9ca3af' };
+        return `<div class="ann-tab" style="--ann-color:${m.color}">
+          <span class="ann-tab-dot" style="background:${m.color}"></span>
+          <span class="ann-tab-label">${m.zh}</span>
+          <span class="ann-tab-count">${cnt}</span>
+        </div>`;
+      }).join('');
+      host.innerHTML = `
+        <div class="annotation-pending-card">
+          <div class="ann-summary-header">
+            <span class="ann-summary-title">标注汇总</span>
+            <span class="ann-summary-total">共 ${total} 处 · ${backendState.annotationPages || 0} 页</span>
+          </div>
+          <div class="ann-tabs-row">${tabsHtml}</div>
+          <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="button primary" id="startAnnotateBtn">✏ 开始标注</button>
+            <button class="button secondary" id="finalizeAnnotateBtn" disabled title="请先进入标注页核对">✓ 完成标注 → 继续</button>
+          </div>
+        </div>`;
+      const startBtn = document.getElementById('startAnnotateBtn');
+      const finBtn   = document.getElementById('finalizeAnnotateBtn');
+      // 进过一次标注页就解除禁用 —— 关键：exitAnnotateMode 会重新渲染本面板，
+      // 写死的 disabled 属性会把启用状态重置，所以这里要按状态位再覆盖一次
+      if (finBtn && backendState.annotateVisitedOnce) {
+        finBtn.disabled = false;
+        finBtn.title = '';
+      }
+      if (startBtn) startBtn.addEventListener('click', () => {
+        backendState.annotateVisitedOnce = true;
+        if (finBtn) { finBtn.disabled = false; finBtn.title = ''; }
+        enterAnnotateMode('pending');
+      });
+      if (finBtn) finBtn.addEventListener('click', finalizeAnnotation);
+    }
+
+    async function finalizeAnnotation() {
+      const taskId = backendState.currentReviewTaskId || backendState.currentProcessTaskId || backendState.latestTaskId;
+      if (!taskId) return;
+      const btn = document.getElementById('finalizeAnnotateBtn');
+      if (btn) { btn.disabled = true; btn.textContent = '保存最新标注…'; }
+      // CRITICAL: flush any pending/in-flight save so the backend has the latest
+      // shapes (including manually added boxes) before it renders the boxed PNG.
+      try {
+        if (_annotateTool && typeof _annotateTool.flushSave === 'function') {
+          await _annotateTool.flushSave();
+        }
+      } catch (e) { console.warn('[finalizeAnnotation] flush save failed:', e); }
+
+      let latestStatus = '';
+      let latestResult = null;
+      try {
+        latestResult = await apiFetch(`/result/${encodeURIComponent(taskId)}`);
+        latestStatus = String(latestResult?.status || '').trim();
+      } catch (e) {
+        console.warn('[finalizeAnnotation] status fetch failed:', e);
+      }
+
+      if (latestStatus && latestStatus !== 'awaiting_annotation') {
+        if (latestStatus === 'awaiting_review') {
+          if (btn) { btn.disabled = false; btn.textContent = '已回到特征审阅'; }
+          backendState.latestTaskId = taskId;
+          backendState.currentReviewTaskId = taskId;
+          if (latestResult) {
+            backendState.latestResult = { ...(backendState.latestResult || {}), ...latestResult, task_id: taskId };
+            renderReviewFromResult(backendState.latestResult, { activate: true });
+          } else {
+            activateGenerateResultView('view-review');
+          }
+          showToast('当前任务已进入特征审阅阶段，无需再次提交标注。', 'warn');
+          return;
+        }
+        if (latestStatus === 'completed' && latestResult?.process_flow) {
+          if (btn) { btn.disabled = false; btn.textContent = '已切到工艺规程'; }
+          backendState.latestTaskId = taskId;
+          backendState.latestResult = { ...(backendState.latestResult || {}), ...latestResult, task_id: taskId };
+          renderProcessFromResult(backendState.latestResult);
+          showToast('当前任务已完成工艺生成，已切换到工艺规程。', 'success');
+          return;
+        }
+        if (btn) { btn.disabled = false; btn.textContent = '状态已变化'; }
+        showToast(`当前任务状态为 ${latestStatus || '未知'}，不能再次提交标注。`, 'warn');
+        return;
+      }
+
+      if (btn) btn.textContent = '已确认，等待视觉分析…';
+      try {
+        const r = await fetch(`${API_BASE}/annotations/${encodeURIComponent(taskId)}/finalize`, { method: 'POST' });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          if (r.status === 409) {
+            const fresh = await fetchReviewTaskSnapshot(taskId);
+            const freshStatus = String(fresh?.status || '').trim();
+            if (freshStatus === 'awaiting_review') {
+              backendState.latestTaskId = taskId;
+              backendState.currentReviewTaskId = taskId;
+              if (fresh) {
+                backendState.latestResult = { ...(backendState.latestResult || {}), ...fresh, task_id: taskId };
+                renderReviewFromResult(backendState.latestResult, { activate: true });
+              } else {
+                activateGenerateResultView('view-review');
+              }
+              if (btn) { btn.disabled = false; btn.textContent = '已回到特征审阅'; }
+              showToast('标注已提交并进入特征审阅，无需重复确认。', 'warn');
+              return;
+            }
+            if (freshStatus === 'completed' && fresh?.process_flow) {
+              backendState.latestTaskId = taskId;
+              backendState.latestResult = { ...(backendState.latestResult || {}), ...fresh, task_id: taskId };
+              renderProcessFromResult(backendState.latestResult);
+              if (btn) { btn.disabled = false; btn.textContent = '已切到工艺规程'; }
+              showToast('任务已完成工艺生成，已切换到工艺规程。', 'success');
+              return;
+            }
+          }
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        setWorkflowState('视觉分析中', 45, true);
+        appendWorkflowLiveEntry('ANNOTATE', '标注已确认，开始视觉分析', 'step');
+      } catch (e) {
+        console.error('[finalizeAnnotation] failed:', e);
+        if (btn) { btn.disabled = false; btn.textContent = '✓ 完成标注 → 继续（重试）'; }
+        appendWorkflowLiveEntry('ANNOTATE', `提交失败：${e.message}`, 'log');
+      }
+    }
+
     if (retrievalLibraryBtn) {
       retrievalLibraryBtn.addEventListener('click', openRetrievalLibraryModal);
     }
@@ -4265,9 +5012,18 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         const el = event.target instanceof Element ? event.target : null;
         if (!el) return;
         if (el.closest('#openExportCardBtn')) { openExportEngineeringCard(); return; }
+        // 编辑按钮
+        const editBtn = el.closest('[data-process-edit]');
+        if (editBtn) { openProcessRowEdit(editBtn.closest('tr')); return; }
+        // 保存按钮
+        const saveBtn = el.closest('[data-process-save]');
+        if (saveBtn) { closeProcessRowEdit(saveBtn.closest('tr'), true); return; }
+        // 取消按钮
+        const cancelBtn = el.closest('[data-process-cancel]');
+        if (cancelBtn) { closeProcessRowEdit(cancelBtn.closest('tr'), false); return; }
         // Clicking anywhere in a content cell (including padding) focuses the editable div
         const contentCell = el.closest('.step-content-cell');
-        if (contentCell && !el.closest('[data-process-content]')) {
+        if (contentCell && !el.closest('[data-process-content]') && !el.closest('.process-content-edit')) {
           const editable = contentCell.querySelector('[data-process-content]');
           if (editable) {
             editable.focus();
@@ -4276,6 +5032,18 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
             range.collapse(false);
             const sel = window.getSelection();
             if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+          }
+        }
+      });
+      processResult.addEventListener('change', (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target) return;
+        const sel = target.closest('.process-trade-select');
+        if (sel) {
+          const inp = sel.closest('.trade-edit')?.querySelector('.process-custom-trade');
+          if (inp) {
+            inp.style.display = sel.value === '其他' ? 'block' : 'none';
+            if (sel.value === '其他') inp.focus();
           }
         }
       });
@@ -4288,14 +5056,8 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
     if (exportModalCloseBtn) exportModalCloseBtn.addEventListener('click', closeExportModal);
     if (exportCancelBtn) exportCancelBtn.addEventListener('click', closeExportModal);
     if (exportModal) exportModal.addEventListener('click', function(e) { if (e.target === exportModal) closeExportModal(); });
-    if (exportPdfBtn) exportPdfBtn.addEventListener('click', function() {
-      const taskId = currentExportTaskId();
-      if (taskId) window.open(API_BASE + '/export/' + encodeURIComponent(taskId) + '?format=pdf', '_blank');
-    });
-    if (exportExcelBtn) exportExcelBtn.addEventListener('click', function() {
-      const taskId = currentExportTaskId();
-      if (taskId) window.open(API_BASE + '/export/' + encodeURIComponent(taskId) + '?format=xlsx', '_blank');
-    });
+    if (exportPdfBtn) exportPdfBtn.addEventListener('click', function() { downloadExport('pdf'); });
+    if (exportExcelBtn) exportExcelBtn.addEventListener('click', function() { downloadExport('xlsx'); });
     if (uploadPanelBody) {
       uploadPanelBody.addEventListener('click', (event) => {
         const previewImage = event.target instanceof Element ? event.target.closest('#taskPreviewImage') : null;
@@ -4333,7 +5095,18 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
       if (event.key === 'Escape') closeRetrievalLibraryModal();
       if (event.key === 'Escape') closeExportModal();
     });
-    editorTextarea.addEventListener('input', refreshEditorPreview);
+    if (window.innerWidth <= 1500 && workflowHudCard) {
+      workflowHudCard.classList.add('collapsed');
+      if (workflowHudToggleBtn) workflowHudToggleBtn.textContent = '展开';
+    }
+    if (workflowHudToggleBtn) {
+      workflowHudToggleBtn.addEventListener('click', () => {
+        if (!workflowHudCard) return;
+        const collapsed = workflowHudCard.classList.toggle('collapsed');
+        workflowHudToggleBtn.textContent = collapsed ? '展开' : '收起';
+      });
+    }
+    if (editorTextarea) editorTextarea.addEventListener('input', refreshEditorPreview);
     if (dbEditorFeaturePageText) dbEditorFeaturePageText.addEventListener('input', syncDbFeatureReportEditor);
     dbEditBtn.addEventListener('click', () => toggleDbEditor());
     dbCancelBtn.addEventListener('click', () => {
@@ -4370,7 +5143,7 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
           await loadBackendLibrary(backendState.activeLibraryKey);
         } catch (error) {
           console.error(error);
-          alert(error.message || '保存失败');
+          showToast(error.message || '保存失败', 'error');
         }
         toggleDbEditor(false);
         return;
@@ -4378,15 +5151,8 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
 
       if (current) {
         const next = { ...current };
-        dbEditorTextarea.value.split(/\r?\n/).forEach((line) => {
-          const [rawLabel, ...rest] = line.split('：');
-          const label = (rawLabel || '').trim();
-          const value = rest.join('：').trim();
-          if (label === '产品类型') next.type = value || next.type;
-          if (label === '工艺摘要') next.summary = value || next.summary;
-          if (label === '技术要求') next.requirement = value || next.requirement;
-          if (label === '删除风险') next.risk = value || next.risk;
-        });
+        if (dbEditorProductType) next.type = dbEditorProductType.value.trim() || next.type;
+        if (dbEditorContent) next.content = dbEditorContent.value.trim() || next.content;
         dbRecords[dbState.selectedKey] = next;
         renderDbDetail(next);
         renderDbList();
@@ -4456,10 +5222,13 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
         await loadBackendLibrary(backendState.activeLibraryKey);
       });
     }
+    const debouncedRenderDbList = debounce(() => {
+      renderDbList();
+    }, 120);
     dbSearchInput.addEventListener('input', () => {
       dbState.query = dbSearchInput.value.trim();
       dbState.page = 1;
-      renderDbList();
+      debouncedRenderDbList();
     });
     [dbTypeSelect, dbSourceSelect, dbStatusSelect].forEach((select) => {
       select.addEventListener('change', () => {
@@ -4543,7 +5312,7 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
               console.warn(`[demo] delete failed for ${taskId}:`, e);
             }
           }
-          if (failCount) alert(`${ids.length - failCount} 条已删除，${failCount} 条失败。`);
+          if (failCount) showToast((ids.length - failCount) + ' 条已删除，' + failCount + ' 条失败。', 'warn');
           updateHistoryBatchDeleteBtn();
           updateHistorySelectAllState();
           renderHistoryPage();
@@ -4625,6 +5394,8 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
     setInterval(tickClock, 1000);
 
     let resizing = false;
+    let resizerFrameId = 0;
+    let pendingResizeClientX = 0;
     demoResizer.addEventListener('mousedown', (event) => {
       event.preventDefault();
       resizing = true;
@@ -4634,187 +5405,25 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
 
     window.addEventListener('mousemove', (event) => {
       if (!resizing) return;
-      const rect = workbench.getBoundingClientRect();
-      const left = Math.min(Math.max(event.clientX - rect.left, 320), rect.width - 440);
-      workbench.style.gridTemplateColumns = `${left}px 14px minmax(420px, 1fr)`;
+      pendingResizeClientX = event.clientX;
+      if (resizerFrameId) return;
+      resizerFrameId = requestAnimationFrame(() => {
+        resizerFrameId = 0;
+        const rect = workbench.getBoundingClientRect();
+        const left = Math.min(Math.max(pendingResizeClientX - rect.left, 320), rect.width - 440);
+        workbench.style.gridTemplateColumns = `${left}px 14px minmax(420px, 1fr)`;
+      });
     });
 
     window.addEventListener('mouseup', () => {
       resizing = false;
+      if (resizerFrameId) {
+        cancelAnimationFrame(resizerFrameId);
+        resizerFrameId = 0;
+      }
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     });
-
-    // ============ 3D Model Preview (inline in upload panel) ============
-    let preview3DScene = null, preview3DCamera = null, preview3DRenderer = null, preview3DAnimId = null;
-
-    // Shared factory: creates an independent 3D viewer instance (for modals)
-    function make3DViewer() {
-      let _scene = null, _camera = null, _renderer = null, _animId = null;
-      function _setup3DScene(container, gltfUrl) {
-        if (typeof THREE === 'undefined') { setTimeout(() => _setup3DScene(container, gltfUrl), 200); return; }
-        container.innerHTML = '';
-        const w = container.clientWidth || 480;
-        const h = container.clientHeight || 380;
-        _scene = new THREE.Scene();
-        _scene.background = new THREE.Color(0xdce2ec);
-        _camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
-        _camera.position.set(4, 3, 5);
-        _camera.lookAt(0, 0, 0);
-        _renderer = new THREE.WebGLRenderer({ antialias: true });
-        _renderer.setSize(w, h);
-        _renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        _renderer.domElement.style.display = 'block';
-        container.appendChild(_renderer.domElement);
-        _scene.add(new THREE.AmbientLight(0xffffff, 3.5));
-        const d1 = new THREE.DirectionalLight(0xffffff, 2.5); d1.position.set(5, 10, 7); _scene.add(d1);
-        const d2 = new THREE.DirectionalLight(0x88aacc, 1.2); d2.position.set(-5, -2, -3); _scene.add(d2);
-        _scene.add(new THREE.GridHelper(8, 16, 0x9aa5b8, 0xb8c2d0));
-        if (gltfUrl && typeof THREE.GLTFLoader !== 'undefined') {
-          new THREE.GLTFLoader().load(gltfUrl, (gltf) => {
-            if (!_scene) return;
-            _scene.add(gltf.scene);
-            const box = new THREE.Box3().setFromObject(gltf.scene);
-            const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
-            const maxDim = Math.max(size.x, size.y, size.z);
-            if (maxDim > 0.001) {
-              const scale = 4 / maxDim;
-              gltf.scene.scale.setScalar(scale);
-              gltf.scene.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
-            }
-          }, undefined, () => addFallbackBox(_scene));
-        } else { addFallbackBox(_scene); }
-        let dragging = false, prevX = 0, prevY = 0, rotX = 0.3, rotY = 0.5, dist = 6;
-        container.onmousedown = (e) => { dragging = true; prevX = e.clientX; prevY = e.clientY; container.style.cursor = 'grabbing'; };
-        window.addEventListener('mouseup', () => { dragging = false; if (container.isConnected) container.style.cursor = 'grab'; });
-        window.addEventListener('mousemove', (e) => {
-          if (!dragging) return;
-          rotY += (e.clientX - prevX) * 0.005; rotX += (e.clientY - prevY) * 0.005;
-          rotX = Math.max(-1.4, Math.min(1.4, rotX)); prevX = e.clientX; prevY = e.clientY;
-        });
-        container.addEventListener('wheel', (e) => { e.preventDefault(); dist = Math.max(2, Math.min(15, dist + e.deltaY * 0.01)); }, { passive: false });
-        const s = _scene, r = _renderer, c = _camera;
-        (function tick() { _animId = requestAnimationFrame(tick); const x = dist*Math.sin(rotY)*Math.cos(rotX), y = dist*Math.sin(rotX), z = dist*Math.cos(rotY)*Math.cos(rotX); c.position.set(x,y,z); c.lookAt(0,0,0); r.render(s,c); })();
-      }
-      return {
-        render(gltfUrl, container) { this.dispose(); if (container) _setup3DScene(container, gltfUrl); },
-        dispose() { if (_animId) { cancelAnimationFrame(_animId); _animId = null; } if (_renderer) { _renderer.dispose(); _renderer = null; } _scene = null; _camera = null; },
-      };
-    }
-    function render3DPreview(gltfUrl, containerId) {
-      if (typeof THREE === 'undefined') { setTimeout(() => render3DPreview(gltfUrl, containerId), 200); return; }
-      const container = document.getElementById(containerId);
-      if (!container) return;
-
-      container.innerHTML = "";
-      container.style.cursor = "grab";
-
-      const w = container.clientWidth || 600;
-      const h = Math.max(container.clientHeight || 0, 420);
-
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0xdce2ec);
-      preview3DScene = scene;
-
-      const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
-      camera.position.set(4, 3, 5);
-      camera.lookAt(0, 0, 0);
-      preview3DCamera = camera;
-
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(w, h);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.domElement.style.display = "block";
-      container.appendChild(renderer.domElement);
-      preview3DRenderer = renderer;
-
-      scene.add(new THREE.AmbientLight(0xffffff, 3.5));
-      const d1 = new THREE.DirectionalLight(0xffffff, 2.5);
-      d1.position.set(5, 10, 7);
-      scene.add(d1);
-      const d2 = new THREE.DirectionalLight(0x88aacc, 1.2);
-      d2.position.set(-5, -2, -3);
-      scene.add(d2);
-
-      scene.add(new THREE.GridHelper(8, 16, 0x9aa5b8, 0xb8c2d0));
-
-      if (gltfUrl) {
-        loadModelIntoScene(gltfUrl, scene);
-      } else {
-        addFallbackBox(scene);
-      }
-
-      // Orbit: drag to rotate, scroll to zoom
-      let dragging = false, prevX = 0, prevY = 0, rotX = 0.3, rotY = 0.5, dist = 6;
-      container.onmousedown = (e) => { dragging = true; prevX = e.clientX; prevY = e.clientY; container.style.cursor = "grabbing"; };
-      window.addEventListener("mouseup", () => { dragging = false; container.style.cursor = "grab"; });
-      window.addEventListener("mousemove", (e) => {
-        if (!dragging) return;
-        rotY += (e.clientX - prevX) * 0.005;
-        rotX += (e.clientY - prevY) * 0.005;
-        rotX = Math.max(-1.4, Math.min(1.4, rotX));
-        prevX = e.clientX; prevY = e.clientY;
-      });
-      container.addEventListener("wheel", (e) => {
-        e.preventDefault();
-        dist = Math.max(2, Math.min(15, dist + e.deltaY * 0.01));
-      }, { passive: false });
-
-      function animate() {
-        preview3DAnimId = requestAnimationFrame(animate);
-        const x = dist * Math.sin(rotY) * Math.cos(rotX);
-        const y = dist * Math.sin(rotX);
-        const z = dist * Math.cos(rotY) * Math.cos(rotX);
-        camera.position.set(x, y, z);
-        camera.lookAt(0, 0, 0);
-        renderer.render(scene, camera);
-      }
-      animate();
-      console.log("[3D] Preview viewer initialized, gltf:", gltfUrl || "fallback");
-    }
-
-    function loadModelIntoScene(url, scene) {
-      if (typeof THREE.GLTFLoader !== "undefined") {
-        new THREE.GLTFLoader().load(url, (gltf) => {
-          scene.add(gltf.scene);
-          const box = new THREE.Box3().setFromObject(gltf.scene);
-          const center = box.getCenter(new THREE.Vector3());
-          const size = box.getSize(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z);
-          if (maxDim > 0.001) {
-            const scale = 4 / maxDim;
-            gltf.scene.scale.setScalar(scale);
-            // Center model at world origin after scaling
-            gltf.scene.position.set(
-              -center.x * scale,
-              -center.y * scale,
-              -center.z * scale
-            );
-          }
-          console.log("[3D] glTF loaded:", url, "maxDim:", maxDim.toFixed(3));
-        }, undefined, () => {
-          console.warn("[3D] glTF load failed, fallback box");
-          addFallbackBox(scene);
-        });
-      } else {
-        addFallbackBox(scene);
-      }
-    }
-
-    function addFallbackBox(scene) {
-      const geo = new THREE.BoxGeometry(2, 2, 2);
-      const mat = new THREE.MeshPhongMaterial({ color: 0x4488cc, specular: 0x111122, shininess: 30 });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.y = 1;
-      scene.add(mesh);
-    }
-
-    function dispose3DPreview() {
-      if (preview3DAnimId) { cancelAnimationFrame(preview3DAnimId); preview3DAnimId = null; }
-      if (preview3DRenderer) { preview3DRenderer.dispose(); preview3DRenderer = null; }
-      preview3DScene = null; preview3DCamera = null;
-    }
 
 /* ===================================
    ENHANCEMENT PATCH — micro-interactions
@@ -4990,4 +5599,5 @@ if (uploadGenerateBtn) uploadGenerateBtn.addEventListener('click', runGenerateFl
   }
 
 })();
+
 

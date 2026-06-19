@@ -1,8 +1,9 @@
-{
-  "vision_api_key": "ed480c8c-f3c5-4347-89ef-0224c23e14ec",
+﻿{
+  "vision_api_key": "your_vision_api_key_here",
   "vision_api_base": "https://ark.cn-beijing.volces.com/api/v3",
   "vision_model_id": "doubao-seed-2-0-mini-260215",
-  "llm_api_key": "sk-8c17dbd94543429a9e264f3526845f81",
+  "llm_api_key": "your_llm_api_key_here",
   "llm_base_url": "https://api.deepseek.com/v1",
   "llm_model": "deepseek-chat"
 }
+

@@ -17,4 +17,4 @@ if __name__ == "__main__":
     print("PDF Process Analysis System")
     print("=" * 50)
     debug_mode = os.getenv("FLASK_DEBUG", "1") != "0"
-    app.run(host="0.0.0.0", port=5000, debug=debug_mode, use_reloader=debug_mode, threaded=True)
+    app.run(host="0.0.0.0", port=5190, debug=debug_mode, use_reloader=debug_mode, threaded=True)

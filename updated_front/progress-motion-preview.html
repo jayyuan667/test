@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Progress Motion Preview</title>
+  <style>
+    :root {
+      --bg: #e9eef3;
+      --panel: #f7fafc;
+      --panel-strong: #ffffff;
+      --ink: #11293e;
+      --muted: #627487;
+      --line: #d5dfe8;
+      --line-soft: #e7edf2;
+      --nav: #16324d;
+      --nav-active: #244d73;
+      --brand: #1b4f83;
+      --accent: #f27b38;
+      --accent-soft: #fff0e7;
+      --glow: rgba(27, 79, 131, 0.14);
+      --shadow: 0 10px 28px rgba(18, 32, 48, 0.06);
+      --radius: 24px;
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, #edf2f6 0%, #e6ecf1 100%);
+    }
+
+    .page {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .intro {
+      margin-bottom: 18px;
+    }
+
+    .intro-kicker {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 34px;
+      line-height: 1.06;
+      letter-spacing: -0.04em;
+    }
+
+    .intro p {
+      margin: 0;
+      max-width: 72ch;
+      color: var(--muted);
+      line-height: 1.72;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 18px;
+      min-height: 860px;
+    }
+
+    .sidebar {
+      border-radius: 24px;
+      background: linear-gradient(180deg, var(--nav) 0%, #11283d 100%);
+      color: #eaf1f7;
+      padding: 18px;
+      box-shadow: 0 12px 32px rgba(16, 34, 54, 0.14);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .brand-mini {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: #8ea6bb;
+      margin-bottom: 10px;
+    }
+
+    .brand-title {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 18px;
+    }
+
+    .nav-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .nav-item {
+      border-radius: 16px;
+      padding: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: transparent;
+    }
+
+    .nav-item.active {
+      background: var(--nav-active);
+    }
+
+    .nav-item strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .nav-item span {
+      font-size: 12px;
+      color: #95adc1;
+    }
+
+    .sidebar-foot {
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 14px;
+      font-size: 12px;
+      color: #95adc1;
+      line-height: 1.65;
+    }
+
+    .main {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 16px;
+    }
+
+    .topbar,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      padding: 18px 20px;
+    }
+
+    .topbar-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .chip,
+    .button {
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+      color: #294056;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 10px 14px;
+    }
+
+    .chip.primary,
+    .button.primary {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #fff;
+    }
+
+    .button {
+      cursor: pointer;
+      transition: transform 160ms var(--ease-out), border-color 160ms var(--ease-out), background 160ms var(--ease-out);
+    }
+
+    .button:hover {
+      transform: translateY(-1px);
+      border-color: #b9cad8;
+    }
+
+    .button.primary:hover {
+      border-color: var(--brand);
+      background: #214f78;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--brand);
+      box-shadow: 0 0 0 0 rgba(27, 79, 131, 0.18);
+      animation: pulse-dot 1.8s ease-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0% { box-shadow: 0 0 0 0 rgba(27, 79, 131, 0.2); }
+      70% { box-shadow: 0 0 0 10px rgba(27, 79, 131, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(27, 79, 131, 0); }
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+    }
+
+    .tab {
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .tab.active {
+      background: var(--nav);
+      border-color: var(--nav);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .panel {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+    }
+
+    .panel-kicker {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #7a8b9b;
+      margin-bottom: 6px;
+    }
+
+    .panel-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .panel-note {
+      font-size: 12px;
+      color: #6d7e8f;
+      line-height: 1.7;
+      max-width: 30ch;
+      text-align: right;
+    }
+
+    .progress-block {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid var(--line-soft);
+      border-radius: 20px;
+      background: var(--panel-strong);
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .progress-phase {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .progress-detail {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .progress-value {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--brand);
+      min-width: 58px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .rail {
+      position: relative;
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: linear-gradient(180deg, #dfe6ed 0%, #d6dfe8 100%);
+    }
+
+    .rail::before {
+      content: "";
+      position: absolute;
+      inset: 1px;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(255,255,255,0.55), rgba(255,255,255,0.1));
+      opacity: 0.6;
+    }
+
+    .fill {
+      position: relative;
+      height: 100%;
+      width: 0%;
+      border-radius: inherit;
+      transform-origin: left center;
+      will-change: width, filter, box-shadow;
+    }
+
+    .fill.current {
+      background: linear-gradient(90deg, #47729a 0%, #6d88a3 100%);
+      transition: width 70ms linear;
+    }
+
+    .fill.strict {
+      background: linear-gradient(90deg, #1b4f83 0%, #2f78b7 55%, #f27b38 100%);
+      transition: width 520ms var(--ease-out), filter 220ms var(--ease-out);
+    }
+
+    .fill.perceived {
+      background:
+        linear-gradient(90deg, rgba(255,255,255,0.24), rgba(255,255,255,0) 30%),
+        linear-gradient(90deg, #1b4f83 0%, #2a679f 50%, #f27b38 100%);
+      background-size: 180% 100%, 100% 100%;
+      transition: width 460ms var(--ease-out), filter 220ms var(--ease-out), box-shadow 220ms var(--ease-out);
+      animation: drift 2.1s linear infinite;
+      box-shadow: 0 0 0 0 rgba(27, 79, 131, 0.14);
+    }
+
+    .fill.hybrid {
+      background:
+        linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0) 34%),
+        linear-gradient(90deg, #1b4f83 0%, #255d92 46%, #f27b38 100%);
+      background-size: 200% 100%, 100% 100%;
+      transition: width 380ms var(--ease-out), filter 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+      animation: drift 2.4s linear infinite;
+    }
+
+    .breathing .fill.perceived,
+    .breathing .fill.hybrid,
+    .breathing .fill.strict {
+      filter: saturate(1.02);
+      box-shadow: 0 0 0 4px rgba(27, 79, 131, 0.05), 0 0 18px rgba(27, 79, 131, 0.08);
+    }
+
+    .breathing .fill.perceived,
+    .breathing .fill.hybrid {
+      animation: drift 2.4s linear infinite, breathe 1.9s ease-in-out infinite;
+    }
+
+    .breathing .fill.strict {
+      animation: breathe 2.2s ease-in-out infinite;
+    }
+
+    @keyframes drift {
+      from { background-position: -140% 0, 0 0; }
+      to { background-position: 150% 0, 0 0; }
+    }
+
+    @keyframes breathe {
+      0%, 100% { filter: saturate(0.98) brightness(0.98); }
+      50% { filter: saturate(1.06) brightness(1.02); }
+    }
+
+    .hint-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .hint-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      background: #f3f7fa;
+      border: 1px solid var(--line);
+    }
+
+    .event-log {
+      border: 1px solid var(--line-soft);
+      border-radius: 18px;
+      background: #fbfdff;
+      padding: 12px 14px;
+      min-height: 130px;
+    }
+
+    .event-log h3 {
+      margin: 0 0 10px;
+      font-size: 13px;
+    }
+
+    .event-log ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .legend-card {
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(247,250,252,0.96);
+      box-shadow: var(--shadow);
+    }
+
+    .legend-card h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
+
+    .legend-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 1100px) {
+      .shell,
+      .grid,
+      .legend {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="intro">
+      <div class="intro-kicker">Preview / Progress Motion</div>
+      <h1>进度条“呼吸感 + 平滑度”对比预览</h1>
+      <p>这个页面不接真实后端，只模拟你当前页面那种阶段式跳进度的情况。你可以直接对比哪一种更适合真实工艺生成页，再决定我往正式页面里落哪套。</p>
+    </div>
+
+    <div class="shell">
+      <aside class="sidebar">
+        <div>
+          <div class="brand-mini">2D PROCESS CONSOLE</div>
+          <div class="brand-title">进度动效预览</div>
+
+          <div class="nav-list">
+            <div class="nav-item"><strong>当前卡顿版</strong><span>后端一跳，前端一跳</span></div>
+            <div class="nav-item"><strong>严格平滑型</strong><span>不预走，只做插值</span></div>
+            <div class="nav-item"><strong>感知优化型</strong><span>阶段之间慢速前行</span></div>
+            <div class="nav-item active"><strong>混合推荐型</strong><span>前段柔和，尾段收紧</span></div>
+          </div>
+        </div>
+
+        <div class="sidebar-foot">
+          目标不是做花哨，而是减少“卡住”“猛跳”和“死板填充”的感觉。
+        </div>
+      </aside>
+
+      <div class="main">
+        <div class="topbar">
+          <div class="topbar-row">
+            <div class="actions">
+              <button class="button primary" id="startBtn">开始模拟</button>
+              <button class="button" id="resetBtn">重置</button>
+              <span class="chip">模拟后端阶段：10 → 20 → 35 → 50 → 55 → 78 → 100</span>
+            </div>
+            <div class="status-line">
+              <span class="pulse"></span>
+              <span id="globalPhase">等待启动</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active">工艺生成进度</div>
+          <div class="tab">对比模式</div>
+        </div>
+
+        <div class="grid">
+          <section class="panel" data-mode="current">
+            <div class="panel-head">
+              <div>
+                <div class="panel-kicker">Mode 01</div>
+                <div class="panel-title">当前卡顿版</div>
+              </div>
+              <div class="panel-note">直接吃后端瞬时值。最真实，但最容易有“停一会儿再猛跳”的感觉。</div>
+            </div>
+            <div class="progress-block">
+              <div class="progress-meta">
+                <div>
+                  <div class="progress-phase" data-phase>等待上传文件</div>
+                  <div class="progress-detail">后端一更新就立刻改宽度</div>
+                </div>
+                <div class="progress-value" data-value>0%</div>
+              </div>
+              <div class="rail"><div class="fill current" data-fill></div></div>
+              <div class="hint-row">
+                <span>感受：最像当前页面</span>
+                <span class="hint-pill">跳变明显</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel breathing" data-mode="strict">
+            <div class="panel-head">
+              <div>
+                <div class="panel-kicker">Mode 02</div>
+                <div class="panel-title">严格平滑型</div>
+              </div>
+              <div class="panel-note">只对真实进度做插值，不会自己预走。适合你要“稳”但又不想作假的情况。</div>
+            </div>
+            <div class="progress-block">
+              <div class="progress-meta">
+                <div>
+                  <div class="progress-phase" data-phase>等待上传文件</div>
+                  <div class="progress-detail">每次更新做柔和过渡</div>
+                </div>
+                <div class="progress-value" data-value>0%</div>
+              </div>
+              <div class="rail"><div class="fill strict" data-fill></div></div>
+              <div class="hint-row">
+                <span>感受：稳、可信</span>
+                <span class="hint-pill">呼吸感轻</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel breathing" data-mode="perceived">
+            <div class="panel-head">
+              <div>
+                <div class="panel-kicker">Mode 03</div>
+                <div class="panel-title">感知优化型</div>
+              </div>
+              <div class="panel-note">两次后端更新之间，进度条会轻微自主前行，避免长时间停死。观感最好，但略有“预估感”。</div>
+            </div>
+            <div class="progress-block">
+              <div class="progress-meta">
+                <div>
+                  <div class="progress-phase" data-phase>等待上传文件</div>
+                  <div class="progress-detail">停顿期也保持轻微生命感</div>
+                </div>
+                <div class="progress-value" data-value>0%</div>
+              </div>
+              <div class="rail"><div class="fill perceived" data-fill></div></div>
+              <div class="hint-row">
+                <span>感受：最顺、最活</span>
+                <span class="hint-pill">会轻微预走</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel breathing" data-mode="hybrid">
+            <div class="panel-head">
+              <div>
+                <div class="panel-kicker">Mode 04</div>
+                <div class="panel-title">混合推荐型</div>
+              </div>
+              <div class="panel-note">前段允许缓慢补间，85% 后明显收紧，最后必须等真实完成。通常最适合生产工具。</div>
+            </div>
+            <div class="progress-block">
+              <div class="progress-meta">
+                <div>
+                  <div class="progress-phase" data-phase>等待上传文件</div>
+                  <div class="progress-detail">观感顺滑，同时尽量避免假完成</div>
+                </div>
+                <div class="progress-value" data-value>0%</div>
+              </div>
+              <div class="rail"><div class="fill hybrid" data-fill></div></div>
+              <div class="hint-row">
+                <span>感受：稳和顺的折中</span>
+                <span class="hint-pill">我推荐</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="event-log">
+          <h3>模拟后端事件</h3>
+          <ul id="eventLog">
+            <li>等待开始模拟。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-card">
+        <h3>当前卡顿版</h3>
+        <p>真实，但断层感重。适合验证后端状态，不适合作为生产界面的最终观感。</p>
+      </div>
+      <div class="legend-card">
+        <h3>严格平滑型</h3>
+        <p>不会篡改进度含义，只把跳值过渡做得更顺，同时给填充条一点低强度呼吸。</p>
+      </div>
+      <div class="legend-card">
+        <h3>感知优化型</h3>
+        <p>用户主观上会觉得系统一直在工作，长任务更舒服，但不适合对“绝对真实”要求极高的场景。</p>
+      </div>
+      <div class="legend-card">
+        <h3>混合推荐型</h3>
+        <p>前期减少卡顿，后期避免假冲到 99%。通常是最适合你这个工艺控制台的方案。</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const steps = [
+      { delay: 0, progress: 10, phase: "图纸分析准备中" },
+      { delay: 900, progress: 20, phase: "图纸特征提取中" },
+      { delay: 1300, progress: 35, phase: "等待人工补全标注" },
+      { delay: 1250, progress: 50, phase: "等待特征审阅" },
+      { delay: 950, progress: 55, phase: "等待后端继续生成" },
+      { delay: 1800, progress: 78, phase: "工艺规程生成中" },
+      { delay: 1600, progress: 100, phase: "工艺生成完成" }
+    ];
+
+    const cards = [...document.querySelectorAll(".panel[data-mode]")].map((card) => ({
+      mode: card.dataset.mode,
+      card,
+      phase: card.querySelector("[data-phase]"),
+      value: card.querySelector("[data-value]"),
+      fill: card.querySelector("[data-fill]"),
+      actual: 0,
+      display: 0,
+      target: 0
+    }));
+
+    const eventLog = document.getElementById("eventLog");
+    const globalPhase = document.getElementById("globalPhase");
+    const startBtn = document.getElementById("startBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    let rafId = 0;
+    let timers = [];
+    let running = false;
+
+    function ease(current, target, speed) {
+      return current + (target - current) * speed;
+    }
+
+    function writeLog(lines) {
+      eventLog.innerHTML = lines.map((line) => `<li>${line}</li>`).join("");
+    }
+
+    function setCardPhase(text) {
+      cards.forEach((card) => { card.phase.textContent = text; });
+      globalPhase.textContent = text;
+    }
+
+    function resetCards() {
+      cards.forEach((card) => {
+        card.actual = 0;
+        card.display = 0;
+        card.target = 0;
+        card.phase.textContent = "等待上传文件";
+        card.value.textContent = "0%";
+        card.fill.style.width = "0%";
+      });
+      globalPhase.textContent = "等待启动";
+      writeLog(["等待开始模拟。"]);
+    }
+
+    function stopAll() {
+      running = false;
+      timers.forEach((timer) => clearTimeout(timer));
+      timers = [];
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+    }
+
+    function applyBackendStep(step, index) {
+      const logLines = steps.slice(0, index + 1).map((item, i) => {
+        return `阶段 ${String(i + 1).padStart(2, "0")} · ${item.phase} · 后端推送 ${item.progress}%`;
+      });
+      writeLog(logLines);
+      setCardPhase(step.phase);
+
+      cards.forEach((card) => {
+        card.actual = step.progress;
+        if (card.mode === "current") {
+          card.display = step.progress;
+          card.target = step.progress;
+        } else if (card.mode === "strict") {
+          card.target = step.progress;
+        } else if (card.mode === "perceived") {
+          card.target = Math.max(card.target, step.progress);
+        } else if (card.mode === "hybrid") {
+          card.target = Math.max(card.target, step.progress);
+        }
+      });
+    }
+
+    function loop() {
+      cards.forEach((card) => {
+        if (card.mode === "strict") {
+          card.display = ease(card.display, card.target, 0.08);
+        }
+
+        if (card.mode === "perceived") {
+          const upper = card.actual >= 100 ? 100 : Math.min(card.actual + 12, 92);
+          if (card.display < upper) {
+            card.target = Math.max(card.target, upper);
+          }
+          card.display = ease(card.display, card.target, card.actual >= 100 ? 0.12 : 0.045);
+          if (Math.abs(card.target - card.display) < 0.3 && card.actual < 100) {
+            card.target = Math.min(card.target + 0.16, upper);
+          }
+        }
+
+        if (card.mode === "hybrid") {
+          const earlyUpper = card.actual < 85 ? Math.min(card.actual + 8, 86) : card.actual;
+          if (card.display < earlyUpper) {
+            card.target = Math.max(card.target, earlyUpper);
+          }
+          const speed = card.actual >= 85 ? 0.11 : 0.055;
+          card.display = ease(card.display, card.target, speed);
+          if (Math.abs(card.target - card.display) < 0.2 && card.actual < 85) {
+            card.target = Math.min(card.target + 0.1, earlyUpper);
+          }
+          if (card.actual >= 100) {
+            card.target = 100;
+          }
+        }
+
+        if (Math.abs(card.display - card.actual) < 0.08 && card.actual === 100) {
+          card.display = 100;
+        }
+
+        const shown = Math.max(0, Math.min(100, card.display));
+        card.value.textContent = `${Math.round(shown)}%`;
+        card.fill.style.width = `${shown}%`;
+      });
+
+      if (running) {
+        rafId = requestAnimationFrame(loop);
+      }
+    }
+
+    function startDemo() {
+      stopAll();
+      resetCards();
+      running = true;
+      let elapsed = 0;
+
+      steps.forEach((step, index) => {
+        elapsed += step.delay;
+        const timer = setTimeout(() => applyBackendStep(step, index), elapsed);
+        timers.push(timer);
+      });
+
+      const doneTimer = setTimeout(() => {
+        globalPhase.textContent = "模拟结束";
+      }, elapsed + 1200);
+      timers.push(doneTimer);
+
+      loop();
+    }
+
+    startBtn.addEventListener("click", startDemo);
+    resetBtn.addEventListener("click", () => {
+      stopAll();
+      resetCards();
+    });
+
+    resetCards();
+  </script>
+</body>
+</html>

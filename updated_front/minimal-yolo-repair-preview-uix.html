@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YOLO最小修补预览 · UIX规范版</title>
+  <style>
+    :root {
+      --bg: #eef3f8;
+      --surface: #ffffff;
+      --surface-soft: #f8fbfd;
+      --line: #dbe4ef;
+      --line-strong: #c7d5e4;
+      --text: #0f172a;
+      --muted: #5f7288;
+      --muted-2: #8ca0b4;
+      --nav: #0c1830;
+      --nav-2: #132443;
+      --primary: #f97316;
+      --primary-2: #fb923c;
+      --primary-soft: #fff4eb;
+      --success: #10b981;
+      --success-soft: #e9fbf4;
+      --blue: #2563eb;
+      --blue-soft: #eff6ff;
+      --blue-line: #bfdbfe;
+      --shadow-1: 0 10px 24px rgba(15, 23, 42, 0.06);
+      --shadow-2: 0 20px 48px rgba(15, 23, 42, 0.1);
+      --radius-xl: 24px;
+      --radius-lg: 18px;
+      --radius-md: 14px;
+      --focus: 0 0 0 3px rgba(37, 99, 235, 0.16);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top right, rgba(37, 99, 235, 0.06), transparent 30%),
+        linear-gradient(180deg, #f7fafc, var(--bg));
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+    }
+
+    .frame {
+      width: 1460px;
+      height: 920px;
+      margin: 18px auto;
+      display: grid;
+      grid-template-columns: 312px 1fr;
+      background: #f7fafc;
+      border-radius: 30px;
+      overflow: hidden;
+      box-shadow: 0 30px 90px rgba(15, 23, 42, 0.14);
+    }
+
+    .sidebar {
+      padding: 28px 18px 24px;
+      background:
+        radial-gradient(circle at 16% 8%, rgba(59, 130, 246, 0.16), transparent 24%),
+        radial-gradient(circle at 88% 90%, rgba(249, 115, 22, 0.08), transparent 22%),
+        linear-gradient(180deg, var(--nav-2), var(--nav));
+      border-right: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 10px 22px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .logo {
+      width: 46px;
+      height: 46px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--primary-2), #e85f0f 68%, #bf4a0a);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 10px 26px rgba(249, 115, 22, 0.28);
+    }
+
+    .brand h1 {
+      margin: 0;
+      color: #fff;
+      font-size: 19px;
+      line-height: 1.15;
+    }
+
+    .brand p {
+      margin: 5px 0 0;
+      color: rgba(255,255,255,0.4);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .nav-label {
+      margin: 24px 10px 14px;
+      color: rgba(255,255,255,0.24);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .nav-item {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 64px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      border-radius: 18px;
+      color: rgba(255,255,255,0.58);
+      border: 1px solid transparent;
+      background: rgba(255,255,255,0.02);
+    }
+
+    .nav-item.active {
+      color: #fff;
+      border-color: rgba(255,255,255,0.08);
+      background: linear-gradient(135deg, rgba(249, 115, 22, 0.14), rgba(249, 115, 22, 0.05));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 26px rgba(15, 23, 42, 0.2);
+    }
+
+    .nav-item.active::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 26px;
+      border-radius: 0 99px 99px 0;
+      background: linear-gradient(180deg, var(--primary-2), var(--primary));
+    }
+
+    .nav-icon {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.04);
+      flex: 0 0 auto;
+      font-size: 15px;
+    }
+
+    .nav-item.active .nav-icon {
+      background: rgba(249, 115, 22, 0.16);
+      border-color: rgba(249, 115, 22, 0.24);
+    }
+
+    .nav-title {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .nav-sub {
+      margin-top: 4px;
+      font-size: 12px;
+      opacity: 0.64;
+    }
+
+    .main {
+      padding: 22px 24px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      overflow: hidden;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: #1f2937;
+      font-size: 14px;
+      font-weight: 700;
+      box-shadow: var(--shadow-1);
+    }
+
+    .chip .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #60a5fa;
+    }
+
+    .chip.warn {
+      background: linear-gradient(135deg, var(--primary), #ea580c);
+      color: #fff;
+      border-color: transparent;
+    }
+
+    .stack {
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      gap: 16px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .progress-card,
+    .workspace,
+    .preview {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-2);
+    }
+
+    .progress-card {
+      border-radius: 26px;
+      padding: 22px 24px 24px;
+      background: linear-gradient(180deg, #fff, #fbfffd);
+      border-color: #d6f2e7;
+    }
+
+    .progress-head {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .progress-head .ball {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--success);
+      flex: 0 0 auto;
+    }
+
+    .progress-head .label {
+      color: var(--muted);
+      font-size: 24px;
+      font-weight: 800;
+    }
+
+    .progress-head .value {
+      color: #059669;
+      font-size: 50px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+    }
+
+    .bar {
+      height: 14px;
+      border-radius: 999px;
+      background: #d1fae5;
+      overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(15,23,42,0.06);
+    }
+
+    .bar > span {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, #86efac, #34d399 48%, #2dd4bf);
+    }
+
+    .complete-note {
+      margin-top: 18px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 18px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fffdfc, #fff8f2);
+      border: 1px solid #f2e4d8;
+      font-size: 24px;
+      color: #334155;
+    }
+
+    .complete-note .ball {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--success);
+      flex: 0 0 auto;
+    }
+
+    .workspace {
+      border-radius: 22px;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+    }
+
+    .workspace-head {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      min-height: 68px;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #fff, #fcfdff);
+    }
+
+    .tab {
+      position: relative;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      color: #7e94ac;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .tab.active {
+      color: var(--primary);
+    }
+
+    .tab.active::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -12px;
+      height: 3px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--primary-2), var(--primary));
+    }
+
+    .flow-chip {
+      margin-left: auto;
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: var(--primary-soft);
+      border: 1px solid #fed7aa;
+      color: #9a3412;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .workspace-body {
+      display: grid;
+      grid-template-columns: 284px 1fr;
+      min-height: 0;
+    }
+
+    .left-rail {
+      padding: 18px;
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, #fcfeff, #f7fbff);
+    }
+
+    .rail-card {
+      height: 100%;
+      border-radius: 18px;
+      border: 1px solid var(--blue-line);
+      background: linear-gradient(180deg, #f8fbff, #eef6ff);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      justify-content: center;
+    }
+
+    .rail-kicker {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--blue);
+    }
+
+    .rail-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    .rail-copy {
+      font-size: 14px;
+      line-height: 1.75;
+      color: #486175;
+    }
+
+    .rail-btn {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 18px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
+      align-self: flex-start;
+      box-shadow: 0 12px 24px rgba(37,99,235,0.2);
+    }
+
+    .process-area {
+      min-width: 0;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .process-meta {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .process-meta h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .process-meta p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted-2);
+      font-weight: 700;
+    }
+
+    .table-wrap {
+      flex: 1;
+      min-height: 0;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      overflow: hidden;
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead {
+      background: linear-gradient(180deg, #fafbfd, #f3f7fb);
+    }
+
+    th,
+    td {
+      padding: 14px 14px;
+      border-bottom: 1px solid #edf2f7;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    td { color: #243445; }
+
+    td.code {
+      width: 96px;
+      text-align: center;
+      color: var(--primary);
+      font-family: Consolas, monospace;
+      font-weight: 900;
+      background: linear-gradient(90deg, #fff7ed, #fff);
+    }
+
+    td.trade { width: 110px; }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid #bfdbfe;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .pill.green {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+      color: #047857;
+    }
+
+    .preview {
+      border-radius: 20px;
+      padding: 14px 18px 18px;
+    }
+
+    .preview-head {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 14px;
+    }
+
+    .preview-title {
+      font-size: 17px;
+      font-weight: 800;
+      color: #334155;
+    }
+
+    .pager {
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .preview-controls {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .vline {
+      width: 1px;
+      height: 24px;
+      background: var(--line);
+    }
+
+    .zoom {
+      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 12px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .canvas {
+      height: 226px;
+      border-radius: 18px;
+      border: 1px solid var(--line-strong);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.95), rgba(248,250,252,0.95)),
+        linear-gradient(90deg, rgba(148,163,184,0.08) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(148,163,184,0.08) 1px, transparent 1px);
+      background-size: auto, 24px 24px, 24px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .drawing {
+      width: 78%;
+      height: 72%;
+      border-radius: 14px;
+      border: 2px solid #9fb8d0;
+      background: rgba(255,255,255,0.76);
+      position: relative;
+    }
+
+    .box,
+    .box::before,
+    .box::after {
+      content: "";
+      position: absolute;
+      border: 2px solid #5d7f9f;
+      border-radius: 8px;
+    }
+
+    .box {
+      top: 18%;
+      right: 14%;
+      width: 46%;
+      height: 40%;
+    }
+
+    .box::before {
+      left: -108px;
+      top: 28px;
+      width: 84px;
+      height: 62px;
+    }
+
+    .box::after {
+      right: 16px;
+      bottom: -64px;
+      width: 138px;
+      height: 44px;
+    }
+
+    .line {
+      position: absolute;
+      background: var(--primary);
+      border-radius: 999px;
+    }
+
+    .line.one { width: 170px; height: 3px; left: 16%; top: 27%; }
+    .line.two { width: 3px; height: 118px; right: 18%; top: 20%; }
+    .line.three { width: 118px; height: 3px; left: 43%; bottom: 18%; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>二维工艺系统</h1>
+          <p>Process Intelligence</p>
+        </div>
+      </div>
+
+      <div class="nav-label">导航</div>
+
+      <div class="nav-item">
+        <div class="nav-icon">⧉</div>
+        <div>
+          <div class="nav-title">工艺入库</div>
+          <div class="nav-sub">批次报告与记录浏览</div>
+        </div>
+      </div>
+
+      <div class="nav-item active">
+        <div class="nav-icon">▣</div>
+        <div>
+          <div class="nav-title">工艺生成</div>
+          <div class="nav-sub">模型预览与工艺编制</div>
+        </div>
+      </div>
+
+      <div class="nav-item">
+        <div class="nav-icon">☰</div>
+        <div>
+          <div class="nav-title">历史记录</div>
+          <div class="nav-sub">历史输出与特征回看</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="chip"><span class="dot"></span>检索库：公共工艺库</div>
+        <div class="chip warn">⚡ 特征缓存：开</div>
+      </div>
+
+      <div class="stack">
+        <section class="progress-card">
+          <div class="progress-head">
+            <span class="ball"></span>
+            <span class="label">进度</span>
+            <span class="value">100%</span>
+          </div>
+          <div class="bar"><span></span></div>
+          <div class="complete-note">
+            <span class="ball"></span>
+            <span>工艺生成完成，共 9 道工序</span>
+          </div>
+        </section>
+
+        <section class="workspace" aria-label="结果工作区">
+          <div class="workspace-head">
+            <div class="tab">YOLO审阅</div>
+            <div class="tab">特征审阅</div>
+            <div class="tab active">工艺规程</div>
+            <div class="flow-chip">YOLO标注完成后自动进入特征审阅</div>
+          </div>
+
+          <div class="workspace-body">
+            <div class="left-rail">
+              <div class="rail-card">
+                <div class="rail-kicker">最小修补方案</div>
+                <div class="rail-title">只补 YOLO 流程</div>
+                <div class="rail-copy">
+                  保留现有安装版的布局与视觉方向，
+                  仅补齐 <strong>YOLO审阅 → 特征审阅 → 工艺规程</strong>
+                  的前后交互链路。
+                </div>
+                <div class="rail-btn">查看标注结果</div>
+              </div>
+            </div>
+
+            <div class="process-area">
+              <div class="process-meta">
+                <h2>工艺规程</h2>
+                <p>已完成 9 道工序 · 表格与流式结果合并收敛</p>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width: 96px;">工序号</th>
+                      <th style="width: 110px;">工种</th>
+                      <th>工序名称及内容</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="code">0010</td>
+                      <td class="trade"><span class="pill">车削</span></td>
+                      <td>下料后车端面，建立定位基准并完成外圆粗加工。</td>
+                    </tr>
+                    <tr>
+                      <td class="code">0020</td>
+                      <td class="trade"><span class="pill">钻削</span></td>
+                      <td>按图钻中心孔并扩孔，保证后续定位精度与同轴度要求。</td>
+                    </tr>
+                    <tr>
+                      <td class="code">0030</td>
+                      <td class="trade"><span class="pill green">热处理</span></td>
+                      <td>调质处理后复检硬度，控制变形量，必要时补留精加工余量。</td>
+                    </tr>
+                    <tr>
+                      <td class="code">0040</td>
+                      <td class="trade"><span class="pill">磨削</span></td>
+                      <td>精磨关键配合面，确保表面粗糙度和尺寸公差满足设计要求。</td>
+                    </tr>
+                    <tr>
+                      <td class="code">0050</td>
+                      <td class="trade"><span class="pill">检验</span></td>
+                      <td>对关键尺寸、形位公差以及热处理状态进行终检并记录。</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="preview">
+          <div class="preview-head">
+            <div class="preview-title">图纸预览</div>
+            <div class="pager">1 / 2</div>
+            <div class="preview-controls">
+              <span>←</span>
+              <span>→</span>
+              <div class="vline"></div>
+              <span>-</span>
+              <div class="zoom">100%</div>
+              <span>+</span>
+            </div>
+          </div>
+
+          <div class="canvas">
+            <div class="drawing">
+              <div class="box"></div>
+              <div class="line one"></div>
+              <div class="line two"></div>
+              <div class="line three"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
