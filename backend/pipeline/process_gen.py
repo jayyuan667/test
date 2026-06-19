@@ -1491,13 +1491,27 @@ class ProcessGenerator:
         if re.search(r'(?:第\d+页摘要|摘要|图号|零件名称|关键尺寸|技术要求)', value):
             return ""
 
+        def _normalize(spec: str) -> str:
+            spec = re.sub(r'\s*[×xX*]\s*', '×', spec)
+            spec = re.sub(r'\s*=\s*', '=', spec)
+            spec = re.sub(r'\s*[，,]\s*', '，', spec)
+            return spec.strip()
+
+        matches = []
         patterns = (
-            r'[δ≠]\s*\d+(?:\.\d+)?\s*[×xX*]\s*\d+(?:\.\d+)?(?:\s*[×xX*]\s*\d+(?:\.\d+)?)?(?:\s*=\s*\d+)?',
+            r'[δ≠]\s*\d+(?:\.\d+)?\s*[×xX*]\s*\d+(?:\.\d+)?(?:\s*[×xX*]\s*\d+(?:\.\d+)?)?',
+            r'([φΦØ]\s*\d+(?:\.\d+)?\s*[×xX*]\s*)L\s*[，,]\s*L\s*=\s*(\d+(?:\.\d+)?)',
             r'[φΦØ]\s*\d+(?:\.\d+)?\s*[×xX*]\s*\d+(?:\.\d+)?(?:\s*=\s*\d+)?',
         )
-        matches = []
         for pattern in patterns:
-            matches.extend(m.group(0).strip() for m in re.finditer(pattern, value))
+            for m in re.finditer(pattern, value):
+                spec = m.group(0)
+                if pattern.startswith('([φΦØ]'):
+                    spec = f"{m.group(1)}{m.group(2)}"
+                tail = value[m.end():].lstrip()
+                if tail.startswith("°"):
+                    continue
+                matches.append(_normalize(spec))
         unique = list(dict.fromkeys(match for match in matches if match))
         return unique[0] if len(unique) == 1 else ""
 
@@ -1523,7 +1537,7 @@ class ProcessGenerator:
         authoritative_blank = geo_blank or legacy_blank
         part_count = hard.get("part_count", 1) or 1
         if authoritative_blank:
-            authoritative_blank = re.sub(r'=\d+$', f'={part_count}', authoritative_blank)
+            authoritative_blank = re.sub(r'\s*=\s*\d+$', f'={part_count}', authoritative_blank)
 
         if authoritative_blank:
             def _fix_blank_line(match):
@@ -1547,11 +1561,11 @@ class ProcessGenerator:
                     return f"- {tag}: {action} {authoritative_blank}{_ts}"
                 if output_dim and output_dim != current_dim:
                     return f"- {tag}: {action} {authoritative_blank}{_ts}"
-                current_qty = re.search(r'=(\d+)$', authoritative_blank)
-                output_qty = re.search(r'=(\d+)', rest)
+                current_qty = re.search(r'=\s*(\d+)$', authoritative_blank)
+                output_qty = re.search(r'=\s*(\d+)', rest)
                 if output_dim and output_dim == current_dim and current_qty and output_qty:
                     if output_qty.group(1) != current_qty.group(1):
-                        fixed_rest = re.sub(r'=\d+', f'={current_qty.group(1)}', rest, count=1)
+                        fixed_rest = re.sub(r'\s*=\s*\d+', f'={current_qty.group(1)}', rest, count=1)
                         return f"- {tag}: {action} {fixed_rest}"
                 return match.group(0)
 

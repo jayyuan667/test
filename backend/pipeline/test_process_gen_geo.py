@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
+import json
 import sys, os
+from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from unittest.mock import patch
@@ -249,6 +251,21 @@ def test_extract_authoritative_blank_spec_accepts_suffixed_round_spec():
     assert pg._extract_authoritative_blank_spec("毛坯规格：φ80×320=1") == "φ80×320=1"
 
 
+def test_extract_authoritative_blank_spec_rejects_counterbore_angle_spec():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("钻φ5.6×90°沉孔") == ""
+
+
+def test_extract_authoritative_blank_spec_accepts_round_spec_with_l_length():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("毛坯规格：φ65×L，L=120") == "φ65×120"
+
+
+def test_extract_authoritative_blank_spec_normalizes_spaced_quantity():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("毛坯规格：φ80×320 = 1") == "φ80×320=1"
+
+
 def test_extract_authoritative_blank_spec_rejects_multiple_specs():
     pg = _make_pg()
     assert pg._extract_authoritative_blank_spec("毛坯规格：δ20×390×248；φ80×320=1") == ""
@@ -343,25 +360,34 @@ def test_post_check_fallback_to_blank_size_when_no_geo():
     assert "δ30×250×100" in result
 
 
-def test_post_check_preserves_original_0010_when_blank_summary_is_polluted():
+def test_post_check_rewrites_spaced_quantity_suffix():
     pg = _make_pg()
+    constraints = _make_constraints(geo_blank="φ80×320 = 1")
+    constraints["hard_constraints"]["part_count"] = 5
+    raw = "- 0010: 备料 φ80×320 = 1"
+
+    result = pg._post_check_process(raw, constraints)
+
+    assert "φ80×320=5" in result
+    assert "φ80×320 = 1" not in result
+
+
+def test_extract_constraints_and_post_check_preserve_original_0010_for_real_page_summary():
+    pg = _make_pg()
+    data = json.loads(Path("output/313effc7-de32-4bb1-9044-e14720ebe87d/result.json").read_text())
+    constraints = pg._extract_process_constraints(data["review_text"], geo_data=None)
     raw = (
         "- 0010: 下料，按图纸尺寸准备12Cr1MoVG无缝钢管，"
-        "规格为φ60×320，长度10630mm （工种：料）\n"
-        "- 0020: 车削两端端面及外圆，保证总长900mm （工种：车）"
-    )
-    constraints = _make_constraints(
-        blank_size=(
-            "图号：2779.301.13.0；零件名称：高温过热器出口集箱；"
-            "毛坯规格：φ80×320=1；毛坯类型：12Cr1MoVG；关键尺寸：900；10630；φ273×40"
-        )
+        "规格为φ273×40，长度10630mm （工种：料）"
     )
 
     result = pg._post_check_process(raw, constraints)
 
+    assert constraints["hard_constraints"]["blank_size"] == ""
     assert result == raw
     assert "图号：" not in result
     assert "零件名称：" not in result
+    assert "毛坯类型：" not in result
 
 
 def test_post_check_shaft_blank_phi_format():
