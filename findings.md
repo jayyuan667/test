@@ -49,6 +49,15 @@
 - `backend/pipeline/yolo_detector.py`
 - `backend/prt_pipeline.py`
 - `backend/test_startup_import.py`
+- Astral官方文档建议GitHub Actions使用`astral-sh/setup-uv`，并支持所有uv支持的平台。
+- GitHub官方`actions/setup-python`和`actions/setup-node`用于固定Python和Node版本；CI计划使用固定主版本标签。
+
+## 影响分析
+- `convert_pdf_to_images`：HIGH，直接影响4个调用者，并波及图纸上传和知识库PDF导入流程。
+- `upload_drawing`：LOW。
+- `get_yolo_detector`：LOW。
+- `health`：LOW。
+- PDF相关实现必须同时覆盖上传和知识库导入回归测试。
 
 ## 视觉/浏览器发现
 - 本阶段不修改视觉设计。

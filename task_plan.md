@@ -4,7 +4,7 @@
 将项目统一到可复现的 Python 3.11.15 环境，使 macOS 与 Windows 能从干净克隆安装并启动核心服务，同时让 PDF、YOLO、Creo 等能力按“核心必需 / 可选降级”规则运行。
 
 ## 当前阶段
-阶段 2
+阶段 3
 
 ## 各阶段
 
@@ -18,14 +18,14 @@
 - [x] 确定依赖分组、能力检测和降级边界
 - [x] 确定测试层级与干净克隆验收标准
 - [x] 编写设计规格
-- [ ] 用户复核设计规格
-- **状态：** in_progress
+- [x] 用户复核设计规格
+- **状态：** complete
 
 ### 阶段 3：实施计划
-- [ ] 使用 writing-plans 编写逐任务实施计划
-- [ ] 明确每项修改的文件、接口、测试和提交点
+- [x] 使用 writing-plans 编写逐任务实施计划
+- [x] 明确每项修改的文件、接口、测试和提交点
 - [ ] 用户确认执行方式
-- **状态：** pending
+- **状态：** in_progress
 
 ### 阶段 4：实现与增量验证
 - [ ] 按 TDD 顺序实施依赖统一
@@ -66,5 +66,6 @@
 
 ## 备注
 - 设计规格：`docs/superpowers/specs/2026-06-20-runtime-environment-unification-design.md`
+- 实施计划：`docs/superpowers/plans/2026-06-20-runtime-environment-unification.md`
 - 第一阶段不改变现有 SSE 流式输出效果。
 - 修改任何代码符号前必须执行 GitNexus impact；提交前必须执行 detect_changes。
