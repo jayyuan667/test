@@ -1,80 +1,145 @@
-﻿# 杩佺Щ鍒版柊鏈哄櫒 - 瀹夎鎸囧崡
+# 安装说明
 
-## 鍓嶇疆杞欢锛堟墜鍔ㄥ畨瑁咃級
+## 必需环境
 
-| 杞欢 | 鐗堟湰瑕佹眰 | 涓嬭浇鍦板潃 |
-|------|---------|---------|
-| Python | 3.11.x | https://www.python.org/downloads/release/python-3119/ |
-| FreeCAD | 1.1 | https://www.freecad.org/downloads.php |
-| Git | 浠绘剰 | https://git-scm.com/downloads |
+| 软件 | 建议版本 | 用途 |
+|---|---:|---|
+| Git | 2.40+ | 克隆和分支管理 |
+| Python | 3.11 或 3.12 | Flask 后端和 RapidOCR |
+| Node.js | 20+ | React 前端 |
+| npm | 随 Node.js 安装 | 前端依赖和构建 |
 
-> Poppler锛圥DF杞浘鐗囷級鍙€夛紝浠呭湪澶勭悊 PDF 鏃堕渶瑕併€?
+## Windows 自动安装
 
----
-
-## 蹇€熷紑濮?
-
-### 绗竴姝ワ細鑾峰彇浠ｇ爜
-
-```bat
-git clone <浠撳簱鍦板潃>
-cd 2D-v
+```powershell
+git clone -b yolo-react https://github.com/jayyuan667/test.git
+cd test
+.\setup.bat
 ```
 
-鎴栬€呯洿鎺ュ鍒舵暣涓」鐩枃浠跺す锛堥渶鍖呭惈 `db_data\` 鐩綍锛夈€?
+`setup.bat` 不会覆盖已有 `.env`，重复执行可用于补齐依赖。
 
-### 绗簩姝ワ細涓€閿垵濮嬪寲鐜
+## Windows 手动安装
 
-鍙屽嚮鎴栧湪 cmd 涓繍琛岋細
+```powershell
+git clone -b yolo-react https://github.com/jayyuan667/test.git
+cd test
 
-```bat
-setup.bat
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+
+cd frontend-react
+npm install
+cd ..
+
+Copy-Item .env.example .env
+New-Item -ItemType Directory -Force db_data, uploads, output | Out-Null
 ```
 
-鑴氭湰浼氳嚜鍔ㄥ畬鎴愶細
-- 鍒涘缓 Python 铏氭嫙鐜 `.venv`
-- 瀹夎鎵€鏈変緷璧栵紙`backend\requirements.txt`锛?
-- 浠?`.env.example` 鐢熸垚 `.env`
-- 妫€鏌ョ煡璇嗗簱锛坉b_data\2d-v.db锛?
+编辑 `.env` 并填写真实 API Key。
 
-### 绗笁姝ワ細鍚姩绯荤粺
+> Python 3.13 当前不兼容 `rapidocr-onnxruntime`。Windows 的 `setup.bat` 会优先选择 Python 3.11，其次选择 3.12。
 
-```bat
-updated_front\start_flask_demo.bat
+## Linux/macOS 手动安装
+
+```bash
+git clone -b yolo-react https://github.com/jayyuan667/test.git
+cd test
+
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r backend/requirements.txt
+
+cd frontend-react
+npm install
+cd ..
+
+cp .env.example .env
+mkdir -p db_data uploads output
 ```
 
-娴忚鍣ㄤ細鑷姩鎵撳紑 `http://127.0.0.1:5190`銆?
+`start.ps1` 仅适用于 Windows。Linux/macOS 请分别运行前后端。
 
----
+## 后端配置
 
-## FreeCAD 璺緞涓嶅湪榛樿浣嶇疆
+根目录 `.env` 是后端实际配置文件，不提交 Git。
 
-濡傛灉 FreeCAD 瀹夎鍦ㄩ潪榛樿璺緞锛岀紪杈?`.env` 鍔犲叆锛?
+核心配置：
 
+```dotenv
+VISION_API_KEY="..."
+VISION_API_BASE="https://ark.cn-beijing.volces.com/api/v3"
+VISION_MODEL_ID="doubao-seed-2-0-mini-260215"
+
+EMBEDDING_API_KEY="..."
+EMBEDDING_BASE_URL="https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal"
+EMBEDDING_MODEL="doubao-embedding-vision-251215"
+
+LLM_API_KEY="..."
+LLM_BASE_URL="https://api.deepseek.com/v1"
+LLM_MODEL="deepseek-chat"
 ```
-FREECAD_BIN=D:\浣犵殑璺緞\FreeCAD 1.1\bin
-FREECAD_LIB=D:\浣犵殑璺緞\FreeCAD 1.1\lib
+
+如果不使用某项能力，可保留占位值，但调用该能力时会失败或降级。
+
+## 前端配置
+
+默认配置已写入 `frontend-react/.env.example`：
+
+```dotenv
+VITE_API_BASE_URL=http://127.0.0.1:5190/api
+VITE_BACKEND_URL=http://127.0.0.1:5190
 ```
 
----
+一般无需创建 `frontend-react/.env`。需要覆盖配置时：
 
-## 杩佺Щ娉ㄦ剰浜嬮」
+```powershell
+Copy-Item frontend-react\.env.example frontend-react\.env
+```
 
-| 鏂囦欢/鐩綍 | 鏄惁鍦?git 涓?| 璇存槑 |
-|-----------|--------------|------|
-| `db_data\2d-v.db` | 鏄紝`git clone` 鑷姩鑾峰彇 | 鑻ュ師鏈哄櫒鏈夋湭鎻愪氦鐨勬柊鏁版嵁锛岄渶鎵嬪姩 `git push` 鍚庡啀 `clone` |
-| `.env` | **鍚?* | `setup.bat` 浼氳嚜鍔ㄤ粠 `.env.example` 鐢熸垚 |
+## 可选依赖
 
----
+### Poppler
 
-## 甯歌闂
+仅在 PDF 转换后备路径需要。Windows 可在 `.env` 设置：
 
-**Q: `setup.bat` 鎶?Python鏈壘鍒?**  
-A: 瀹夎 Python 3.11 鏃跺嬀閫?**"Add Python to PATH"**锛岀劧鍚庨噸鏂版墦寮€ cmd銆?
+```dotenv
+POPPLER_PATH=D:\tools\poppler\Library\bin
+```
 
-**Q: 鍚姩鍚庝笂浼?PRT 鏂囦欢鎶ラ敊**  
-A: 妫€鏌?FreeCAD 璺緞鏄惁姝ｇ‘锛屾煡鐪?`backend.log` 鑾峰彇璇︾粏閿欒銆?
+### FreeCAD
 
-**Q: 鐭ヨ瘑搴撴绱㈣繑鍥炵┖**  
-A: 纭 `db_data\2d-v.db` 瀛樺湪锛坄git clone` 鑷姩鑾峰彇锛涜嫢鍘熸満鍣ㄦ湁鏂版暟鎹渶鍏?`git push`锛夈€?
+PRT/STEP 几何分析和视图生成需要。可设置：
 
+```dotenv
+FREECAD_LIB=D:\Program Files\FreeCAD 1.1\lib
+FREECAD_BIN=D:\Program Files\FreeCAD 1.1\bin
+```
+
+### Creo
+
+Creo 能力依赖本机 Creo 安装以及 `backend/config.json` 中的路径配置。
+
+### OnShape
+
+在线 PRT 转换需要在 `.env` 配置：
+
+```dotenv
+onshape_credentials="..."
+onshape_did="..."
+onshape_wid="..."
+```
+
+## 安装验证
+
+```powershell
+.\.venv\Scripts\python.exe -c "import flask; print('backend dependencies: OK')"
+
+cd frontend-react
+npm run build
+cd ..
+```
+
+若两条命令均成功，则基础环境安装完成。

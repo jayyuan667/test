@@ -2,6 +2,19 @@
 # Shows both backend and frontend logs in one terminal
 
 $ROOT = $PSScriptRoot
+$VENV_PYTHON = Join-Path $ROOT ".venv\Scripts\python.exe"
+
+if (-not (Test-Path $VENV_PYTHON)) {
+    Write-Host "  [ERROR] Python virtual environment not found." -ForegroundColor Red
+    Write-Host "          Run setup.bat first." -ForegroundColor Yellow
+    exit 1
+}
+
+if (-not (Test-Path (Join-Path $ROOT "frontend-react\node_modules"))) {
+    Write-Host "  [ERROR] Frontend dependencies not found." -ForegroundColor Red
+    Write-Host "          Run setup.bat first." -ForegroundColor Yellow
+    exit 1
+}
 
 Write-Host ""
 Write-Host "  ============================================" -ForegroundColor Cyan
@@ -25,7 +38,7 @@ foreach ($port in @(5190, 3200)) {
 }
 
 Write-Host "  [1/2] Starting backend :5190 ..." -ForegroundColor Green
-$backend = Start-Process -FilePath "python" -ArgumentList "-m", "backend.run" -WorkingDirectory $ROOT -PassThru -NoNewWindow -RedirectStandardOutput "$ROOT\backend_stdout.log" -RedirectStandardError "$ROOT\backend_stderr.log"
+$backend = Start-Process -FilePath $VENV_PYTHON -ArgumentList "-m", "backend.run" -WorkingDirectory $ROOT -PassThru -NoNewWindow -RedirectStandardOutput "$ROOT\backend_stdout.log" -RedirectStandardError "$ROOT\backend_stderr.log"
 Write-Host "         Backend PID: $($backend.Id)" -ForegroundColor DarkGray
 
 # Wait for backend
@@ -43,7 +56,7 @@ if ($w -ge 30) {
 }
 
 Write-Host "  [2/2] Starting frontend :3200 ..." -ForegroundColor Green
-$frontend = Start-Process -FilePath "cmd" -ArgumentList "/c", "cd /d `"$ROOT\frontend-react`" && npx vite --port 3200 --host" -PassThru -NoNewWindow -RedirectStandardOutput "$ROOT\frontend_stdout.log" -RedirectStandardError "$ROOT\frontend_stderr.log"
+$frontend = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm run dev -- --host 127.0.0.1" -WorkingDirectory "$ROOT\frontend-react" -PassThru -NoNewWindow -RedirectStandardOutput "$ROOT\frontend_stdout.log" -RedirectStandardError "$ROOT\frontend_stderr.log"
 Write-Host "         Frontend PID: $($frontend.Id)" -ForegroundColor DarkGray
 
 # Wait for frontend
