@@ -1,3 +1,4 @@
+import os
 import re
 import sqlite3
 from datetime import datetime
@@ -14,6 +15,48 @@ PUBLIC_LIBRARY_KEY = "public"
 PUBLIC_LIBRARY_NAME = "公共工艺库"
 PUBLIC_VECTOR_TABLE = "vectors_v2"
 PUBLIC_FEATURE_TABLE = "drawing_features"
+
+
+def ensure_import_tracking_tables():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS kb_import_batches (
+                batch_id TEXT PRIMARY KEY,
+                zip_name TEXT,
+                conflict_mode TEXT,
+                total_files INTEGER DEFAULT 0,
+                pdf_count INTEGER DEFAULT 0,
+                xlsx_count INTEGER DEFAULT 0,
+                matched_pairs INTEGER DEFAULT 0,
+                imported_count INTEGER DEFAULT 0,
+                skipped_count INTEGER DEFAULT 0,
+                error_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                finished_at TIMESTAMP
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS kb_import_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id TEXT,
+                prefix TEXT,
+                pdf_name TEXT,
+                xlsx_name TEXT,
+                status TEXT,
+                message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def sanitize_identifier(value: str) -> str:
@@ -135,6 +178,13 @@ def ensure_feature_table(table_name: str):
     # Structured filter columns are now part of the vector table.
     # This function is kept as a no-op so existing callers don't break.
     pass
+
+
+def initialize_library_storage():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    ensure_scope_registry()
+    ensure_vector_table(PUBLIC_VECTOR_TABLE)
+    ensure_import_tracking_tables()
 
 
 def copy_public_baseline(target_vector_table: str, target_feature_table: str):
@@ -286,6 +336,7 @@ def mark_scope_batch(library_key: str, batch_id: str):
 
 def browse_unlock_status():
     ensure_scope_registry()
+    ensure_import_tracking_tables()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:

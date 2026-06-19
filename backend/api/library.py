@@ -29,7 +29,7 @@ from ..vector_map_rag import (
 from ..library_scope import (
     PUBLIC_LIBRARY_KEY,
     browse_unlock_status,
-    ensure_scope_registry,
+    initialize_library_storage,
     list_scopes,
     resolve_scope,
 )
@@ -117,9 +117,13 @@ def _persist_feature_report_json(feature_report_json: dict, feature_report_path:
 
 
 def _ensure_context_column():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='vectors_v2'")
+        if not cursor.fetchone():
+            return
         cursor.execute("PRAGMA table_info(vectors_v2)")
         columns = {row[1] for row in cursor.fetchall()}
         if "context" not in columns:
@@ -168,6 +172,7 @@ def _migrate_vector_table(cursor, table_name: str):
 
 def _ensure_provenance_columns():
     # Migrate all registered library vector tables + the public vectors_v2
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     scopes = list_scopes()
     tables = {"vectors_v2"} | {s["vector_table"] for s in scopes if s.get("vector_table")}
     conn = sqlite3.connect(DB_PATH)
@@ -186,6 +191,7 @@ def _ensure_scope_columns(scope: dict):
     vector_table = scope.get("vector_table")
     if not vector_table:
         return
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
@@ -196,7 +202,7 @@ def _ensure_scope_columns(scope: dict):
 
 
 _ensure_context_column()
-ensure_scope_registry()
+initialize_library_storage()
 _ensure_provenance_columns()
 
 
@@ -210,6 +216,7 @@ def _scope_from_key(library_key: str = ""):
 def _library_ready_status(library_key: str = ""):
     scope = _scope_from_key(library_key)
     vector_table = scope["vector_table"]
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
