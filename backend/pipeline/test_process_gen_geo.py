@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-import json
 import sys, os
-from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from unittest.mock import patch
@@ -10,6 +8,15 @@ from backend.pipeline.process_gen import ProcessGenerator
 
 def _make_pg():
     return object.__new__(ProcessGenerator)
+
+
+REAL_PAGE_SUMMARY_REVIEW_TEXT = (
+    "【毛坯类型】：12Cr1MoVG；：无\n"
+    "【物料形态】棒料（圆）\n"
+    "【第1页摘要】图号：2779.301.13.0；零件名称：高温过热器出口集箱；"
+    "毛坯类型：12Cr1MoVG；技术要求：按图制造；"
+    "关键尺寸：900；10630；φ273×40；2-φ102；12-φ107；236-φ29"
+)
 
 
 _GEO_PLATE = {
@@ -266,6 +273,16 @@ def test_extract_authoritative_blank_spec_normalizes_spaced_quantity():
     assert pg._extract_authoritative_blank_spec("毛坯规格：φ80×320 = 1") == "φ80×320=1"
 
 
+def test_extract_authoritative_blank_spec_accepts_plate_spec_with_quantity():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("毛坯规格：δ20×390×248=1") == "δ20×390×248=1"
+
+
+def test_extract_authoritative_blank_spec_normalizes_spaced_plate_quantity():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("毛坯规格：δ20×390×248 = 1") == "δ20×390×248=1"
+
+
 def test_extract_authoritative_blank_spec_rejects_multiple_specs():
     pg = _make_pg()
     assert pg._extract_authoritative_blank_spec("毛坯规格：δ20×390×248；φ80×320=1") == ""
@@ -360,6 +377,40 @@ def test_post_check_fallback_to_blank_size_when_no_geo():
     assert "δ30×250×100" in result
 
 
+def test_post_check_rewrites_spaced_plate_quantity_suffix():
+    pg = _make_pg()
+    constraints = _make_constraints(blank_size="δ20×390×248 = 1")
+    constraints["hard_constraints"]["part_count"] = 5
+    raw = "- 0010: 备料 δ20×390×248 = 1"
+
+    result = pg._post_check_process(raw, constraints)
+
+    assert "δ20×390×248=5" in result
+    assert "δ20×390×248 = 1" not in result
+
+
+def test_post_check_rewrites_plate_quantity_when_dimensions_match():
+    pg = _make_pg()
+    constraints = _make_constraints(blank_size="δ20×390×248=1")
+    constraints["hard_constraints"]["part_count"] = 5
+    raw = "- 0010: 备料 δ20×390×248=1"
+
+    result = pg._post_check_process(raw, constraints)
+
+    assert "δ20×390×248=5" in result
+
+
+def test_post_check_rewrites_plate_quantity_when_dimensions_change():
+    pg = _make_pg()
+    constraints = _make_constraints(blank_size="δ20×390×248=1")
+    constraints["hard_constraints"]["part_count"] = 5
+    raw = "- 0010: 备料 δ20×300×150=1"
+
+    result = pg._post_check_process(raw, constraints)
+
+    assert "δ20×390×248=5" in result
+
+
 def test_post_check_rewrites_spaced_quantity_suffix():
     pg = _make_pg()
     constraints = _make_constraints(geo_blank="φ80×320 = 1")
@@ -374,8 +425,7 @@ def test_post_check_rewrites_spaced_quantity_suffix():
 
 def test_extract_constraints_and_post_check_preserve_original_0010_for_real_page_summary():
     pg = _make_pg()
-    data = json.loads(Path("output/313effc7-de32-4bb1-9044-e14720ebe87d/result.json").read_text())
-    constraints = pg._extract_process_constraints(data["review_text"], geo_data=None)
+    constraints = pg._extract_process_constraints(REAL_PAGE_SUMMARY_REVIEW_TEXT, geo_data=None)
     raw = (
         "- 0010: 下料，按图纸尺寸准备12Cr1MoVG无缝钢管，"
         "规格为φ273×40，长度10630mm （工种：料）"
