@@ -65,14 +65,9 @@ logs/
 # =============================================
 # Database files (user data - never commit)
 # =============================================
-db_data/*.db
-db_data/*.db-shm
-db_data/*.db-wal
-db_data/kb_previews/
-db_data/output_png/
-db_data/*.json
+db_data/*
+!db_data/model-manifest.example.json
 data_json/
-db_data/
 
 # =============================================
 # Node / Frontend

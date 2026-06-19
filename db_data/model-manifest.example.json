@@ -1,0 +1,10 @@
+{
+  "name": "drawing-yolo",
+  "version": "1.0.0",
+  "format": "onnx",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "classes": ["threaded_hole", "circle_hole"],
+  "input_size": 1280,
+  "confidence_threshold": 0.25,
+  "released_at": "2026-06-20"
+}

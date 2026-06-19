@@ -50,6 +50,21 @@ def inspect_pdf_capability() -> dict:
 def inspect_yolo_capability() -> dict:
     onnx = Path(YOLO_ONNX_PATH)
     pt = Path(YOLO_WEIGHT_PATH)
+
+    # Check optional manifest
+    manifest_path = Path(__file__).resolve().parents[2] / "db_data" / "model-manifest.json"
+    if manifest_path.is_file():
+        try:
+            from backend.services.model_manifest import load_model_manifest, verify_model_file
+
+            manifest = load_model_manifest(manifest_path)
+            selected_path = onnx if manifest.get("format") == "onnx" else pt
+            ok, reason = verify_model_file(selected_path, manifest)
+            if not ok:
+                return {"available": False, "provider": None, "reason": reason}
+        except (ValueError, OSError) as exc:
+            return {"available": False, "provider": None, "reason": f"模型清单错误：{exc}"}
+
     if onnx.is_file() and _module_available("onnxruntime"):
         return {"available": True, "provider": "onnx", "reason": ""}
     if pt.is_file() and _module_available("ultralytics") and _module_available("torch"):

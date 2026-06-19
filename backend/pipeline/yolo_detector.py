@@ -1,5 +1,5 @@
 """
-YOLO 检测器 — ultralytics (.pt) 优先，ONNX 兜底。
+YOLO 检测器 — ONNX 优先，ultralytics (.pt) 兜底。
 """
 
 import logging
@@ -113,7 +113,7 @@ class YOLODetection:
 # ---------- 检测器主类 ----------
 
 class YOLODetector:
-    """YOLO 检测器：ultralytics (.pt) 优先，ONNX 兜底。"""
+    """YOLO 检测器：ONNX 优先，ultralytics (.pt) 兜底。"""
 
     def __init__(self, pt_path: Optional[str] = None,
                  onnx_path: Optional[str] = None,
@@ -132,15 +132,14 @@ class YOLODetector:
         self._ul_model = None   # ultralytics YOLO model
         self._ort_session = None  # onnxruntime InferenceSession
 
-        # 尝试 ultralytics
-        if pt_path and self._load_ultralytics(pt_path):
-            return
-
-        # 兜底 ONNX
+        # 优先 ONNX
         if onnx_path and self._load_onnx(onnx_path):
             return
 
-        logger.warning("YOLO 不可用：ultralytics (.pt) 和 ONNX 均加载失败")
+        if pt_path and self._load_ultralytics(pt_path):
+            return
+
+        logger.warning("YOLO不可用：ONNX和ultralytics/PT均加载失败")
 
     # ---- ultralytics 加载 ----
 
