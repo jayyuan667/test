@@ -737,13 +737,15 @@ class ProcessGenerator:
             outer = fields.get("关键尺寸", "")
         hard["outer_size"] = outer if outer and outer != "无" else ""
 
-        # 毛坯尺寸：从所有字段中搜索 δ/δ/板材/毛坯 等模式
+        # 毛坯尺寸：只接受显式毛坯/备料字段中的权威规格串
         blank_candidates = []
         for name, val in fields.items():
-            if val and re.search(r'[δδ﹩$]\s*\d+', val):
-                blank_candidates.append(val)
-            if val and re.search(r'(?:毛坯|板材|棒材|型材)', val):
-                blank_candidates.append(val)
+            if not val or name in {"第1页摘要", "第2页摘要", "第3页摘要"} or name.endswith("页摘要"):
+                continue
+            if name in {"毛坯尺寸", "毛坯规格", "备料规格", "板材规格", "棒材规格", "型材规格"}:
+                spec = self._extract_authoritative_blank_spec(val)
+                if spec:
+                    blank_candidates.append(spec)
         hard["blank_size"] = "；".join(dict.fromkeys(blank_candidates)) if blank_candidates else ""
 
         # ── 软特征 ──
@@ -1480,6 +1482,21 @@ class ProcessGenerator:
         m = re.search(r'(?:[δδ])?\s*\d+(?:\.\d+)?\s*[×xX\*]\s*\d+(?:\.\d+)?(?:\s*[×xX\*]\s*\d+(?:\.\d+)?)?', text)
         return m.group(0).strip() if m else ""
 
+    @staticmethod
+    def _extract_authoritative_blank_spec(text: str) -> str:
+        value = (text or "").strip()
+        if not value or "\n" in value or len(value) > 120:
+            return ""
+
+        patterns = (
+            r'[δ≠]\s*\d+(?:\.\d+)?\s*[×xX*]\s*\d+(?:\.\d+)?(?:\s*[×xX*]\s*\d+(?:\.\d+)?)?(?:\s*=\s*\d+)?',
+            r'[φΦØ]\s*\d+(?:\.\d+)?\s*[×xX*]\s*\d+(?:\.\d+)?(?:\s*=\s*\d+)?',
+        )
+        for pattern in patterns:
+            if re.fullmatch(pattern, value):
+                return value
+        return ""
+
     def _post_check_process(self, process_raw: str, constraints: dict) -> str:
         """对生成的工艺进行约束校验和几何数据覆盖。
 
@@ -1498,6 +1515,7 @@ class ProcessGenerator:
         # ── ① 备料规格 ──
         geo_blank = hard.get("geo_blank_spec", "")
         legacy_blank = hard.get("blank_size", "")
+        legacy_blank = self._extract_authoritative_blank_spec(legacy_blank)
         authoritative_blank = geo_blank or legacy_blank
         part_count = hard.get("part_count", 1) or 1
         if authoritative_blank:

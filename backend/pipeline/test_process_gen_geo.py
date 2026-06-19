@@ -239,6 +239,21 @@ def test_extract_constraints_uses_creo_explicit_over_step():
     assert constraints["hard_constraints"]["geo_blank_spec"] == "δ40×250×180=1"
 
 
+def test_extract_constraints_ignores_page_summary_as_blank_spec():
+    pg = _make_pg()
+    text = (
+        "【毛坯类型】：12Cr1MoVG；：无\n"
+        "【物料形态】棒料（圆）\n"
+        "【第1页摘要】图号：2779.301.13.0；零件名称：高温过热器出口集箱；"
+        "毛坯类型：12Cr1MoVG；技术要求：按图制造；"
+        "关键尺寸：900；10630；φ273×40；2-φ102；12-φ107；236-φ29"
+    )
+
+    constraints = pg._extract_process_constraints(text, geo_data=None)
+
+    assert constraints["hard_constraints"]["blank_size"] == ""
+
+
 # ── Post-check tests ────────────────────────────────────────────────────────
 
 def _make_constraints(geo_blank="", blank_size="", hole_count=0, bore_range=""):
@@ -316,6 +331,25 @@ def test_post_check_fallback_to_blank_size_when_no_geo():
     raw = "- 0010: 备料 δ20×300×150=1"
     result = pg._post_check_process(raw, _make_constraints(blank_size="δ30×250×100"))
     assert "δ30×250×100" in result
+
+
+def test_post_check_preserves_tube_stock_row_when_summary_is_not_a_blank_spec():
+    pg = _make_pg()
+    raw = (
+        "- 0010: 下料，按图纸尺寸准备12Cr1MoVG无缝钢管，"
+        "规格为φ273×40，长度10630mm （工种：料）\n"
+        "- 0020: 车削两端端面及外圆，保证总长900mm （工种：车）"
+    )
+    constraints = _make_constraints(
+        blank_size=(
+            "图号：2779.301.13.0；零件名称：高温过热器出口集箱；"
+            "毛坯类型：12Cr1MoVG；关键尺寸：900；10630；φ273×40"
+        )
+    )
+
+    result = pg._post_check_process(raw, constraints)
+
+    assert result == raw
 
 
 def test_post_check_shaft_blank_phi_format():
