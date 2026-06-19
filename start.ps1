@@ -2,11 +2,17 @@
 # Shows both backend and frontend logs in one terminal
 
 $ROOT = $PSScriptRoot
-$VENV_PYTHON = Join-Path $ROOT ".venv\Scripts\python.exe"
 
-if (-not (Test-Path $VENV_PYTHON)) {
-    Write-Host "  [ERROR] Python virtual environment not found." -ForegroundColor Red
-    Write-Host "          Run setup.bat first." -ForegroundColor Yellow
+$uv = Get-Command uv -ErrorAction SilentlyContinue
+if (-not $uv) {
+    Write-Host "  [ERROR] uv is required: https://docs.astral.sh/uv/" -ForegroundColor Red
+    exit 1
+}
+
+# Run smoke check
+$smoke = Start-Process -FilePath $uv.Source -ArgumentList "run", "python", "scripts/runtime_smoke.py" -WorkingDirectory $ROOT -PassThru -Wait -NoNewWindow
+if ($smoke.ExitCode -ne 0) {
+    Write-Host "  [ERROR] Runtime smoke check failed. Run setup.bat first." -ForegroundColor Red
     exit 1
 }
 
@@ -38,7 +44,7 @@ foreach ($port in @(5190, 3200)) {
 }
 
 Write-Host "  [1/2] Starting backend :5190 ..." -ForegroundColor Green
-$backend = Start-Process -FilePath $VENV_PYTHON -ArgumentList "-m", "backend.run" -WorkingDirectory $ROOT -PassThru -NoNewWindow -RedirectStandardOutput "$ROOT\backend_stdout.log" -RedirectStandardError "$ROOT\backend_stderr.log"
+$backend = Start-Process -FilePath $uv.Source -ArgumentList "run", "python", "-m", "backend.run" -WorkingDirectory $ROOT -PassThru -NoNewWindow -RedirectStandardOutput "$ROOT\backend_stdout.log" -RedirectStandardError "$ROOT\backend_stderr.log"
 Write-Host "         Backend PID: $($backend.Id)" -ForegroundColor DarkGray
 
 # Wait for backend

@@ -2,6 +2,10 @@
   "name": "2dv-frontend-react",
   "private": true,
   "version": "1.0.0",
+  "engines": {
+    "node": ">=20 <21",
+    "npm": ">=10"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite --port 3200",

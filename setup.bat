@@ -15,34 +15,24 @@ echo   yolo-react development setup
 echo ============================================
 echo.
 
-echo [1/7] Checking Python...
-py -3.11 --version >nul 2>&1
-if not errorlevel 1 set "PYTHON_CMD=py -3.11"
-
-if not defined PYTHON_CMD (
-    py -3.12 --version >nul 2>&1
-    if not errorlevel 1 set "PYTHON_CMD=py -3.12"
-)
-
-if not defined PYTHON_CMD (
-    python --version >nul 2>&1
-    if not errorlevel 1 (
-        for /f %%v in ('python -c "import sys; print(str(sys.version_info.major) + '.' + str(sys.version_info.minor))"') do set "SYSTEM_PYTHON_VERSION=%%v"
-        if "!SYSTEM_PYTHON_VERSION!"=="3.11" set "PYTHON_CMD=python"
-        if "!SYSTEM_PYTHON_VERSION!"=="3.12" set "PYTHON_CMD=python"
-    )
-)
-
-if not defined PYTHON_CMD (
-    echo [ERROR] Python 3.11 or 3.12 is required.
-    echo         Python 3.13 is not supported by rapidocr-onnxruntime.
-    echo         https://www.python.org/downloads/
+echo [1/5] Checking uv...
+where uv >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] uv is required: https://docs.astral.sh/uv/
     exit /b 1
 )
-%PYTHON_CMD% --version
+
+echo [2/5] Installing Python and dependencies...
+uv python install 3.11.15
+if "%INSTALL_YOLO%"=="1" (
+    uv sync --locked --extra yolo
+) else (
+    uv sync --locked
+)
+if errorlevel 1 exit /b 1
 
 echo.
-echo [2/7] Checking Node.js and npm...
+echo [3/5] Checking Node.js and npm...
 node --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Node.js 20 or newer is required.
@@ -58,42 +48,13 @@ node --version
 call npm --version
 
 echo.
-echo [3/7] Creating Python virtual environment...
-if exist "%VENV_PYTHON%" (
-    "%VENV_PYTHON%" --version 2>&1 | findstr /R /C:"Python 3\.11" /C:"Python 3\.12" >nul
-    if errorlevel 1 (
-        echo         Existing .venv uses an unsupported Python version; rebuilding it.
-        rmdir /s /q "%VENV_DIR%"
-    ) else (
-        echo         Existing .venv is compatible.
-    )
-)
-if not exist "%VENV_PYTHON%" (
-    %PYTHON_CMD% -m venv "%VENV_DIR%"
-    if errorlevel 1 (
-        echo [ERROR] Failed to create .venv.
-        exit /b 1
-    )
-)
-
-echo.
-echo [4/7] Installing backend dependencies...
-"%VENV_PYTHON%" -m pip install --upgrade pip
-if errorlevel 1 exit /b 1
-"%VENV_PYTHON%" -m pip install -r "%ROOT_DIR%backend\requirements.txt"
-if errorlevel 1 (
-    echo [ERROR] Backend dependency installation failed.
-    exit /b 1
-)
-
-echo.
-echo [5/7] Installing React dependencies...
+echo [4/5] Installing React dependencies...
 if not exist "%FRONTEND_DIR%\package.json" (
     echo [ERROR] frontend-react\package.json was not found.
     exit /b 1
 )
 pushd "%FRONTEND_DIR%"
-call npm install
+call npm ci
 set "NPM_EXIT=%ERRORLEVEL%"
 popd
 if not "%NPM_EXIT%"=="0" (
@@ -102,7 +63,7 @@ if not "%NPM_EXIT%"=="0" (
 )
 
 echo.
-echo [6/7] Preparing local configuration...
+echo [5/5] Preparing local configuration...
 if exist "%ENV_FILE%" (
     echo         .env already exists; it was not overwritten.
 ) else (
@@ -115,7 +76,7 @@ if exist "%ENV_FILE%" (
 )
 
 echo.
-echo [7/7] Creating runtime directories...
+echo [5/5] Creating runtime directories...
 if not exist "%ROOT_DIR%db_data" mkdir "%ROOT_DIR%db_data"
 if not exist "%ROOT_DIR%uploads" mkdir "%ROOT_DIR%uploads"
 if not exist "%ROOT_DIR%output" mkdir "%ROOT_DIR%output"
@@ -128,7 +89,7 @@ echo.
 echo 1. Edit "%ENV_FILE%" and replace API placeholders.
 echo 2. Start the project:
 echo.
-echo      start.bat
+echo      start.ps1
 echo.
 echo Frontend: http://127.0.0.1:3200
 echo Backend:  http://127.0.0.1:5190
