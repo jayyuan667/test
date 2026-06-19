@@ -1,0 +1,65 @@
+name: Runtime
+
+on:
+  push:
+    branches: [main, yolo-react]
+  pull_request:
+
+jobs:
+  core:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.22"
+          enable-cache: true
+
+      - name: Validate lock
+        run: uv lock --check
+
+      - name: Install core and development dependencies
+        run: uv sync --locked --group dev
+
+      - name: Runtime smoke
+        run: uv run python scripts/runtime_smoke.py
+
+      - name: Backend tests
+        run: >
+          uv run pytest
+          backend/test_dependency_manifest.py
+          backend/test_capabilities.py
+          backend/test_startup_checks.py
+          backend/test_capabilities_api.py
+          backend/pipeline/test_pdf_converter.py
+          backend/test_upload_capability_gate.py
+          backend/test_model_manifest.py
+          backend/pipeline/test_yolo_detector.py
+          backend/test_library_storage_init.py
+          backend/test_startup_import.py
+          -q
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend-react/package-lock.json
+
+      - name: Install frontend
+        working-directory: frontend-react
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend-react
+        run: npm run build
