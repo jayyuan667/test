@@ -26,3 +26,18 @@ def test_start_scripts_use_supported_launcher():
 
 def test_node_version_contract():
     assert _read(".nvmrc").strip() == "20"
+
+
+def test_docs_use_only_the_uv_install_contract():
+    for path in ("README.md", "INSTALL.md", "START.md"):
+        text = _read(path)
+        assert "backend/requirements.txt" not in text
+        assert "python3 -m venv" not in text
+        assert "python -m venv" not in text
+        assert "uv sync" in text
+
+
+def test_docs_explain_optional_yolo_and_capabilities():
+    combined = "\n".join(_read(path) for path in ("README.md", "INSTALL.md", "START.md"))
+    assert "uv sync --extra yolo" in combined
+    assert "/api/system/capabilities" in combined

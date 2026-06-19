@@ -28,17 +28,23 @@
   - `docs/superpowers/specs/2026-06-20-runtime-environment-unification-design.md`
 
 ### 阶段 3：实施计划
-- **状态：** in_progress
+- **状态：** complete
 - 执行的操作：
   - 使用GitNexus核对启动、PDF转换、上传和YOLO调用点。
   - 盘点安装脚本、启动脚本、文档和依赖引用。
   - 完成按TDD拆分的8项逐任务实施计划。
   - 完成规格覆盖、占位符、代码围栏、提交顺序和脚本边界自检。
   - 标记PDF转换为HIGH风险任务，要求同时回归图纸上传与知识库PDF导入。
+  - 用户确认执行方式：内联执行。
 - 创建/修改的文件：
   - `task_plan.md`
   - `progress.md`
   - `docs/superpowers/plans/2026-06-20-runtime-environment-unification.md`
+
+### 阶段 4：实现与增量验证
+- **状态：** in_progress
+- 执行的操作：
+  - 开始 Task 1：建立 Python 和依赖契约
 
 ## 测试结果
 | 测试 | 输入 | 预期结果 | 实际结果 | 状态 |

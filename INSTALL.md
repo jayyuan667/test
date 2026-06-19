@@ -5,11 +5,41 @@
 | 软件 | 建议版本 | 用途 |
 |---|---:|---|
 | Git | 2.40+ | 克隆和分支管理 |
-| Python | 3.11 或 3.12 | Flask 后端和 RapidOCR |
+| uv | 0.11.22+ | Python 环境和依赖管理 |
+| Python | 3.11.15 | 通过 uv 自动安装 |
 | Node.js | 20+ | React 前端 |
-| npm | 随 Node.js 安装 | 前端依赖和构建 |
+| npm | 10+ | 前端依赖和构建 |
 
-## Windows 自动安装
+## macOS / Linux
+
+### 自动安装
+
+```bash
+git clone -b yolo-react https://github.com/jayyuan667/test.git
+cd test
+./setup.sh
+```
+
+`setup.sh` 不会覆盖已有 `.env`，重复执行可用于补齐依赖。
+
+### 手动安装
+
+```bash
+git clone -b yolo-react https://github.com/jayyuan667/test.git
+cd test
+
+uv python install 3.11.15
+uv sync --locked
+cp .env.example .env
+mkdir -p db_data uploads output
+npm --prefix frontend-react ci
+```
+
+编辑 `.env` 并填写真实 API Key。
+
+## Windows
+
+### 自动安装
 
 ```powershell
 git clone -b yolo-react https://github.com/jayyuan667/test.git
@@ -17,50 +47,32 @@ cd test
 .\setup.bat
 ```
 
-`setup.bat` 不会覆盖已有 `.env`，重复执行可用于补齐依赖。
-
-## Windows 手动安装
+### 手动安装
 
 ```powershell
 git clone -b yolo-react https://github.com/jayyuan667/test.git
 cd test
 
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
-
-cd frontend-react
-npm install
-cd ..
-
+uv python install 3.11.15
+uv sync --locked
 Copy-Item .env.example .env
-New-Item -ItemType Directory -Force db_data, uploads, output | Out-Null
+mkdir db_data uploads output
+npm --prefix frontend-react ci
 ```
 
-编辑 `.env` 并填写真实 API Key。
+## 可选能力安装
 
-> Python 3.13 当前不兼容 `rapidocr-onnxruntime`。Windows 的 `setup.bat` 会优先选择 Python 3.11，其次选择 3.12。
-
-## Linux/macOS 手动安装
+YOLO 预标注（安装 PyTorch 和 Ultralytics）：
 
 ```bash
-git clone -b yolo-react https://github.com/jayyuan667/test.git
-cd test
-
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r backend/requirements.txt
-
-cd frontend-react
-npm install
-cd ..
-
-cp .env.example .env
-mkdir -p db_data uploads output
+uv sync --locked --extra yolo
 ```
 
-`start.ps1` 仅适用于 Windows。Linux/macOS 请分别运行前后端。
+Windows Creo 自动化（仅 Windows）：
+
+```bash
+uv sync --locked --extra windows-creo
+```
 
 ## 后端配置
 
@@ -93,23 +105,32 @@ VITE_API_BASE_URL=http://127.0.0.1:5190/api
 VITE_BACKEND_URL=http://127.0.0.1:5190
 ```
 
-一般无需创建 `frontend-react/.env`。需要覆盖配置时：
+一般无需创建 `frontend-react/.env`。
 
-```powershell
-Copy-Item frontend-react\.env.example frontend-react\.env
+## YOLO 模型
+
+ONNX 模型为推荐路径。将模型文件放入 `db_data/`：
+
+- `best.onnx` — ONNX 格式模型（优先加载）
+- `best.pt` — PyTorch 格式模型（回退）
+
+可创建 `db_data/model-manifest.json`（参考 `model-manifest.example.json`）来校验模型完整性。缺失模型时系统自动降级为人工标注。
+
+## Poppler（兼容回退）
+
+仅在 PyMuPDF 不可用时作为 PDF 转换后备路径。macOS：
+
+```bash
+brew install poppler
 ```
 
-## 可选依赖
-
-### Poppler
-
-仅在 PDF 转换后备路径需要。Windows 可在 `.env` 设置：
+Windows 可在 `.env` 设置：
 
 ```dotenv
 POPPLER_PATH=D:\tools\poppler\Library\bin
 ```
 
-### FreeCAD
+## FreeCAD
 
 PRT/STEP 几何分析和视图生成需要。可设置：
 
@@ -118,11 +139,11 @@ FREECAD_LIB=D:\Program Files\FreeCAD 1.1\lib
 FREECAD_BIN=D:\Program Files\FreeCAD 1.1\bin
 ```
 
-### Creo
+## Creo（仅 Windows）
 
 Creo 能力依赖本机 Creo 安装以及 `backend/config.json` 中的路径配置。
 
-### OnShape
+## OnShape
 
 在线 PRT 转换需要在 `.env` 配置：
 
@@ -134,12 +155,10 @@ onshape_wid="..."
 
 ## 安装验证
 
-```powershell
-.\.venv\Scripts\python.exe -c "import flask; print('backend dependencies: OK')"
-
-cd frontend-react
-npm run build
-cd ..
+```bash
+uv run python scripts/runtime_smoke.py
+npm --prefix frontend-react run build
+curl http://127.0.0.1:5190/api/system/capabilities
 ```
 
 若两条命令均成功，则基础环境安装完成。

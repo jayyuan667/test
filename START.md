@@ -2,48 +2,55 @@
 
 ## 首次启动
 
+```bash
+./setup.sh   # macOS/Linux
+```
+
+或
+
 ```powershell
-.\setup.bat
+.\setup.bat  # Windows
 ```
 
 然后编辑 `.env` 填写真实模型配置。
 
+## macOS / Linux 一键启动
+
+```bash
+./start.sh
+```
+
 ## Windows 一键启动
 
 ```powershell
-.\start.bat
+.\start.ps1
 ```
 
-`start.bat` 调用 `start.ps1`，启动：
+启动：
 
 - Flask 后端：`5190`
 - React 开发服务器：`3200`
 
-浏览器会自动打开 http://127.0.0.1:3200。
-
-按 `Ctrl+C` 停止联合启动脚本。脚本退出时会停止它创建的前后端进程。
+按 `Ctrl+C` 停止。脚本退出时会清理前后端进程。
 
 ## 分别调试
 
 ### 后端
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-$env:FLASK_DEBUG = "0"
-python -m backend.run
+```bash
+FLASK_DEBUG=0 uv run python -m backend.run
 ```
 
 验证：
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:5190/api/health
+```bash
+curl http://127.0.0.1:5190/api/health
+curl http://127.0.0.1:5190/api/system/capabilities
 ```
 
 ### 前端
 
-打开另一个终端：
-
-```powershell
+```bash
 cd frontend-react
 npm run dev
 ```
@@ -52,7 +59,7 @@ npm run dev
 
 ## 生产构建与预览
 
-```powershell
+```bash
 cd frontend-react
 npm run build
 npm run preview
@@ -60,39 +67,37 @@ npm run preview
 
 访问：http://127.0.0.1:3201
 
-构建完成后，也可以只启动后端，并访问：
+构建完成后，也可以只启动后端，并访问 http://127.0.0.1:5190/（后端会加载 `frontend-react/dist`）。
 
-```text
-http://127.0.0.1:5190/
+## 环境诊断
+
+```bash
+uv run python scripts/runtime_smoke.py
 ```
 
-后端会加载 `frontend-react/dist`。
+该脚本检查 Python 版本、数据库、PDF、YOLO、Creo、FreeCAD 等能力状态，核心能力失败会报错，可选能力不可用仅打印警告。
 
-## 常用验证
+也支持运行时查询：
 
-检查端口：
-
-```powershell
-Get-NetTCPConnection -State Listen |
-  Where-Object LocalPort -In 5190,3200,3201 |
-  Select-Object LocalAddress,LocalPort,OwningProcess
-```
-
-检查 React 构建：
-
-```powershell
-cd frontend-react
-npm run build
-```
-
-检查后端语法：
-
-```powershell
-cd ..
-.\.venv\Scripts\python.exe -m compileall -q backend
+```bash
+curl http://127.0.0.1:5190/api/system/capabilities
 ```
 
 ## 常见问题
+
+### `uv` 命令不存在
+
+安装 uv：https://docs.astral.sh/uv/getting-started/installation/
+
+```bash
+brew install uv       # macOS
+```
+
+或
+
+```powershell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
+```
 
 ### `.env` 仍是占位值
 
@@ -104,43 +109,23 @@ cd ..
 
 这是干净克隆的正常状态。系统可启动，但 RAG 和知识库浏览没有记录。通过知识库导入功能创建本地数据。
 
+### Python 版本不正确
+
+```bash
+uv python install 3.11.15
+uv sync --locked
+```
+
 ### 端口被占用
 
-```powershell
-Get-NetTCPConnection -State Listen |
-  Where-Object LocalPort -In 5190,3200,3201
+```bash
+lsof -i :5190 -i :3200  # macOS/Linux
 ```
 
-确认进程属于本项目后再停止：
-
 ```powershell
-Stop-Process -Id <PID>
-```
-
-### `npm` 命令不存在
-
-安装 Node.js 20+，重新打开终端后运行：
-
-```powershell
-node --version
-npm --version
-```
-
-### Python 依赖安装失败
-
-先确认 Python 版本为 3.11 或 3.12：
-
-```powershell
-.\.venv\Scripts\python.exe --version
-```
-
-Python 3.13 不兼容当前 OCR 依赖。如版本不正确，删除 `.venv` 并重新运行 `setup.bat`。
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+Get-NetTCPConnection -State Listen | Where-Object LocalPort -In 5190,3200,3201  # Windows
 ```
 
 ### PDF、PRT 或 Creo 功能不可用
 
-核心服务不依赖这些外部工具，但相应处理功能需要 Poppler、FreeCAD、Creo 或 OnShape。配置方式见 [INSTALL.md](INSTALL.md)。
+核心服务不依赖这些外部工具。PDF 依赖 PyMuPDF（`uv sync` 自动安装），YOLO 缺失时降级为人工标注，Creo 仅适用于 Windows。详细配置见 [INSTALL.md](INSTALL.md)。

@@ -5,7 +5,7 @@
 ## 技术架构
 
 - 前端：React 18、TypeScript、Vite、Tailwind CSS
-- 后端：Python、Flask、SQLite、SSE
+- 后端：Python 3.11、Flask、SQLite、SSE
 - 图纸处理：PDF/图片、OCR、YOLO 标注、视觉模型
 - 工艺生成：特征审阅、RAG 检索、LLM 流式生成
 
@@ -27,9 +27,10 @@ backend/          Flask 后端、API、分析流水线
 frontend-react/   React 前端源码与前端测试
 scripts/          数据导入和校验工具
 docs/             架构、设计和实施文档
+setup.sh          macOS/Linux 首次初始化
 setup.bat         Windows 首次初始化
-start.bat         Windows 日常启动
-start.ps1         后端和前端联合启动脚本
+start.sh          macOS/Linux 日常启动
+start.ps1         Windows 日常启动
 ```
 
 运行时生成且不提交 Git 的内容：
@@ -39,85 +40,64 @@ start.ps1         后端和前端联合启动脚本
 .venv/
 frontend-react/node_modules/
 frontend-react/dist/
-db_data/
+db_data/  （model-manifest.example.json 除外）
 uploads/
 output/
-backend/task_store.db
 history.json
 ```
 
-## 快速开始（Windows）
+## 快速开始
 
-### 1. 克隆分支
+### macOS / Linux
+
+```bash
+uv python install 3.11.15
+uv sync --locked
+cp .env.example .env
+npm --prefix frontend-react ci
+./start.sh
+```
+
+### Windows
 
 ```powershell
-git clone -b yolo-react https://github.com/jayyuan667/test.git
-cd test
+uv python install 3.11.15
+uv sync --locked
+Copy-Item .env.example .env
+.\start.ps1
 ```
 
-### 2. 初始化
-
-双击 `setup.bat`，或在终端运行：
-
-```powershell
-.\setup.bat
-```
-
-脚本会：
-
-- 检查 Python、Node.js 和 npm
-- 创建 Python 虚拟环境 `.venv`
-- 安装后端依赖
-- 安装 `frontend-react` 依赖
-- 从 `.env.example` 创建 `.env`
-- 创建本地运行目录
-
-### 3. 配置模型
-
-编辑根目录 `.env`，至少填写：
-
-```dotenv
-VISION_API_KEY="your_vision_api_key"
-EMBEDDING_API_KEY="your_embedding_api_key"
-LLM_API_KEY="your_llm_api_key"
-```
-
-仓库不包含真实密钥。
-
-### 4. 启动
-
-```powershell
-.\start.bat
-```
-
-启动地址：
+访问地址：
 
 - React 开发页面：http://127.0.0.1:3200
 - Flask API：http://127.0.0.1:5190
 - 健康检查：http://127.0.0.1:5190/api/health
+- 能力状态：http://127.0.0.1:5190/api/system/capabilities
 
-## 分别启动
+## 可选能力安装
 
-后端：
+YOLO 预标注：
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-$env:FLASK_DEBUG = "0"
-python -m backend.run
+```bash
+uv sync --locked --extra yolo
 ```
 
-前端：
+Windows Creo 自动化（仅 Windows）：
 
-```powershell
-cd frontend-react
-npm run dev
+```bash
+uv sync --locked --extra windows-creo
 ```
 
-前端 `/api` 请求会代理到 `http://127.0.0.1:5190`。
+## 环境诊断
+
+```bash
+uv run python scripts/runtime_smoke.py
+curl http://127.0.0.1:5190/api/system/capabilities
+```
 
 ## 构建 React
 
-```powershell
+```bash
 cd frontend-react
 npm run build
 npm run preview
@@ -125,29 +105,20 @@ npm run preview
 
 预览地址：http://127.0.0.1:3201
 
-后端也会从 `frontend-react/dist` 提供生产构建：
-
-```text
-http://127.0.0.1:5190/
-```
-
-## 数据库说明
-
-Git 分支不包含生产数据库或历史记录。
-
-- 首次初始化会创建 `db_data/`。
-- SQLite 文件会在本地按需生成。
-- 空库下可以启动系统，但 RAG 检索没有可用记录。
-- 可通过知识库导入功能建立本地数据库。
+后端也会从 `frontend-react/dist` 提供生产构建：http://127.0.0.1:5190/
 
 ## 可选外部能力
 
-- Poppler：PDF 转图片的兼容方案
-- FreeCAD：PRT/STEP 几何分析和视图生成
-- Creo：Creo 原生视图与工程信息提取
-- OnShape：PRT 在线转换
+| 能力 | 说明 |
+|------|------|
+| PyMuPDF | PDF 转图片（核心依赖，uv sync 自动安装） |
+| YOLO (ONNX) | 推荐路径，将模型放入 `db_data/` |
+| Poppler | PDF 兼容回退（PyMuPDF 不可用时） |
+| FreeCAD | PRT/STEP 几何分析 |
+| Creo | Windows 专属 Creo 自动化 |
+| OnShape | PRT 在线转换 |
 
-这些能力未配置时，核心 React/Flask 服务仍可启动，但对应功能会降级或不可用。
+真实模型文件放在 `db_data/` 中，不提交 Git。缺少 YOLO 自动降级为人工标注。缺少 PyMuPDF 和 Poppler 会阻断 PDF 上传，但不影响图片上传。Creo 不适用于 macOS。可选能力安装方式：`uv sync --extra yolo`。
 
 详细说明：
 
