@@ -19,3 +19,10 @@ def health():
 @health_bp.route("/startup_token", methods=["GET"])
 def startup_token():
     return jsonify({"token": _STARTUP_TOKEN})
+
+
+@health_bp.route("/system/capabilities", methods=["GET"])
+def system_capabilities():
+    from backend.services.capabilities import collect_capabilities
+
+    return jsonify(collect_capabilities())
