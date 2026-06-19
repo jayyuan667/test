@@ -1,0 +1,27 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "chamfer",
+      "text": "",
+      "points": [
+        [
+          672.577319587629,
+          770.5154639175258
+        ],
+        [
+          858.9690721649486,
+          902.4742268041239
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "63.jpg",
+  "imageData": null,
+  "imageHeight": 2526,
+  "imageWidth": 1832
+}

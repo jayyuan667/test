@@ -1,0 +1,283 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          1033.2,
+          957.2
+        ],
+        [
+          1094.8,
+          1018.8
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          899.2,
+          957.2
+        ],
+        [
+          960.8,
+          1018.8
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          1167.2,
+          957.2
+        ],
+        [
+          1228.8,
+          1018.8
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          1304.3846153846155,
+          960.0
+        ],
+        [
+          1361.3076923076924,
+          1018.4615384615385
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          1438.2307692307693,
+          958.4615384615385
+        ],
+        [
+          1496.6923076923078,
+          1013.8461538461538
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          1570.5384615384617,
+          955.3846153846154
+        ],
+        [
+          1622.846153846154,
+          1020.0
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          1716.6923076923078,
+          960.0
+        ],
+        [
+          1761.3076923076924,
+          1012.3076923076923
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          1841.3076923076924,
+          963.0769230769231
+        ],
+        [
+          1899.769230769231,
+          1013.8461538461538
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          921.3076923076925,
+          2375.3846153846152
+        ],
+        [
+          942.846153846154,
+          2412.3076923076924
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1035.1538461538462,
+          2383.076923076923
+        ],
+        [
+          1084.3846153846155,
+          2410.7692307692305
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1182.846153846154,
+          2375.3846153846152
+        ],
+        [
+          1209.0000000000002,
+          2416.9230769230767
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1322.846153846154,
+          2376.9230769230767
+        ],
+        [
+          1341.3076923076924,
+          2415.3846153846152
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1450.5384615384617,
+          2386.153846153846
+        ],
+        [
+          1479.769230769231,
+          2416.9230769230767
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1589.0000000000002,
+          2378.4615384615386
+        ],
+        [
+          1621.3076923076924,
+          2418.4615384615386
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1716.6923076923078,
+          2383.076923076923
+        ],
+        [
+          1750.5384615384617,
+          2423.076923076923
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1852.076923076923,
+          2376.9230769230767
+        ],
+        [
+          1889.0,
+          2413.846153846154
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "Y10.png",
+  "imageData": null,
+  "imageHeight": 3308,
+  "imageWidth": 4678,
+  "text": ""
+}

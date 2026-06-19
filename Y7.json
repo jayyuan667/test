@@ -1,0 +1,96 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          3361.5384615384614,
+          1148.7179487179487
+        ],
+        [
+          3423.076923076923,
+          1192.3076923076924
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          3368.108974358974,
+          999.5192307692306
+        ],
+        [
+          3406.25,
+          1056.0833333333333
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          3356.4102564102564,
+          858.9743589743589
+        ],
+        [
+          3412.8205128205127,
+          915.3846153846154
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          979.4871794871794,
+          856.4102564102564
+        ],
+        [
+          1056.4102564102564,
+          923.0769230769231
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          987.1794871794872,
+          1138.4615384615383
+        ],
+        [
+          1038.4615384615383,
+          1202.5641025641025
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "Y7.png",
+  "imageData": null,
+  "imageHeight": 3308,
+  "imageWidth": 4678,
+  "text": ""
+}

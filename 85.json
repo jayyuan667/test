@@ -1,0 +1,112 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          994.0,
+          912.6
+        ],
+        [
+          1067.6,
+          988.6
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          560.8378378378378,
+          1111.7117117117116
+        ],
+        [
+          601.1981981981982,
+          1153.5135135135135
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          873.6306306306305,
+          1108.8288288288286
+        ],
+        [
+          923.3603603603602,
+          1155.6756756756756
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1190.0270270270269,
+          1107.3873873873874
+        ],
+        [
+          1240.4774774774774,
+          1157.117117117117
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1507.8648648648648,
+          1107.3873873873874
+        ],
+        [
+          1559.036036036036,
+          1157.8378378378377
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "chamfer",
+      "text": "",
+      "points": [
+        [
+          1921.8983050847457,
+          182.8813559322034
+        ],
+        [
+          2037.8305084745764,
+          277.79661016949154
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "85.jpg",
+  "imageData": null,
+  "imageHeight": 1785,
+  "imageWidth": 2526
+}

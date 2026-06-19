@@ -1,0 +1,317 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          1200.0,
+          511.3207547169811
+        ],
+        [
+          1245.2830188679245,
+          562.2641509433962
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          1203.7735849056603,
+          1352.830188679245
+        ],
+        [
+          1245.2830188679245,
+          1386.7924528301887
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          1203.7735849056603,
+          926.4150943396226
+        ],
+        [
+          1250.943396226415,
+          981.132075471698
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          3401.88679245283,
+          786.7924528301886
+        ],
+        [
+          3458.490566037736,
+          858.4905660377358
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          3400.0,
+          509.4339622641509
+        ],
+        [
+          3447.1698113207544,
+          577.3584905660377
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          3379.2452830188677,
+          1067.9245283018868
+        ],
+        [
+          3441.5094339622638,
+          1135.8490566037735
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          3392.452830188679,
+          1366.0377358490566
+        ],
+        [
+          3449.056603773585,
+          1432.0754716981132
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          3922.222222222222,
+          513.7222222222221
+        ],
+        [
+          3977.777777777778,
+          566.4999999999999
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          3936.1111111111113,
+          913.7222222222221
+        ],
+        [
+          3966.666666666667,
+          977.611111111111
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          3938.888888888889,
+          1338.7222222222222
+        ],
+        [
+          3975.0,
+          1397.0555555555554
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          3922.222222222222,
+          1760.9444444444443
+        ],
+        [
+          3969.444444444445,
+          1810.9444444444443
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "through_hole",
+      "text": "",
+      "points": [
+        [
+          1200.0,
+          1763.7222222222222
+        ],
+        [
+          1255.5555555555557,
+          1822.0555555555557
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          1481.4999999999998,
+          2591.5000000000005
+        ],
+        [
+          1529.833333333333,
+          2656.5000000000005
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          1476.4999999999998,
+          2994.8333333333335
+        ],
+        [
+          1533.1666666666665,
+          3058.166666666667
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          2583.1666666666665,
+          2984.8333333333335
+        ],
+        [
+          2629.833333333333,
+          3048.166666666667
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          2579.833333333333,
+          2701.5000000000005
+        ],
+        [
+          2636.5,
+          2748.166666666667
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          2778.1666666666665,
+          2989.8333333333335
+        ],
+        [
+          2854.833333333333,
+          3061.5000000000005
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          2783.1666666666665,
+          2589.8333333333335
+        ],
+        [
+          2851.5,
+          2648.166666666667
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "Y22.png",
+  "imageData": null,
+  "imageHeight": 3308,
+  "imageWidth": 4678,
+  "text": ""
+}

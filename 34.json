@@ -1,0 +1,27 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          848.027972027972,
+          967.4125874125875
+        ],
+        [
+          895.020979020979,
+          1013.2867132867133
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "34.jpg",
+  "imageData": null,
+  "imageHeight": 2526,
+  "imageWidth": 1832
+}

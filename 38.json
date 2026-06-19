@@ -1,0 +1,44 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "chamfer",
+      "text": "",
+      "points": [
+        [
+          1086.1355932203392,
+          1044.0677966101696
+        ],
+        [
+          1163.4237288135598,
+          1120.0
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "chamfer",
+      "text": "",
+      "points": [
+        [
+          592.5762711864407,
+          919.3220338983053
+        ],
+        [
+          787.8305084745764,
+          1242.033898305085
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "38.jpg",
+  "imageData": null,
+  "imageHeight": 2526,
+  "imageWidth": 1836
+}

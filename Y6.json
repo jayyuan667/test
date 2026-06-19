@@ -1,0 +1,79 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          1528.813559322034,
+          1759.0847457627117
+        ],
+        [
+          1616.949152542373,
+          1833.6610169491526
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          2659.322033898305,
+          1760.7796610169491
+        ],
+        [
+          2727.1186440677966,
+          1833.6610169491526
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          1530.5084745762713,
+          574.3389830508473
+        ],
+        [
+          1605.084745762712,
+          664.1694915254236
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "counterbore",
+      "text": "",
+      "points": [
+        [
+          2649.1525423728813,
+          584.508474576271
+        ],
+        [
+          2735.593220338983,
+          653.9999999999999
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "Y6.png",
+  "imageData": null,
+  "imageHeight": 3308,
+  "imageWidth": 4678,
+  "text": ""
+}

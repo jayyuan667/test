@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Dataset outputs (generated, don't commit)
+dataset/
+temp/
+runs/
+
+# OS
+.DS_Store
+Thumbs.db

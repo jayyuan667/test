@@ -1,0 +1,129 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          348.3116883116884,
+          748.051948051948
+        ],
+        [
+          389.8701298701299,
+          790.6493506493506
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          755.5844155844155,
+          748.051948051948
+        ],
+        [
+          797.1428571428572,
+          789.6103896103896
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1080.7792207792209,
+          747.0129870129871
+        ],
+        [
+          1122.3376623376623,
+          789.6103896103896
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1484.935064935065,
+          745.9740259740261
+        ],
+        [
+          1528.5714285714284,
+          790.6493506493506
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1091.9893617021278,
+          631.1702127659573
+        ],
+        [
+          1110.712765957447,
+          650.3191489361701
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "chamfer",
+      "text": "",
+      "points": [
+        [
+          1624.9411764705883,
+          92.2352941176471
+        ],
+        [
+          1769.8823529411766,
+          195.76470588235296
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "chamfer",
+      "text": "",
+      "points": [
+        [
+          1683.294117647059,
+          309.64705882352956
+        ],
+        [
+          1829.1764705882356,
+          401.8823529411765
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "51.jpg",
+  "imageData": null,
+  "imageHeight": 1764,
+  "imageWidth": 2526
+}

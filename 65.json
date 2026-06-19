@@ -1,0 +1,1574 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          345.3577235772358,
+          707.9430894308944
+        ],
+        [
+          377.2276422764228,
+          742.4146341463415
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          752.5121951219512,
+          711.8455284552846
+        ],
+        [
+          781.7804878048781,
+          740.4634146341464
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1387.959349593496,
+          711.8455284552846
+        ],
+        [
+          1416.5772357723579,
+          739.8130081300814
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1789.2601626016262,
+          706.6422764227643
+        ],
+        [
+          1826.3333333333335,
+          743.0650406504066
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          267.4715447154472,
+          637.048780487805
+        ],
+        [
+          297.39024390243907,
+          655.260162601626
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          266.82113821138216,
+          795.7479674796749
+        ],
+        [
+          298.0406504065041,
+          812.658536585366
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1870.3983739837397,
+          637.6991869918701
+        ],
+        [
+          1902.918699186992,
+          654.609756097561
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1872.349593495935,
+          796.3983739837399
+        ],
+        [
+          1903.569105691057,
+          813.959349593496
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          277.9124579124579,
+          763.5791245791247
+        ],
+        [
+          287.8787878787879,
+          772.7373737373738
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1882.087542087542,
+          763.3097643097643
+        ],
+        [
+          1891.7845117845118,
+          773.2760942760945
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          355.87755102040813,
+          676.1632653061224
+        ],
+        [
+          367.63265306122446,
+          689.7142857142857
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          373.67346938775506,
+          676.0
+        ],
+        [
+          386.4081632653061,
+          689.8775510204081
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          393.1020408163265,
+          676.3265306122448
+        ],
+        [
+          406.9795918367347,
+          690.3673469387755
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          413.3469387755102,
+          676.3265306122448
+        ],
+        [
+          426.0816326530612,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          433.265306122449,
+          676.1632653061224
+        ],
+        [
+          446.65306122448976,
+          689.8775510204081
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          453.0204081632653,
+          676.3265306122448
+        ],
+        [
+          466.5714285714285,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          472.61224489795916,
+          676.0
+        ],
+        [
+          486.65306122448976,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          492.85714285714283,
+          676.1632653061224
+        ],
+        [
+          505.59183673469386,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          512.9387755102041,
+          676.3265306122448
+        ],
+        [
+          525.5102040816327,
+          689.2244897959183
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          532.530612244898,
+          676.3265306122448
+        ],
+        [
+          545.9183673469387,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          552.7755102040816,
+          676.3265306122448
+        ],
+        [
+          565.3469387755101,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          571.7142857142857,
+          675.8367346938775
+        ],
+        [
+          584.938775510204,
+          690.0408163265305
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          591.795918367347,
+          676.4897959183673
+        ],
+        [
+          605.0204081632652,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          611.2244897959183,
+          675.8367346938775
+        ],
+        [
+          625.1020408163265,
+          689.2244897959183
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          631.795918367347,
+          676.0
+        ],
+        [
+          644.6938775510204,
+          690.0408163265305
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          651.2244897959183,
+          676.4897959183673
+        ],
+        [
+          665.4285714285713,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          671.3061224489795,
+          676.0
+        ],
+        [
+          684.8571428571429,
+          689.2244897959183
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          691.7142857142857,
+          676.1632653061224
+        ],
+        [
+          704.7755102040816,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          711.6326530612245,
+          676.1632653061224
+        ],
+        [
+          724.204081632653,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          730.8979591836734,
+          676.0
+        ],
+        [
+          744.1224489795917,
+          689.0612244897959
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          750.9795918367347,
+          676.1632653061224
+        ],
+        [
+          764.2040816326531,
+          689.2244897959183
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          770.2448979591836,
+          676.0
+        ],
+        [
+          783.4693877551019,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          790.1632653061224,
+          676.0
+        ],
+        [
+          803.8775510204081,
+          689.2244897959183
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          810.2448979591836,
+          675.8367346938775
+        ],
+        [
+          823.6326530612245,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          830.8163265306122,
+          676.0
+        ],
+        [
+          843.3877551020408,
+          690.0408163265305
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          850.7346938775511,
+          676.0
+        ],
+        [
+          863.142857142857,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          869.9999999999999,
+          675.8367346938775
+        ],
+        [
+          883.3877551020408,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          889.2653061224488,
+          676.1632653061224
+        ],
+        [
+          903.6326530612245,
+          689.0612244897959
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          910.4897959183672,
+          676.0
+        ],
+        [
+          922.5714285714286,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          929.2653061224488,
+          675.6734693877551
+        ],
+        [
+          943.142857142857,
+          689.2244897959183
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          949.8367346938775,
+          676.3265306122448
+        ],
+        [
+          963.5510204081631,
+          688.8979591836734
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          969.3061224489796,
+          676.4897959183673
+        ],
+        [
+          982.204081632653,
+          689.0612244897959
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          989.7142857142857,
+          676.3265306122448
+        ],
+        [
+          1002.4489795918366,
+          688.8979591836734
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1009.3061224489796,
+          676.6530612244898
+        ],
+        [
+          1021.8775510204081,
+          688.734693877551
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1028.734693877551,
+          676.0
+        ],
+        [
+          1041.9591836734694,
+          690.0408163265305
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1048.9795918367347,
+          675.8367346938775
+        ],
+        [
+          1062.204081632653,
+          689.2244897959183
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1068.5714285714284,
+          675.6734693877551
+        ],
+        [
+          1081.142857142857,
+          688.8979591836734
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1088.3265306122448,
+          675.8367346938775
+        ],
+        [
+          1101.877551020408,
+          688.8979591836734
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1108.2448979591836,
+          676.3265306122448
+        ],
+        [
+          1121.795918367347,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1127.6734693877552,
+          675.5102040816327
+        ],
+        [
+          1141.877551020408,
+          689.8775510204081
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1148.2448979591836,
+          675.6734693877551
+        ],
+        [
+          1161.142857142857,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1167.3469387755101,
+          676.3265306122448
+        ],
+        [
+          1180.5714285714284,
+          689.0612244897959
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1187.7551020408162,
+          676.3265306122448
+        ],
+        [
+          1200.816326530612,
+          688.734693877551
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1207.5102040816325,
+          676.0
+        ],
+        [
+          1220.408163265306,
+          689.7142857142857
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1227.5918367346937,
+          676.6530612244898
+        ],
+        [
+          1240.816326530612,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1246.6938775510203,
+          675.6734693877551
+        ],
+        [
+          1261.5510204081631,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1267.265306122449,
+          676.1632653061224
+        ],
+        [
+          1280.816326530612,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1287.3469387755101,
+          675.8367346938775
+        ],
+        [
+          1300.8979591836733,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1306.612244897959,
+          676.6530612244898
+        ],
+        [
+          1320.6530612244896,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1326.5306122448978,
+          675.3469387755102
+        ],
+        [
+          1340.081632653061,
+          689.2244897959183
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1346.2857142857142,
+          675.6734693877551
+        ],
+        [
+          1360.0,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1365.9999999999998,
+          676.3265306122448
+        ],
+        [
+          1380.5306122448978,
+          688.734693877551
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1386.5714285714284,
+          676.3265306122448
+        ],
+        [
+          1399.469387755102,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1406.3265306122448,
+          675.8367346938775
+        ],
+        [
+          1419.877551020408,
+          688.8979591836734
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1426.0816326530612,
+          675.5102040816327
+        ],
+        [
+          1439.9591836734694,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1445.1836734693875,
+          675.6734693877551
+        ],
+        [
+          1458.8979591836735,
+          688.8979591836734
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1466.2448979591836,
+          675.8367346938775
+        ],
+        [
+          1478.816326530612,
+          689.0612244897959
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1485.8367346938776,
+          675.8367346938775
+        ],
+        [
+          1498.8979591836735,
+          689.2244897959183
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1505.4285714285713,
+          675.8367346938775
+        ],
+        [
+          1518.4897959183672,
+          689.0612244897959
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1525.0204081632653,
+          675.6734693877551
+        ],
+        [
+          1538.8979591836735,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1545.4285714285713,
+          675.5102040816327
+        ],
+        [
+          1558.4897959183672,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1565.3469387755101,
+          675.8367346938775
+        ],
+        [
+          1578.5714285714284,
+          689.5510204081633
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1584.612244897959,
+          676.0
+        ],
+        [
+          1598.1632653061224,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1604.6938775510203,
+          676.4897959183673
+        ],
+        [
+          1618.2448979591834,
+          689.8775510204081
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1623.9591836734692,
+          676.1632653061224
+        ],
+        [
+          1637.9999999999998,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1644.8571428571427,
+          676.1632653061224
+        ],
+        [
+          1657.9183673469388,
+          689.3877551020407
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1664.612244897959,
+          676.1632653061224
+        ],
+        [
+          1677.673469387755,
+          689.0612244897959
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1684.204081632653,
+          676.0
+        ],
+        [
+          1697.4285714285713,
+          688.5714285714286
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1704.1224489795918,
+          676.0
+        ],
+        [
+          1717.3469387755101,
+          689.7142857142857
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1724.530612244898,
+          676.4897959183673
+        ],
+        [
+          1737.265306122449,
+          689.2244897959183
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1743.795918367347,
+          675.6734693877551
+        ],
+        [
+          1756.857142857143,
+          688.5714285714286
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1763.224489795918,
+          676.9795918367347
+        ],
+        [
+          1776.9387755102039,
+          689.2244897959183
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1784.2857142857142,
+          675.5102040816327
+        ],
+        [
+          1796.3673469387754,
+          689.8775510204081
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1801.5918367346935,
+          676.1632653061224
+        ],
+        [
+          1814.8163265306123,
+          690.0408163265305
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          342.1469194312795,
+          343.3127962085308
+        ],
+        [
+          380.8199052132701,
+          380.8483412322275
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          752.0047393364928,
+          347.8625592417062
+        ],
+        [
+          782.3364928909951,
+          376.6777251184834
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1387.3601895734598,
+          347.48341232227494
+        ],
+        [
+          1416.1753554502368,
+          377.0568720379147
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "code_hole",
+      "text": "",
+      "points": [
+        [
+          1789.6350710900474,
+          344.45023696682466
+        ],
+        [
+          1826.0331753554503,
+          379.71090047393363
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "chamfer",
+      "text": "",
+      "points": [
+        [
+          949.5445026178013,
+          1385.6492146596856
+        ],
+        [
+          989.7539267015708,
+          1469.4188481675392
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "chamfer",
+      "text": "",
+      "points": [
+        [
+          913.5235602094242,
+          1396.1204188481674
+        ],
+        [
+          987.6596858638744,
+          1469.8376963350786
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "chamfer",
+      "text": "",
+      "points": [
+        [
+          1297.3367346938778,
+          1392.826530612245
+        ],
+        [
+          1343.0510204081634,
+          1460.1734693877552
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "chamfer",
+      "text": "",
+      "points": [
+        [
+          1278.5612244897961,
+          1411.6020408163267
+        ],
+        [
+          1342.6428571428573,
+          1458.948979591837
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "65.jpg",
+  "imageData": null,
+  "imageHeight": 1778,
+  "imageWidth": 2526
+}

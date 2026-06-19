@@ -1,0 +1,521 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1105.084745762712,
+          631.9661016949151
+        ],
+        [
+          1147.457627118644,
+          672.64406779661
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1150.8474576271187,
+          589.5932203389829
+        ],
+        [
+          1189.8305084745764,
+          625.186440677966
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1108.4745762711866,
+          1938.7457627118642
+        ],
+        [
+          1145.7627118644068,
+          1970.9491525423728
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1159.322033898305,
+          1986.2033898305083
+        ],
+        [
+          1201.6949152542375,
+          2023.4915254237287
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          2347.4576271186443,
+          1987.8983050847457
+        ],
+        [
+          2388.135593220339,
+          2021.7966101694915
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          2388.135593220339,
+          1933.6610169491526
+        ],
+        [
+          2430.5084745762715,
+          1981.1186440677966
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          2394.915254237288,
+          628.5762711864405
+        ],
+        [
+          2425.4237288135596,
+          674.3389830508473
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          2330.5084745762715,
+          587.8983050847456
+        ],
+        [
+          2386.4406779661017,
+          625.186440677966
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1752.40206185567,
+          1685.4432989690722
+        ],
+        [
+          1787.4536082474226,
+          1720.4948453608247
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1546.2164948453608,
+          1641.1134020618556
+        ],
+        [
+          1583.3298969072164,
+          1675.1340206185566
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1392.6082474226803,
+          1485.4432989690722
+        ],
+        [
+          1442.0927835051546,
+          1526.680412371134
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1347.2474226804122,
+          1291.6288659793815
+        ],
+        [
+          1374.0515463917525,
+          1315.340206185567
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1400.8556701030927,
+          1085.4432989690722
+        ],
+        [
+          1432.8144329896907,
+          1113.278350515464
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1552.40206185567,
+          941.1134020618556
+        ],
+        [
+          1576.1134020618556,
+          965.8556701030926
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1753.4329896907216,
+          882.3505154639174
+        ],
+        [
+          1783.3298969072164,
+          909.1546391752576
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1954.463917525773,
+          941.1134020618556
+        ],
+        [
+          1985.3917525773195,
+          963.7938144329895
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          2102.917525773196,
+          1084.4123711340205
+        ],
+        [
+          2133.8453608247423,
+          1116.3711340206185
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          2152.40206185567,
+          1284.4123711340205
+        ],
+        [
+          2193.639175257732,
+          1327.7113402061855
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          2095.701030927835,
+          1490.5979381443299
+        ],
+        [
+          2132.8144329896904,
+          1523.5876288659795
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1948.278350515464,
+          1638.020618556701
+        ],
+        [
+          1982.298969072165,
+          1673.0721649484535
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1433.3333333333333,
+          2638.2716049382716
+        ],
+        [
+          1462.9629629629628,
+          2666.6666666666665
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          2066.6666666666665,
+          2639.506172839506
+        ],
+        [
+          2095.0617283950614,
+          2662.9629629629626
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1755.5555555555554,
+          2640.7407407407404
+        ],
+        [
+          1781.4814814814813,
+          2665.432098765432
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1443.2098765432097,
+          2972.8395061728393
+        ],
+        [
+          1462.9629629629628,
+          3007.4074074074074
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1759.2592592592591,
+          2976.543209876543
+        ],
+        [
+          1777.7777777777776,
+          3003.7037037037035
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          2070.3703703703704,
+          2979.012345679012
+        ],
+        [
+          2091.358024691358,
+          3001.234567901234
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          3420.754716981132,
+          969.8113207547169
+        ],
+        [
+          3466.0377358490564,
+          1001.8867924528302
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          3420.754716981132,
+          1290.566037735849
+        ],
+        [
+          3462.264150943396,
+          1328.3018867924527
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          3420.754716981132,
+          1601.8867924528302
+        ],
+        [
+          3460.3773584905657,
+          1643.3962264150944
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "chamfer",
+      "text": "",
+      "points": [
+        [
+          1045.8974358974358,
+          383.36538461538464
+        ],
+        [
+          1420.5128205128203,
+          666.6666666666666
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "Y20.png",
+  "imageData": null,
+  "imageHeight": 3308,
+  "imageWidth": 4678,
+  "text": ""
+}

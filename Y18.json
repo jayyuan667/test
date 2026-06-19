@@ -1,0 +1,62 @@
+{
+  "version": "0.4.36",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          2066.0377358490564,
+          1267.9245283018868
+        ],
+        [
+          2135.8490566037735,
+          1324.5283018867924
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          1965.5172413793105,
+          2360.0344827586205
+        ],
+        [
+          2034.4827586206898,
+          2418.655172413793
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    },
+    {
+      "label": "threaded_hole",
+      "text": "",
+      "points": [
+        [
+          2051.7241379310344,
+          2441.0689655172414
+        ],
+        [
+          2132.7586206896553,
+          2510.0344827586205
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "rectangle",
+      "flags": {}
+    }
+  ],
+  "imagePath": "Y18.png",
+  "imageData": null,
+  "imageHeight": 3308,
+  "imageWidth": 4678,
+  "text": ""
+}
