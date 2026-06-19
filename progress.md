@@ -4,71 +4,74 @@
 
 ### 阶段 1：现状审计与方案确认
 - **状态：** complete
-- 执行的操作：
-  - 核对系统 Python 3.9.6 与项目 Python 3.11.15。
-  - 比较两份 requirements。
-  - 验证 PyMuPDF、Poppler、ONNX、Ultralytics 和 Win32 能力。
-  - 复现 PDF 转换依赖缺失。
-  - 向用户提出三种方案，用户确认采用 uv 方案。
-- 创建/修改的文件：
-  - 无业务代码修改。
 
 ### 阶段 2：设计规格
 - **状态：** complete
-- 执行的操作：
-  - 确认依赖分组设计。
-  - 确认能力检测接口。
-  - 确认错误处理和测试分层。
-  - 编写设计规格和持久化规划文件。
-  - 用户确认设计规格。
-- 创建/修改的文件：
-  - `task_plan.md`
-  - `findings.md`
-  - `progress.md`
-  - `docs/superpowers/specs/2026-06-20-runtime-environment-unification-design.md`
 
 ### 阶段 3：实施计划
 - **状态：** complete
-- 执行的操作：
-  - 使用GitNexus核对启动、PDF转换、上传和YOLO调用点。
-  - 盘点安装脚本、启动脚本、文档和依赖引用。
-  - 完成按TDD拆分的8项逐任务实施计划。
-  - 完成规格覆盖、占位符、代码围栏、提交顺序和脚本边界自检。
-  - 标记PDF转换为HIGH风险任务，要求同时回归图纸上传与知识库PDF导入。
-  - 用户确认执行方式：内联执行。
-- 创建/修改的文件：
-  - `task_plan.md`
-  - `progress.md`
-  - `docs/superpowers/plans/2026-06-20-runtime-environment-unification.md`
 
 ### 阶段 4：实现与增量验证
-- **状态：** in_progress
+- **状态：** complete
 - 执行的操作：
-  - 开始 Task 1：建立 Python 和依赖契约
+  - Task 1: 建立 Python 和依赖契约（uv + pyproject.toml + uv.lock）
+  - Task 2: 纯运行时能力检测（7 项能力检测，不加载模型）
+  - Task 3: 暴露能力 API（/api/system/capabilities）和启动阻断检查
+  - Task 4: PDF 转换确定性 provider 选择和上传门禁（HIGH RISK，已回归）
+  - Task 5: ONNX 优先 + 模型清单校验
+  - Task 6: 统一跨平台安装/启动脚本（setup.sh, start.sh, setup.bat, start.ps1）
+  - Task 7: 运行时烟雾检查 + CI（runtime.yml）
+  - Task 8: 文档重写 + 最终验收
 
-## 测试结果
-| 测试 | 输入 | 预期结果 | 实际结果 | 状态 |
-|------|------|---------|---------|------|
-| 当前虚拟环境依赖检查 | `.venv/bin/python -m pip check` | 无损坏依赖 | `No broken requirements found` | 通过 |
-| 启动兼容相关测试 | startup + library tests | 全部通过 | 4 passed | 通过 |
-| PDF测试上传 | 测试PDF | 进入图纸解析 | 缺少 PyMuPDF 和 Poppler | 失败，已纳入设计 |
-| 前端生产构建 | `npm run build` | 构建成功 | 构建成功 | 通过 |
+### 阶段 5：完整验收
+- **状态：** complete
 
-## 错误日志
-| 时间戳 | 错误 | 尝试次数 | 解决方案 |
-|--------|------|---------|---------|
-| 2026-06-20 | `ModuleNotFoundError: fitz` 后回退 Poppler失败 | 1 | 将 PyMuPDF 设为核心依赖 |
-| 2026-06-20 | `responsive.spec.ts` 乱码导致Playwright收集失败 | 1 | 后续测试稳定性阶段修复 |
-| 2026-06-20 | `backend/fix_syntax.py` 语法错误 | 1 | 记录为既有问题，另行处理 |
+## 最终测试结果
 
-## 五问重启检查
-| 问题 | 答案 |
+| 测试集 | 数量 | 结果 |
+|--------|------|------|
+| 依赖契约 | 3 | ✅ |
+| 能力检测 | 7 | ✅ |
+| 启动检查 | 3 | ✅ |
+| 能力 API | 1 | ✅ |
+| PDF 转换/门禁 | 4 | ✅ |
+| 模型清单 | 2 | ✅ |
+| YOLO 检测器 | 2 | ✅ |
+| 安装契约 | 5 | ✅ |
+| 烟雾检查 | 1 | ✅ |
+| 启动导入 | 1 | ✅ |
+| 知识库导入格式 | 3 | ✅ |
+| 数据库初始化 | 12 | ✅ |
+| **总计** | **44** | **全部通过** |
+
+## 验证清单
+
+| 项目 | 状态 |
 |------|------|
-| 我在哪里？ | 阶段3，实施计划已完成，等待用户选择执行方式 |
-| 我要去哪里？ | 按选定方式进入阶段4实现 |
-| 目标是什么？ | 统一Python 3.11.15并实现跨平台可复现核心环境 |
-| 我学到了什么？ | 见 findings.md |
-| 我做了什么？ | 完成现状审计、方案确认和设计文档 |
+| `.python-version` = `3.11.15` | ✅ |
+| `uv lock --check` 通过 | ✅ |
+| `uv sync --locked` 不含 YOLO/Creo | ✅ |
+| `backend/requirements.txt` 已删除 | ✅ |
+| `requirements.txt` 由 uv 导出 | ✅ |
+| PDF 默认 PyMuPDF | ✅ |
+| PDF 缺失 → 422 pre-task | ✅ |
+| `/api/system/capabilities` 无敏感数据 | ✅ |
+| ONNX 优先 PT 兜底 | ✅ |
+| 缺失模型 → 人工标注 | ✅ |
+| macOS 无 pywinauto | ✅ |
+| SQLite 空库初始化 | ✅ |
+| 前端构建通过 | ✅ |
+| SSE 流未改动 | ✅ |
 
----
-*下一步：提交实施计划，并让用户选择内联执行或子代理分任务执行。*
+## 提交记录
+
+```
+9ff08f4 docs: finalize reproducible runtime setup
+deb3eaa build: unify cross-platform setup scripts
+74ccd52 ci: verify runtime on macos and windows
+ef30f9b feat: prefer onnx yolo model delivery
+6e1c53e fix: make pdf conversion capability-aware
+cbbe8c4 feat: add startup preflight and capabilities api
+8ce7102 feat: add runtime capability detection
+84ab309 build: unify python dependencies with uv
+```
