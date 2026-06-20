@@ -54,12 +54,12 @@ test.describe('Upload → YOLO 审阅完整流程', () => {
     await expect(page.locator('text=等待文件进入解析流程')).toBeVisible({ timeout: 10000 })
   })
 
-  test('初始状态：页面加载后显示上传提示', async ({ page }) => {
+  test('初始状态：页面加载后显示上传提示，YOLO 审阅不可见', async ({ page }) => {
     await expect(page.locator('input[type="file"]')).toBeAttached()
     await expect(page.locator('text=等待文件进入解析流程')).toBeVisible()
-    const yoloTab = page.locator('button', { hasText: 'YOLO' }).first()
-    await expect(yoloTab).toBeVisible()
-    await expect(yoloTab).toHaveClass(/text-orange/)
+    await expect(page.getByRole('button', { name: 'YOLO审阅' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '特征审阅' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '工艺规程' })).toBeVisible()
   })
 
   test('上传 PDF 后进入 processing 状态', async ({ page }) => {
@@ -241,17 +241,17 @@ test.describe('无障碍访问', () => {
     await page.goto('/')
     await expect(page.locator('text=等待文件进入解析流程')).toBeVisible({ timeout: 10000 })
 
-    const yoloTab = page.locator('button', { hasText: 'YOLO' }).first()
-    const reviewTab = page.locator('button', { hasText: '特征审阅' }).first()
-    const processTab = page.locator('button', { hasText: '工艺规程' }).first()
+    const reviewTab = page.getByRole('button', { name: '特征审阅' })
+    const processTab = page.getByRole('button', { name: '工艺规程' })
 
-    await expect(yoloTab).toBeVisible()
     await expect(reviewTab).toBeVisible()
     await expect(processTab).toBeVisible()
 
-    await expect(yoloTab).toBeEnabled()
     await expect(reviewTab).toBeEnabled()
     await expect(processTab).toBeEnabled()
+
+    // YOLO审阅 tab starts hidden; appears only after annotation is required
+    await expect(page.getByRole('button', { name: 'YOLO审阅' })).toHaveCount(0)
   })
 
   test('文件上传区域可访问', async ({ page }) => {

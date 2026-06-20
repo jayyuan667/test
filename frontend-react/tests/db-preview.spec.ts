@@ -103,7 +103,7 @@ test.beforeEach(async ({ page }) => {
 
 test('database list shows thumbnail and opens snapshot modal', async ({ page }) => {
   await page.goto('/')
-  await page.locator('button:has-text("数据库")').click()
+  await page.getByRole('button', { name: /知识库浏览/ }).click()
 
   const thumbnail = page.locator('button[aria-label="查看 D125A-181200A003 图纸快照"]')
   await expect(thumbnail).toBeVisible()
@@ -117,7 +117,7 @@ test('database list shows thumbnail and opens snapshot modal', async ({ page }) 
 
 test('database list shows placeholder when preview images are missing', async ({ page }) => {
   await page.goto('/')
-  await page.locator('button:has-text("数据库")').click()
+  await page.getByRole('button', { name: /知识库浏览/ }).click()
 
   const placeholder = page.locator('button[aria-label="NO-PREVIEW 暂无图纸快照"]')
   await expect(placeholder).toBeVisible()

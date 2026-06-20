@@ -126,6 +126,22 @@ def test_retrieval_check_skips_without_embedding_key(monkeypatch):
     }
 
 
+def test_retrieval_check_skips_with_empty_vector_text(monkeypatch):
+    result = library_api._build_retrieval_check(
+        prefix="D125A-181200A003",
+        vector_text="",
+        library_key="",
+    )
+
+    assert result == {
+        "status": "skipped",
+        "searchable": False,
+        "matched_prefix": "",
+        "similarity": 0,
+        "reason": "vector_text is empty",
+    }
+
+
 def test_retrieval_check_reports_matching_saved_prefix(monkeypatch):
     monkeypatch.setenv("EMBEDDING_API_KEY", "fake-key")
 

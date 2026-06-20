@@ -34,17 +34,13 @@ export function CommitToLibraryModal({ draft, onClose, onSuccess }: Props) {
     try {
       const response = await commitToLibrary({ draft, action: 'replace', library_key: selectedKey })
       const check = response.retrieval_check || null
-      setRetrievalCheck(check)
       if (!check || check.status === 'ok') {
         onSuccess(check ? `入库成功，检索自测通过，相似度 ${check.similarity.toFixed(2)}` : '入库成功')
         onClose()
         return
       }
-      if (check.status === 'skipped') {
-        setError(`入库成功，检索自测跳过：${check.reason}`)
-        return
-      }
-      setError(`入库成功，检索自测失败：${check.reason}`)
+      // skipped/failed → 保留弹窗显示 amber 状态卡，不塞进 error state
+      setRetrievalCheck(check)
     } catch (err) {
       setError(err instanceof Error ? err.message : '入库失败')
     } finally {
