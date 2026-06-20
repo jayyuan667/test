@@ -794,6 +794,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
                     }}
                     onTypewriterProgress={handleTypewriterProgress}
                     onRowsChange={setEditedRows}
+                    onCommitSuccess={onSuccess}
                   />
                 </div>
               </div>

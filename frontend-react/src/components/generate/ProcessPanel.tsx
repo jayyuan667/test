@@ -20,7 +20,8 @@ interface Props {
   reviewText?: string
   onTypewriterComplete?: (rowCount: number) => void
   onRowsChange?: (rows: ProcessRow[]) => void
-  onTypewriterProgress?: (info: TypewriterProgress) => void  // new
+  onTypewriterProgress?: (info: TypewriterProgress) => void
+  onCommitSuccess?: (message: string) => void
 }
 
 // Parse a single line into a process row (matches H5's twParseLine)
@@ -57,7 +58,7 @@ function tradeBadgeClass(trade: string): string {
   return 'bg-blue-50 text-blue-600 border-blue-200'
 }
 
-export function ProcessPanel({ result, taskId, runToken, streamingChunks, reviewText, onTypewriterComplete, onRowsChange, onTypewriterProgress }: Props) {
+export function ProcessPanel({ result, taskId, runToken, streamingChunks, reviewText, onTypewriterComplete, onRowsChange, onTypewriterProgress, onCommitSuccess }: Props) {
   const tableRef = useRef<HTMLDivElement>(null)
   const emptyStateRef = useRef<HTMLDivElement>(null)
   const commitBtnRef = useRef<HTMLButtonElement>(null)
@@ -90,8 +91,9 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
     const processSummary = rows.map(r => `${r.code} ${r.trade} ${r.content}`).join('; ')
 
     // Use edited reviewText if available, otherwise fall back to original
-    const featureText = reviewText || result?.feature_report_text || ''
-    const featSrc = featureText
+    const featureText = reviewText || result?.feature_report_text || result?.feature_report || ''
+    const searchableFeatureText = featureText.trim()
+    const featSrc = searchableFeatureText
 
     // Parse prefix from feature text (【零件名称】xxx)
     let prefix = ''
@@ -113,6 +115,8 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
       content,
       process_summary: processSummary,
       feature_report_text: featureText,
+      source_text: searchableFeatureText,
+      vector_text: searchableFeatureText,
       preview_image_urls: result?.preview_image_urls || result?.preview_images || [],
       source_type: 'web_upload',
       source_task_id: result?.task_id || '',
@@ -523,7 +527,10 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
         <CommitToLibraryModal
           draft={commitDraft}
           onClose={() => setShowCommitModal(false)}
-          onSuccess={() => setShowCommitModal(false)}
+          onSuccess={(message) => {
+            onCommitSuccess?.(message)
+            setShowCommitModal(false)
+          }}
         />
       )}
     </div>

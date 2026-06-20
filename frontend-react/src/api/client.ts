@@ -373,6 +373,8 @@ export interface CommitDraft {
   content: string
   process_summary: string
   feature_report_text: string
+  source_text: string
+  vector_text: string
   preview_image_urls: string[]
   source_type: string
   source_task_id: string
@@ -381,12 +383,26 @@ export interface CommitDraft {
   product_type: string
 }
 
+export interface RetrievalCheck {
+  status: 'ok' | 'failed' | 'skipped'
+  searchable: boolean
+  matched_prefix: string
+  similarity: number
+  reason: string
+}
+
+export interface CommitLibraryResponse {
+  message: string
+  record_id?: number
+  retrieval_check?: RetrievalCheck
+}
+
 export async function commitToLibrary(params: {
   draft: CommitDraft
   action: 'replace' | 'keep'
   library_key: string
-}): Promise<{ message: string; record_id?: number }> {
-  return request('/library/commit', {
+}): Promise<CommitLibraryResponse> {
+  return request<CommitLibraryResponse>('/library/commit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),

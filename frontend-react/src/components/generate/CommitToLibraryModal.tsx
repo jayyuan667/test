@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { getLibraryScopes, commitToLibrary, type LibraryScope, type CommitDraft } from '../../api/client'
+import { getLibraryScopes, commitToLibrary, type LibraryScope, type CommitDraft, type RetrievalCheck } from '../../api/client'
 
 interface Props {
   draft: CommitDraft
   onClose: () => void
-  onSuccess: () => void
+  onSuccess: (message: string) => void
 }
 
 export function CommitToLibraryModal({ draft, onClose, onSuccess }: Props) {
@@ -14,6 +14,7 @@ export function CommitToLibraryModal({ draft, onClose, onSuccess }: Props) {
   const [committing, setCommitting] = useState(false)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [retrievalCheck, setRetrievalCheck] = useState<RetrievalCheck | null>(null)
 
   useEffect(() => {
     getLibraryScopes()
@@ -29,10 +30,21 @@ export function CommitToLibraryModal({ draft, onClose, onSuccess }: Props) {
     if (!selectedKey) return
     setCommitting(true)
     setError(null)
+    setRetrievalCheck(null)
     try {
-      await commitToLibrary({ draft, action: 'replace', library_key: selectedKey })
-      onSuccess()
-      onClose()
+      const response = await commitToLibrary({ draft, action: 'replace', library_key: selectedKey })
+      const check = response.retrieval_check || null
+      setRetrievalCheck(check)
+      if (!check || check.status === 'ok') {
+        onSuccess(check ? `入库成功，检索自测通过，相似度 ${check.similarity.toFixed(2)}` : '入库成功')
+        onClose()
+        return
+      }
+      if (check.status === 'skipped') {
+        setError(`入库成功，检索自测跳过：${check.reason}`)
+        return
+      }
+      setError(`入库成功，检索自测失败：${check.reason}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '入库失败')
     } finally {
@@ -58,6 +70,16 @@ export function CommitToLibraryModal({ draft, onClose, onSuccess }: Props) {
             </div>
           ) : error ? (
             <div className="text-red-500 text-[13px] text-center py-4">{error}</div>
+          ) : retrievalCheck ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left">
+              <div className="text-[13px] font-bold text-amber-700">
+                {retrievalCheck.status === 'skipped' ? '入库成功，检索自测已跳过' : '入库成功，检索自测未命中'}
+              </div>
+              <div className="text-[12px] text-amber-700 mt-1">
+                {retrievalCheck.reason || '请检查向量服务配置后重新检索。'}
+              </div>
+              <button className="btn btn-secondary !text-[12px] !mt-3" onClick={onClose}>关闭</button>
+            </div>
           ) : scopes.length === 0 ? (
             <div className="text-slate-400 text-[13px] text-center py-8">暂无可用知识库</div>
           ) : (
