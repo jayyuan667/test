@@ -41,8 +41,8 @@ async function goToReviewState(page: Page) {
   await page.locator('button:has-text("退出标注")').click()
   await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 5000 })
 
-  // Now "完成标注 → 继续" is enabled (annotateVisited = true)
-  await page.locator('button:has-text("完成标注")').click()
+  // Now "完成标注 → 下一步" is enabled (annotateVisited = true)
+  await page.locator('button:has-text("完成标注 → 下一步")').click()
 
   // Wait for backend to process: annotation → VLM → review_required
   await expect(page.locator('text=请审阅特征报告')).toBeVisible({ timeout: 30000 })
@@ -72,34 +72,42 @@ test.describe('Upload → YOLO 审阅完整流程', () => {
     await expect(page.locator('text=正在上传文件')).toBeVisible({ timeout: 5000 })
   })
 
-  test('上传后 SSE 推送 annotation_required → 显示 YOLO 标注界面', async ({ page }) => {
+  test('上传后 SSE 推送 annotation_required → 显示 YOLO 标注界面和跳过入口', async ({ page }) => {
     await uploadAndWaitAnnotation(page)
     await expect(page.locator('button:has-text("开始标注")')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('button:has-text("跳过 YOLO 审阅")')).toBeVisible()
+    await expect(page.locator('button:has-text("完成标注")')).not.toBeVisible()
   })
 
   test('YOLO 标注界面：开始标注 → 退出 → 完成标注 → 自动跳转特征审阅', async ({ page }) => {
     await uploadAndWaitAnnotation(page)
 
-    // "完成标注 → 继续" should be disabled before visiting annotation
-    const finalizeBtn = page.locator('button:has-text("完成标注")')
-    await expect(finalizeBtn).toBeDisabled()
+    await expect(page.locator('button:has-text("跳过 YOLO 审阅")')).toBeVisible()
+    await expect(page.locator('button:has-text("完成标注")')).not.toBeVisible()
 
-    // Open annotation overlay
     await page.locator('button:has-text("开始标注")').click()
     await expect(page.locator('.fixed.inset-0')).toBeVisible({ timeout: 5000 })
     await expect(page.locator('text=标注工具')).toBeVisible()
 
-    // Close annotation overlay
     await page.locator('button:has-text("退出标注")').click()
     await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 5000 })
 
-    // "完成标注 → 继续" should now be enabled
+    await expect(page.locator('button:has-text("继续标注")')).toBeVisible()
+    const finalizeBtn = page.locator('button:has-text("完成标注 → 下一步")')
     await expect(finalizeBtn).toBeEnabled({ timeout: 3000 })
+    await expect(page.locator('button:has-text("跳过 YOLO 审阅")')).not.toBeVisible()
 
-    // Click finalize — should auto-switch to review tab
     await finalizeBtn.click()
 
-    // Verify tab switched to review (review tab should have orange active class)
+    const reviewTab = page.locator('button', { hasText: '特征审阅' }).first()
+    await expect(reviewTab).toHaveClass(/text-orange/, { timeout: 5000 })
+  })
+
+  test('YOLO 标注界面：可直接跳过 YOLO 审阅进入特征审阅', async ({ page }) => {
+    await uploadAndWaitAnnotation(page)
+
+    await page.locator('button:has-text("跳过 YOLO 审阅")').click()
+
     const reviewTab = page.locator('button', { hasText: '特征审阅' }).first()
     await expect(reviewTab).toHaveClass(/text-orange/, { timeout: 5000 })
   })
@@ -110,8 +118,15 @@ test.describe('Upload → YOLO 审阅完整流程', () => {
     await expect(previewImages.first()).toBeVisible({ timeout: 10000 })
   })
 
-  test('Tab 切换：YOLO ↔ 审阅 ↔ 工艺规程', async ({ page }) => {
-    const yoloTab = page.locator('button', { hasText: 'YOLO' }).first()
+  test('Tab 顺序：YOLO审阅 → 特征审阅 → 工艺规程', async ({ page }) => {
+    await uploadAndWaitAnnotation(page)
+
+    const tabs = page.locator('button').filter({ hasText: /YOLO审阅|特征审阅|工艺规程/ })
+    await expect(tabs.nth(0)).toHaveText('YOLO审阅')
+    await expect(tabs.nth(1)).toHaveText('特征审阅')
+    await expect(tabs.nth(2)).toHaveText('工艺规程')
+
+    const yoloTab = page.locator('button', { hasText: 'YOLO审阅' }).first()
     const reviewTab = page.locator('button', { hasText: '特征审阅' }).first()
     const processTab = page.locator('button', { hasText: '工艺规程' }).first()
 

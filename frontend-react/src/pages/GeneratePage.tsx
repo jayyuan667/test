@@ -653,6 +653,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       <div ref={tabBarRef} className="shrink-0 flex items-center gap-0 border-b border-slate-200 bg-white px-1">
         <div className="flex items-center gap-0">
           {([
+            ...(showAnnotationTab ? [{ id: 'annotation' as ActiveTab, label: 'YOLO审阅' }] : []),
             { id: 'review' as ActiveTab, label: '特征审阅' },
             { id: 'process' as ActiveTab, label: '工艺规程' },
           ]).map(tab => (
@@ -669,18 +670,6 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
               {tab.label}
             </button>
           ))}
-          {showAnnotationTab && (
-            <button
-              onClick={() => setActiveTab('annotation')}
-              className={`px-4 py-2.5 text-[12px] font-semibold transition-all duration-200 border-b-2 ${
-                activeTab === 'annotation'
-                  ? 'text-orange-600 border-orange-500'
-                  : 'text-slate-400 border-transparent hover:text-slate-600'
-              }`}
-            >
-              YOLO审阅
-            </button>
-          )}
         </div>
 
         {hasTask && (
@@ -753,19 +742,19 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
 
                     <div className="flex items-center gap-3 mt-2">
                       <button className="btn btn-primary !text-[12px]" onClick={handleOpenAnnotate}>
-                        开始标注
+                        {annotateVisited ? '继续标注' : '开始标注'}
                       </button>
                       <button
-                        className="btn btn-secondary !text-[12px]"
-                        disabled={!annotateVisited}
+                        className={`btn !text-[12px] ${annotateVisited ? 'btn-secondary' : 'btn-ghost'}`}
+                        disabled={!taskId}
                         onClick={handleFinalizeAnnotation}
-                        title={!annotateVisited ? '请先完成标注' : ''}
+                        title={!taskId ? '任务 ID 缺失，无法继续' : ''}
                       >
-                        完成标注 → 继续
+                        {annotateVisited ? '完成标注 → 下一步' : '跳过 YOLO 审阅'}
                       </button>
                     </div>
                     {!annotateVisited && (
-                      <p className="text-[10px] text-slate-300">需先完成至少一次标注后才能继续</p>
+                      <p className="text-[10px] text-slate-300">可先审阅预标注；也可跳过，直接使用当前 YOLO 预标注继续。</p>
                     )}
                   </div>
                 </div>
