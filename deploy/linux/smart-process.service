@@ -1,0 +1,19 @@
+[Unit]
+Description=Smart Process System
+After=network.target
+
+[Service]
+Type=simple
+User=smartproc
+Group=smartproc
+WorkingDirectory=/opt/smart-process-system/app
+Environment=FLASK_DEBUG=0
+EnvironmentFile=/opt/smart-process-system/app/.env
+ExecStart=/home/smartproc/.local/bin/uv run python -m backend.run
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/smart-process-system/shared/logs/systemd.out.log
+StandardError=append:/opt/smart-process-system/shared/logs/systemd.err.log
+
+[Install]
+WantedBy=multi-user.target
