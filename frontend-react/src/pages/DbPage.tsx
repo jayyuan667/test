@@ -376,6 +376,57 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
     } catch { /* ignore */ }
   }
 
+  const getPreviewUrls = (record: LibraryRecord) => {
+    const taskId = record.preview_task_id || record.source_task_id
+    return normalizeAssetUrls(record.preview_image_urls, taskId, getAssetUrl)
+  }
+
+  const renderPreviewThumb = (record: LibraryRecord) => {
+    const urls = getPreviewUrls(record)
+    const firstUrl = urls[0]
+    if (!firstUrl) {
+      return (
+        <button
+          type="button"
+          aria-label={`${record.prefix || '记录'} 暂无图纸快照`}
+          className="w-20 h-20 shrink-0 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-300 flex flex-col items-center justify-center cursor-default"
+          onClick={e => e.stopPropagation()}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M8 12h8" />
+            <path d="M12 8v8" />
+          </svg>
+          <span className="text-[10px] mt-1">暂无预览</span>
+        </button>
+      )
+    }
+    return (
+      <button
+        type="button"
+        aria-label={`查看 ${record.prefix || '记录'} 图纸快照`}
+        className="w-20 h-20 shrink-0 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden group/thumb"
+        onClick={e => {
+          e.stopPropagation()
+          handleSelectRecord(record)
+          handleViewSnapshot(record)
+        }}
+      >
+        <img
+          src={firstUrl}
+          alt={`${record.prefix || '记录'} 图纸缩略图`}
+          className="w-full h-full object-cover transition-transform duration-200 group-hover/thumb:scale-105"
+          onError={e => {
+            const img = e.currentTarget
+            img.style.display = 'none'
+            const parent = img.parentElement
+            if (parent) parent.setAttribute('aria-label', `${record.prefix || '记录'} 暂无图纸快照`)
+          }}
+        />
+      </button>
+    )
+  }
+
   // Snapshot preview
   const handleViewSnapshot = (record: LibraryRecord) => {
     const taskId = record.preview_task_id || record.source_task_id
@@ -731,27 +782,32 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                     onMouseEnter={() => handleRecordCardHover(index, true)}
                     onMouseLeave={() => handleRecordCardHover(index, false)}
                   >
-                    <div className="flex items-start justify-between mb-1.5">
-                      <div className="min-w-0 flex items-center gap-2">
-                        <div className="text-[14px] font-bold text-slate-800 truncate" dangerouslySetInnerHTML={{ __html: highlightText(r.prefix || '未命名', query) }} />
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${st.cls}`}>{st.label}</span>
+                    <div className="flex items-start gap-3">
+                      {renderPreviewThumb(r)}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between mb-1.5">
+                          <div className="min-w-0 flex items-center gap-2">
+                            <div className="text-[14px] font-bold text-slate-800 truncate" dangerouslySetInnerHTML={{ __html: highlightText(r.prefix || '未命名', query) }} />
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${st.cls}`}>{st.label}</span>
+                          </div>
+                          <span className="chip shrink-0 ml-2 !text-[10px]">{r.process_count || 0} 工序</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mb-1.5">
+                          <span dangerouslySetInnerHTML={{ __html: highlightText(r.product_type || '未分类', query) }} />
+                          {' · '}
+                          <span>{src}</span>
+                          {' · '}
+                          <span>工序 {r.process_count || 0} 条</span>
+                        </div>
+                        {r.process_summary && (
+                          <div className="text-[12px] text-slate-500 line-clamp-2 leading-relaxed mb-1.5" dangerouslySetInnerHTML={{ __html: highlightText(r.process_summary, query) }} />
+                        )}
+                        <div className="flex gap-1.5 flex-wrap">
+                          {r.trades?.slice(0, 3).map(t => (
+                            <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{t}</span>
+                          ))}
+                        </div>
                       </div>
-                      <span className="chip shrink-0 ml-2 !text-[10px]">{r.process_count || 0} 工序</span>
-                    </div>
-                    <div className="text-[11px] text-slate-500 mb-1.5">
-                      <span dangerouslySetInnerHTML={{ __html: highlightText(r.product_type || '未分类', query) }} />
-                      {' · '}
-                      <span>{src}</span>
-                      {' · '}
-                      <span>工序 {r.process_count || 0} 条</span>
-                    </div>
-                    {r.process_summary && (
-                      <div className="text-[12px] text-slate-500 line-clamp-2 leading-relaxed mb-1.5" dangerouslySetInnerHTML={{ __html: highlightText(r.process_summary, query) }} />
-                    )}
-                    <div className="flex gap-1.5 flex-wrap">
-                      {r.trades?.slice(0, 3).map(t => (
-                        <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{t}</span>
-                      ))}
                     </div>
                   </div>
                 )
