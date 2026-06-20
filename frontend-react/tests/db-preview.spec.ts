@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
+  // Unlock DbPage database browse before navigation, otherwise it renders the
+  // "数据库未解锁" lock screen and never shows the record list.
+  await page.addInitScript(() => {
+    sessionStorage.setItem('zip_unlocked', 'true')
+  })
+
   await page.route('**/api/library/scopes', async route => {
     await route.fulfill({
       contentType: 'application/json',
