@@ -123,9 +123,10 @@ def init_config() -> None:
     for key in env_keys:
         val = os.getenv(key, "")
         if val:
-            display = val[:20] + "..." if len(val) > 20 else val
             if "KEY" in key:
-                display = val[:8] + "..." if len(val) > 8 else val
+                display = "configured=true"
+            else:
+                display = val[:20] + "..." if len(val) > 20 else val
             print(f"  {key}: {display}")
 
     config = load_config()
@@ -136,9 +137,10 @@ def init_config() -> None:
                 value = config[config_key]
                 if isinstance(value, str):
                     os.environ[key] = value
-                    preview = value[:20] + "..." if len(value) > 20 else value
                     if "KEY" in key:
-                        preview = value[:8] + "..." if len(value) > 8 else value
+                        preview = "configured=true"
+                    else:
+                        preview = value[:20] + "..." if len(value) > 20 else value
                     print(f"  [from config.json] {key}: {preview}")
 
 

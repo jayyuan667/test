@@ -227,6 +227,8 @@ def _parse_xlsx_workbook(xlsx_path: str) -> Dict:
 
 
 def _parse_pdf_document(pdf_path: str, work_dir: str) -> Dict:
+    from ..pipeline.pdf_converter import convert_pdf_to_images
+
     ensure_poppler_path()
     pdf_image_dir = os.path.join(work_dir, "pdf_pages")
     os.makedirs(pdf_image_dir, exist_ok=True)
@@ -241,7 +243,7 @@ def _parse_pdf_document(pdf_path: str, work_dir: str) -> Dict:
         "source_path": pdf_path,
         "source_kind": "pdf",
         "text": text,
-        "rows": pages,
+        "rows": [],
         "png_paths": png_paths,
         "prefix_hint": stem,
         "prefix_key": prefix_key,
@@ -267,7 +269,7 @@ def _parse_image_document(image_path: str, work_dir: str) -> Dict:
         "source_path": image_path,
         "source_kind": "image",
         "text": text,
-        "rows": pages,
+        "rows": [],
         "png_paths": [normalized_png],
         "prefix_hint": stem,
         "prefix_key": prefix_key,
@@ -494,7 +496,7 @@ def _parse_drawing_pdf_for_visual(pdf_path: str, work_dir: str) -> Dict:
         "source_path": pdf_path,
         "source_kind": "drawing_pdf",
         "text": feature_text,
-        "rows": pages,
+        "rows": [],
         "png_paths": png_paths,
         "prefix_hint": stem,
         "prefix_key": stem.upper(),

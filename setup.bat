@@ -25,9 +25,17 @@ if errorlevel 1 (
 echo [2/5] Installing Python and dependencies...
 uv python install 3.11.15
 if "%INSTALL_YOLO%"=="1" (
-    uv sync --locked --extra yolo
+    if "%INSTALL_CREO%"=="1" (
+        uv sync --locked --extra yolo --extra windows-creo
+    ) else (
+        uv sync --locked --extra yolo
+    )
 ) else (
-    uv sync --locked
+    if "%INSTALL_CREO%"=="1" (
+        uv sync --locked --extra windows-creo
+    ) else (
+        uv sync --locked
+    )
 )
 if errorlevel 1 exit /b 1
 
@@ -80,6 +88,13 @@ echo [5/5] Creating runtime directories...
 if not exist "%ROOT_DIR%db_data" mkdir "%ROOT_DIR%db_data"
 if not exist "%ROOT_DIR%uploads" mkdir "%ROOT_DIR%uploads"
 if not exist "%ROOT_DIR%output" mkdir "%ROOT_DIR%output"
+
+echo.
+echo Running runtime smoke check...
+uv run python scripts/runtime_smoke.py
+if errorlevel 1 (
+    echo [WARNING] Smoke check issues detected. Review above output.
+)
 
 echo.
 echo ============================================

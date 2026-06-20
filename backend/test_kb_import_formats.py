@@ -289,6 +289,66 @@ def test_stem_pairing_cross_format():
     print("PASS: stem pairing — all 6 cross-format pairs match, 2 non-pairs correctly rejected")
 
 
+# ── 7. PDF import helper functions (regression: verify pages → [] fix) ──────────
+
+def test_parse_pdf_document_returns_rows_list(monkeypatch):
+    """_parse_pdf_document must return rows=[] (single drawing analysis, not per-page)."""
+    mod = _mod()
+    from backend.pipeline import pdf_converter as pc_mod
+    monkeypatch.setattr(pc_mod, "convert_pdf_to_images", lambda *a, **kw: ["/tmp/p1.png", "/tmp/p2.png"])
+    monkeypatch.setattr(mod, "ensure_poppler_path", lambda: None)
+
+    class FakeResult:
+        def get(self, key, default=""):
+            return "drawing desc"
+
+    class FakeAnalyzer:
+        def analyze_drawing(self, paths):
+            return FakeResult()
+
+    monkeypatch.setattr(mod, "_vision_analyzer", lambda: FakeAnalyzer())
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        f.write(b"%PDF-1.4")
+        tmp = f.name
+    try:
+        r = mod._parse_pdf_document(tmp, tempfile.gettempdir())
+        assert r["rows"] == [], f"expected [], got {r['rows']!r}"
+        assert r["source_kind"] == "pdf"
+        assert r["page_count"] == 2
+        assert len(r["png_paths"]) == 2
+        print("PASS: _parse_pdf_document — rows=[], source_kind=pdf, page_count from converter")
+    finally:
+        os.unlink(tmp)
+
+
+def test_parse_drawing_pdf_for_visual_returns_rows_list(monkeypatch):
+    """_parse_drawing_pdf_for_visual must return rows=[]."""
+    mod = _mod()
+    from backend.pipeline import pdf_converter as pc_mod
+    monkeypatch.setattr(pc_mod, "convert_pdf_to_images", lambda *a, **kw: ["/tmp/d1.png"])
+    monkeypatch.setattr(mod, "ensure_poppler_path", lambda: None)
+
+    class FakeResult:
+        def get(self, key, default=""):
+            return "feature text"
+
+    class FakeAnalyzer:
+        def analyze_drawing(self, paths):
+            return FakeResult()
+
+    monkeypatch.setattr(mod, "_vision_analyzer", lambda: FakeAnalyzer())
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        f.write(b"%PDF-1.4")
+        tmp = f.name
+    try:
+        r = mod._parse_drawing_pdf_for_visual(tmp, tempfile.gettempdir())
+        assert r["rows"] == [], f"expected [], got {r['rows']!r}"
+        assert r["source_kind"] == "drawing_pdf"
+        print("PASS: _parse_drawing_pdf_for_visual — rows=[], source_kind=drawing_pdf")
+    finally:
+        os.unlink(tmp)
+
+
 # ── runner ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -305,3 +365,4 @@ if __name__ == "__main__":
     test_folder_scan_pdf_only_unchanged()
     test_stem_pairing_cross_format()
     print("\nAll kb_import format tests passed.")
+    print("Additional pytest-only tests: test_parse_pdf_document_returns_rows_list, test_parse_drawing_pdf_for_visual_returns_rows_list")

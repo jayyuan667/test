@@ -35,7 +35,7 @@ jobs:
       - name: Runtime smoke
         run: uv run python scripts/runtime_smoke.py
 
-      - name: Backend tests
+      - name: Backend tests (task-related regression suite)
         run: >
           uv run pytest
           backend/test_dependency_manifest.py
@@ -48,6 +48,9 @@ jobs:
           backend/pipeline/test_yolo_detector.py
           backend/test_library_storage_init.py
           backend/test_startup_import.py
+          backend/test_installation_contract.py
+          backend/test_runtime_smoke.py
+          backend/test_kb_import_formats.py
           -q
 
       - uses: actions/setup-node@v6

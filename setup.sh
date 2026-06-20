@@ -12,11 +12,10 @@ command -v node >/dev/null || { echo "需要Node.js 20+"; exit 1; }
 command -v npm >/dev/null || { echo "需要npm"; exit 1; }
 
 uv python install 3.11.15
-if [[ "${INSTALL_YOLO:-0}" == "1" ]]; then
-  uv sync --locked --extra yolo
-else
-  uv sync --locked
-fi
+EXTRA_ARGS=""
+[[ "${INSTALL_YOLO:-0}" == "1" ]] && EXTRA_ARGS="$EXTRA_ARGS --extra yolo"
+[[ "${INSTALL_CREO:-0}" == "1" ]] && EXTRA_ARGS="$EXTRA_ARGS --extra windows-creo"
+uv sync --locked $EXTRA_ARGS
 
 [[ -f .env ]] || cp .env.example .env
 mkdir -p db_data uploads output

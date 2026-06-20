@@ -17,8 +17,12 @@ import os
 import json
 import uuid
 
-# Fix stdout encoding for Chinese output
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+# Fix stdout encoding for Chinese output (only when running, not during tests)
+if sys.stdout.isatty():
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
