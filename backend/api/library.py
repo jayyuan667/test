@@ -25,6 +25,7 @@ from ..vector_map_rag import (
     extract_structured_features,
     invalidate_index_cache,
     query_by_fused_text,
+    query_by_vector_similarity,
 )
 from ..library_scope import (
     PUBLIC_LIBRARY_KEY,
@@ -880,17 +881,90 @@ def _build_draft_from_file(file_storage, prefix: str, source_name: str):
     return draft, existing, similar
 
 
+def _normalise_searchable_text(draft: dict) -> tuple[str, str]:
+    """Return source_text and vector_text for storage and retrieval."""
+    source_text = (
+        draft.get("source_text")
+        or draft.get("feature_report_text")
+        or draft.get("context")
+        or draft.get("key_features_text")
+        or draft.get("vector_content")
+        or ""
+    )
+    source_text = str(source_text or "").strip()
+    vector_text = str(draft.get("vector_text") or source_text or "").strip()
+    return source_text, vector_text
+
+
+def _build_retrieval_check(prefix: str, vector_text: str, library_key: str = ""):
+    normalized_prefix = str(prefix or "").strip().upper()
+    text = str(vector_text or "").strip()
+    if not text:
+        return {
+            "status": "skipped",
+            "searchable": False,
+            "matched_prefix": "",
+            "similarity": 0,
+            "reason": "vector_text is empty",
+        }
+    if not os.getenv("EMBEDDING_API_KEY", ""):
+        return {
+            "status": "skipped",
+            "searchable": False,
+            "matched_prefix": "",
+            "similarity": 0,
+            "reason": "EMBEDDING_API_KEY not configured",
+        }
+
+    try:
+        matches = query_by_vector_similarity(
+            text,
+            top_k=5,
+            min_similarity=0.0,
+            library_key=library_key or None,
+        )
+    except Exception as exc:
+        logger.warning("[Library] retrieval self-check failed prefix=%s: %s", normalized_prefix, exc)
+        return {
+            "status": "failed",
+            "searchable": False,
+            "matched_prefix": "",
+            "similarity": 0,
+            "reason": str(exc) or "retrieval self-check failed",
+        }
+
+    for match in matches or []:
+        matched_prefix = str(match.get("drawing_id") or match.get("prefix") or "").strip().upper()
+        if matched_prefix == normalized_prefix:
+            return {
+                "status": "ok",
+                "searchable": True,
+                "matched_prefix": normalized_prefix,
+                "similarity": float(match.get("similarity") or 0),
+                "reason": "",
+            }
+
+    return {
+        "status": "failed",
+        "searchable": False,
+        "matched_prefix": "",
+        "similarity": 0,
+        "reason": "saved prefix not returned by retrieval self-check",
+    }
+
+
 def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
     scope = _scope_from_key(library_key)
     vector_table = scope["vector_table"]
 
-    vector = create_query_vector(draft.get("vector_text") or draft.get("source_text") or "")
+    source_text, vector_text = _normalise_searchable_text(draft)
+    vector = create_query_vector(vector_text)
     vector_blob = vector.tobytes() if vector is not None else None
     prefix = draft["prefix"].strip().upper()
     process_list = draft.get("process_list", [])
     content = json.dumps(process_list, ensure_ascii=False)
-    context = draft.get("context") or draft.get("source_text") or ""
-    key_features_text = draft.get("key_features_text") or draft.get("vector_text") or draft.get("source_text") or ""
+    context = draft.get("context") or source_text
+    key_features_text = draft.get("key_features_text") or vector_text or source_text
     key_features = key_features_text
     materials = json.dumps(draft.get("materials", []), ensure_ascii=False)
     product_type = draft.get("product_type") or ""
@@ -902,7 +976,7 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
     preview_task_id = draft.get("preview_task_id") or ""
     preview_total_pages = int(draft.get("preview_total_pages") or 0)
     preview_image_urls = draft.get("preview_image_urls") or []
-    feature_report_text = (draft.get("feature_report_text") or "").strip()
+    feature_report_text = (draft.get("feature_report_text") or source_text).strip()
     feature_report_path = (draft.get("feature_report_path") or "").strip()
     feature_report_json = draft.get("feature_report_json")
     if isinstance(preview_image_urls, list):
@@ -929,7 +1003,7 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
     heat_treatment = structured_features.get("热处理与探伤") if isinstance(structured_features, dict) else None
     inspection_standards = structured_features.get("标识与检验") if isinstance(structured_features, dict) else None
     special_requirements = structured.get("process_reference", "") if isinstance(structured, dict) else ""
-    vector_content = structured.get("vector_index", draft.get("vector_text") or key_features_text) if isinstance(structured, dict) else (draft.get("vector_text") or key_features_text)
+    vector_content = structured.get("vector_index", vector_text or key_features_text) if isinstance(structured, dict) else (vector_text or key_features_text)
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -983,7 +1057,8 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
     finally:
         conn.close()
 
-    invalidate_index_cache()
+    invalidate_index_cache(library_key or None)
+    return {"prefix": prefix, "source_text": source_text, "vector_text": vector_text}
 
 
 @library_bp.route("/library/preview", methods=["POST"])
@@ -1107,8 +1182,18 @@ def commit_library_record():
         return jsonify({"message": "Existing record kept", "existing": existing, "draft": draft})
 
     replace = action != "keep"
-    _upsert_record(draft, replace=replace, library_key=library_key)
-    logger.info("[Library] commit finished prefix=%s replaced=%s", draft.get("prefix"), replace)
+    saved_meta = _upsert_record(draft, replace=replace, library_key=library_key)
+    retrieval_check = _build_retrieval_check(
+        saved_meta["prefix"],
+        saved_meta["vector_text"],
+        library_key=library_key,
+    )
+    logger.info(
+        "[Library] commit finished prefix=%s replaced=%s retrieval_status=%s",
+        draft.get("prefix"),
+        replace,
+        retrieval_check.get("status"),
+    )
 
     fresh = _fetch_existing_record(draft["prefix"], library_key=library_key)
     return jsonify(
@@ -1120,6 +1205,7 @@ def commit_library_record():
             "saved": fresh,
             "replaced": bool(existing) and replace,
             "active_scope": _scope_from_key(library_key),
+            "retrieval_check": retrieval_check,
         }
         )
     )
