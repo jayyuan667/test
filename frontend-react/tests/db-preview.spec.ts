@@ -105,6 +105,15 @@ test.beforeEach(async ({ page }) => {
       }),
     })
   })
+
+  // Mock the preview image asset so the thumbnail img element loads successfully
+  // instead of triggering onError (which swaps the aria-label to "暂无图纸快照").
+  await page.route('**/api/result/task-1/asset/page-1.png', async route => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="#e2e8f0"/><text x="8" y="44" font-size="10" fill="#94a3b8">preview</text></svg>',
+    })
+  })
 })
 
 test('database list shows thumbnail and opens snapshot modal', async ({ page }) => {
