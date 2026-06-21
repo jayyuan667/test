@@ -223,6 +223,7 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
       setPercent(100)
       setPhaseText('入库完成')
       setStatusZone('done')
+      sessionStorage.setItem('zip_unlocked', 'true')
       loadScopes()
     } catch (err) {
       setStatusZone('error')

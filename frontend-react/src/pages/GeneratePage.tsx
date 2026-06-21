@@ -48,6 +48,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
         const text = String(data.content || data.review_text || data.raw_content || '')
         workflowStageRef.current = 'review'
         setReviewText(text)
+        setReviewFeedback(undefined)
         setStatus('awaiting_review')
         setProgress(50)
         setPhaseHint('请审阅特征报告')
@@ -371,13 +372,17 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       workflowStageRef.current = 'analysis'
       setStatus('processing')
       setProgress(45)
-      setPhaseHint('视觉分析中...')
+      setPhaseHint('等待特征审阅结果...')
+      setReviewFeedback({ message: '等待特征审阅结果，后端正在继续视觉分析。', tone: 'info' })
+      setActiveTab('review')
       await finalizeAnnotation(taskId)
     } catch (err) {
       workflowStageRef.current = 'annotation'
       const msg = err instanceof Error ? err.message : '标注确认失败'
       onError(msg)
       setStatus('awaiting_annotation')
+      setReviewFeedback(undefined)
+      setActiveTab('annotation')
     }
   }, [taskId, onError])
 
