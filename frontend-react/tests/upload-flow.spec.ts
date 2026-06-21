@@ -106,10 +106,22 @@ test.describe('Upload → YOLO 审阅完整流程', () => {
   test('YOLO 标注界面：可直接跳过 YOLO 审阅进入特征审阅', async ({ page }) => {
     await uploadAndWaitAnnotation(page)
 
+    let releaseFinalize: (() => void) | null = null
+    await page.route('**/api/annotations/*/finalize', async route => {
+      await new Promise<void>(resolve => { releaseFinalize = resolve })
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, task_id: 'test-task', mode: 'finalized' }),
+      })
+    })
+
     await page.locator('button:has-text("跳过 YOLO 审阅")').click()
 
     const reviewTab = page.locator('button', { hasText: '特征审阅' }).first()
-    await expect(reviewTab).toHaveClass(/text-orange/, { timeout: 5000 })
+    await expect(reviewTab).toHaveClass(/text-orange/, { timeout: 1000 })
+    await expect(page.locator('text=等待特征审阅结果')).toBeVisible({ timeout: 1000 })
+
+    releaseFinalize?.()
   })
 
   test('预览图在上传后显示', async ({ page }) => {
