@@ -93,7 +93,7 @@ export default function App() {
           </div>
         </div>
         <footer className="shrink-0 text-center text-[12px] text-slate-500 py-2.5 bg-slate-50 border-t border-slate-200">
-          Copyright © 四川大学机器学习与工业智能工程研究中心
+          Copyright © 机器学习与工业智能应用教育部工程研究中心
         </footer>
       </main>
       <ToastStack toasts={toasts} />
