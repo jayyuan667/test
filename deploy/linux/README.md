@@ -48,10 +48,18 @@ uv sync --locked
 npm --prefix frontend-react ci
 npm --prefix frontend-react run build
 
-rm -rf uploads output db_data
-ln -s /opt/smart-process-system/shared/uploads uploads
-ln -s /opt/smart-process-system/shared/output output
-ln -s /opt/smart-process-system/shared/db_data db_data
+# Safe migration: move real directories aside if they exist;
+# for symlinks (repeat deployment), just replace them.
+for dir in uploads output db_data; do
+  if [ -e "$dir" ] && [ ! -L "$dir" ]; then
+    mv "$dir" "${dir}.local.$(date +%Y%m%d_%H%M%S)"
+  else
+    rm -f "$dir"
+  fi
+done
+ln -sfn /opt/smart-process-system/shared/uploads uploads
+ln -sfn /opt/smart-process-system/shared/output output
+ln -sfn /opt/smart-process-system/shared/db_data db_data
 
 cp deploy/linux/env.production.example .env
 chmod 600 .env

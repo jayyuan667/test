@@ -70,8 +70,8 @@ NOTE: The "HIGH" risk level is from PRE-EXISTING working-tree changes
 (AGENTS.md, CLAUDE.md, backend/api/kb_import.py,
 frontend-react/src/pages/GeneratePage.tsx, and related test files).
 These are outside the scope of this implementation. The new files
-added by this plan (deploy/linux/*, scripts/*) are all new untracked
-files that introduce no risk to existing business logic.
+added by this plan (deploy/linux/*, scripts/*) introduce no risk to
+existing business logic.
 ```
 
 All pre-commit `detect_changes` runs (before each commit) showed identical
@@ -85,7 +85,7 @@ results, confirming no new risk was introduced by this implementation.
 - New secrets committed: **no**
 - Runtime data committed: **no**
 
-All 7 new files are deployment engineering artifacts only.
+All 8 new files are deployment engineering artifacts only.
 
 ## Known Gaps
 

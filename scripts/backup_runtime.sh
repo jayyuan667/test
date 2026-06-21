@@ -12,7 +12,10 @@ info() {
   echo "[backup-runtime] $*"
 }
 
+# Restrictive permissions — the archive may contain .env with API keys.
+umask 077
 mkdir -p "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR"
 
 INCLUDES=()
 
@@ -43,6 +46,7 @@ fi
 
 info "creating $ARCHIVE"
 tar -czf "$ARCHIVE" "${INCLUDES[@]}"
+chmod 600 "$ARCHIVE"
 
 info "backup contents:"
 tar -tzf "$ARCHIVE" | sed 's/^/[backup-runtime]   /'
