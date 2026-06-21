@@ -1295,12 +1295,30 @@ ZIP 内必须包含两个子文件夹：
 
     sample_dir = _sample_zip_dir()
 
+    def _make_sample_pdf(label: str) -> bytes:
+        pdf_buf = io.BytesIO()
+        img = Image.new("RGB", (900, 640), "white")
+        try:
+            from PIL import ImageDraw
+
+            draw = ImageDraw.Draw(img)
+            draw.rectangle((40, 40, 860, 600), outline=(80, 80, 80), width=3)
+            draw.text((80, 90), f"Sample: {label}", fill=(30, 41, 59))
+            draw.text((80, 150), "0010@备料@Sample process/drawing placeholder", fill=(30, 41, 59))
+            draw.text((80, 210), "0020@车@Generated valid PDF for import demo", fill=(30, 41, 59))
+        except Exception:
+            pass
+        img.save(pdf_buf, "PDF", resolution=144.0)
+        return pdf_buf.getvalue()
+
     def _read_pdf(rel_path: str) -> bytes:
         full = os.path.join(sample_dir, rel_path)
         if os.path.isfile(full):
             with open(full, "rb") as f:
-                return f.read()
-        return f"占位符：{rel_path}（真实文件未找到）\n".encode("utf-8")
+                data = f.read()
+            if data.startswith(b"%PDF"):
+                return data
+        return _make_sample_pdf(rel_path)
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:

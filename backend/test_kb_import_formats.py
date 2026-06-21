@@ -22,6 +22,7 @@ import sys
 import tempfile
 import uuid
 import zipfile
+import io
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -206,6 +207,24 @@ def test_zip_scan_pdf_routing_unchanged():
     assert len(buckets["drawing_pdf"]) == 3, f"Expected 3 drawing PDFs, got {buckets['drawing_pdf']}"
     assert len(buckets["craft_pdf"])   == 2, f"Expected 2 craft PDFs, got {buckets['craft_pdf']}"
     print("PASS: ZIP scan — original PDF routing (drawing/ vs craft/) unchanged")
+
+
+def test_sample_zip_route_contains_valid_pdf_bytes():
+    """Downloaded sample ZIP must not contain placeholder text named .pdf."""
+    from backend.app import app
+    import fitz
+
+    response = app.test_client().get("/api/kb/sample_zip")
+    assert response.status_code == 200
+
+    with zipfile.ZipFile(io.BytesIO(response.data)) as archive:
+        pdf_names = [name for name in archive.namelist() if name.lower().endswith(".pdf")]
+        assert pdf_names, "sample ZIP should include PDF examples"
+        for name in pdf_names:
+            payload = archive.read(name)
+            assert payload.startswith(b"%PDF"), f"{name} is not a valid PDF payload"
+            with fitz.open(stream=payload, filetype="pdf") as doc:
+                assert doc.page_count >= 1, f"{name} should be openable by PyMuPDF"
 
 
 # ── 5. Folder scan detects new formats ────────────────────────────────────────
