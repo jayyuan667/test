@@ -67,6 +67,33 @@ def test_empty_library_browse_returns_zero_results(monkeypatch, tmp_path):
     assert records["items"] == []
 
 
+def test_delete_record_tolerates_missing_legacy_feature_table(monkeypatch, tmp_path):
+    db_path = _use_temp_database(monkeypatch, tmp_path)
+    library_scope.initialize_library_storage()
+    scope = library_scope.ensure_scope("private_demo", "Private Demo")
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            f"INSERT INTO {scope['vector_table']} (prefix, content, real) VALUES (?, ?, ?)",
+            ("Y5", "[]", 1),
+        )
+        record_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        assert conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='drawing_features'"
+        ).fetchone() is None
+        conn.commit()
+
+    deleted = library_api._delete_record(record_id, library_key="private_demo")
+
+    assert deleted["prefix"] == "Y5"
+    with sqlite3.connect(db_path) as conn:
+        count = conn.execute(
+            f"SELECT COUNT(*) FROM {scope['vector_table']} WHERE id = ?",
+            (record_id,),
+        ).fetchone()[0]
+    assert count == 0
+
+
 def test_upsert_record_uses_feature_report_text_as_vector_fallback(monkeypatch, tmp_path):
     db_path = _use_temp_database(monkeypatch, tmp_path)
     library_scope.initialize_library_storage()

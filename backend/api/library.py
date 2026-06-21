@@ -692,6 +692,7 @@ def _update_record(record_id: int, payload: dict, library_key: str = ""):
 def _delete_record(record_id: int, library_key: str = ""):
     scope = _scope_from_key(library_key)
     vector_table = scope["vector_table"]
+    feature_table = scope.get("feature_table") or ""
     existing = _fetch_record_by_id(record_id, library_key=library_key)
     if not existing:
         return None
@@ -704,8 +705,10 @@ def _delete_record(record_id: int, library_key: str = ""):
     cursor = conn.cursor()
     try:
         cursor.execute(f"DELETE FROM {vector_table} WHERE id = ?", (record_id,))
-        if prefix:
-            cursor.execute("DELETE FROM drawing_features WHERE drawing_id = ?", (prefix,))
+        if prefix and feature_table:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (feature_table,))
+            if cursor.fetchone():
+                cursor.execute(f"DELETE FROM {feature_table} WHERE drawing_id = ?", (prefix,))
         conn.commit()
     finally:
         conn.close()
