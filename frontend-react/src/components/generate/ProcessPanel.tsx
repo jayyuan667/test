@@ -389,8 +389,9 @@ export function ProcessPanel({ result, taskId, runToken, streamingChunks, review
     )
   }
 
-  // Render rows (final or streaming)
-  const rows = hasFinalResult ? editRows : displayedRows
+  // Render rows (final or streaming) — filter out empty content rows
+  const allRows = hasFinalResult ? editRows : displayedRows
+  const rows = allRows.filter(r => (r.content || '').trim().length > 0 || (r.trade || '').trim().length > 0)
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-4">

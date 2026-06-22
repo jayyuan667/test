@@ -29,6 +29,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
   const esRef = useRef<EventSource | null>(null)
   const workflowStageRef = useRef<WorkflowStage>('idle')
   const processSubmissionLockedRef = useRef(false)
+  const activeTaskIdRef = useRef<string | null>(null)  // 防止旧 SSE 事件串台
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
   // runToken increments on each new run (upload / confirm / rerun / reset)
@@ -43,6 +44,8 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       onStepComplete(data) { setPhaseHint(String(data.message || '步骤完成')) },
       onLog(data) { setPhaseHint(String(data.message || '')) },
       onReviewRequired(data) {
+        // 防止旧任务 SSE 事件覆盖新任务页面
+        if (data.task_id && activeTaskIdRef.current && data.task_id !== activeTaskIdRef.current) return
         if (processSubmissionLockedRef.current) return
         if (workflowStageRef.current === 'process' || workflowStageRef.current === 'completed') return
         const text = String(data.content || data.review_text || data.raw_content || '')
@@ -64,6 +67,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
         if (urls.length) setPreviewUrls(urls)
       },
       async onAnnotationRequired(data) {
+        if (data.task_id && activeTaskIdRef.current && data.task_id !== activeTaskIdRef.current) return
         if (processSubmissionLockedRef.current) return
         workflowStageRef.current = 'annotation'
         setAnnotateSummary((data.summary as Record<string, number>) || {})
@@ -84,6 +88,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
         if (urls.length) setPreviewUrls(urls)
       },
       async onComplete() {
+        processSubmissionLockedRef.current = true  // 防止完成后重复触发生成
         workflowStageRef.current = 'completed'
         setProgress(prev => Math.max(prev, 90))
         setPhaseHint('渲染工艺表格...')
@@ -375,7 +380,15 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setPhaseHint('等待特征审阅结果...')
       setReviewFeedback({ message: '等待特征审阅结果，后端正在继续视觉分析。', tone: 'info' })
       setActiveTab('review')
-      await finalizeAnnotation(taskId)
+      // VLM 可能耗时较长（1-10 分钟），进度条做慢速心跳避免用户以为卡死
+      const vlmTicker = setInterval(() => {
+        setProgress(prev => Math.min(prev + 1, 49))
+      }, 8000)
+      try {
+        await finalizeAnnotation(taskId)
+      } finally {
+        clearInterval(vlmTicker)
+      }
     } catch (err) {
       workflowStageRef.current = 'annotation'
       const msg = err instanceof Error ? err.message : '标注确认失败'
@@ -405,6 +418,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       const opts = { retrieval_library_key: retrievalKey, feature_cache: featureCache }
       const { batch_task_id, files: uploaded } = await batchUpload(files, opts)
       setTaskId(batch_task_id)
+      activeTaskIdRef.current = batch_task_id
       setActiveTab('review')
       setPhaseHint(`${uploaded.length} 个文件已上传，等待处理...`)
       setRunToken(t => t + 1)
@@ -439,6 +453,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       const opts = { retrieval_library_key: retrievalKey, feature_cache: featureCache }
       const { task_id } = isDrawing ? await uploadDrawing(file, opts) : await uploadFile(file, opts)
       setTaskId(task_id)
+      activeTaskIdRef.current = task_id
       setActiveTab('review')
       setPhaseHint('文件已上传，等待视觉分析...')
       setRunToken(t => t + 1)
@@ -565,6 +580,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
     esRef.current?.close()
     esRef.current = null
     setTaskId(null)
+    activeTaskIdRef.current = null
     setStatus('idle')
     setProgress(0)
     setPhaseHint('等待文件进入解析流程')
