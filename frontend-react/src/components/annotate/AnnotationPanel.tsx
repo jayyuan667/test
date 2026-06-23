@@ -273,17 +273,17 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
   }, [])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
-    if (!isDrawing) return
+    if (!isDrawingRef.current) return
     const rect = e.currentTarget.getBoundingClientRect()
     setDrawCurrent({
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     })
-  }, [isDrawing])
+  }, [])
 
   const handleMouseUp = useCallback(() => {
+    if (!isDrawingRef.current || !drawStart || !drawCurrent) return
     isDrawingRef.current = false
-    if (!isDrawing || !drawStart || !drawCurrent) return
     setIsDrawing(false)
 
     const w = Math.abs(drawCurrent.x - drawStart.x)
@@ -318,7 +318,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
     setDrawStart(null)
     setDrawCurrent(null)
     setSelectedId(newShape.id)
-  }, [isDrawing, drawStart, drawCurrent, activeLabel, pageNumber, imgNatural, toReal])
+  }, [drawStart, drawCurrent, activeLabel, pageNumber, imgNatural, toReal])
 
   // Shape interaction
   const handleShapeClick = useCallback((id: string, e: React.MouseEvent) => {
