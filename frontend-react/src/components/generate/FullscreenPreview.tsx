@@ -25,6 +25,8 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
   const stageRef = useRef<HTMLDivElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
+  const draggingRef = useRef(false)
+  const dragStartRef = useRef({ x: 0, y: 0, scrollX: 0, scrollY: 0 })
 
   // GSAP: Entrance animation
   useEffect(() => {
@@ -52,19 +54,22 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
     return () => window.removeEventListener('keydown', handler)
   }, [urls.length, onClose])
 
-  // Wheel zoom (Ctrl+scroll, multiplicative, cursor-anchored)
+  // ── Scroll wheel zoom (no Ctrl required) + drag-to-pan ──
   const zoomRef = useRef(zoom)
   useEffect(() => { zoomRef.current = zoom }, [zoom])
 
   useEffect(() => {
     const el = stageRef.current
     if (!el) return
-    const handler = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return
+
+    // Wheel → zoom (cursor-anchored)
+    const wheelHandler = (e: WheelEvent) => {
+      // Don't zoom if user is interacting with annotation SVG (pass through)
+      if ((e.target as HTMLElement)?.closest('svg')) return
       e.preventDefault()
       const oldZoom = zoomRef.current
-      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
-      const newZoom = Math.min(Math.max(oldZoom * factor, 0.1), 10)
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12
+      const newZoom = Math.min(Math.max(oldZoom * factor, 0.1), 15)
 
       const rect = el.getBoundingClientRect()
       const cursorX = e.clientX - rect.left + el.scrollLeft
@@ -77,8 +82,40 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
         el.scrollTop = Math.max(0, cursorY * ratio - (e.clientY - rect.top))
       })
     }
-    el.addEventListener('wheel', handler, { passive: false })
-    return () => el.removeEventListener('wheel', handler)
+
+    // Mouse drag → pan
+    const mouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return // 只响应左键
+      if ((e.target as HTMLElement)?.closest('svg, button, [data-no-drag]')) return
+      draggingRef.current = true
+      dragStartRef.current = { x: e.clientX, y: e.clientY, scrollX: el.scrollLeft, scrollY: el.scrollTop }
+      el.style.cursor = 'grabbing'
+      e.preventDefault()
+    }
+    const mouseMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return
+      const dx = e.clientX - dragStartRef.current.x
+      const dy = e.clientY - dragStartRef.current.y
+      el.scrollLeft = dragStartRef.current.scrollX - dx
+      el.scrollTop = dragStartRef.current.scrollY - dy
+    }
+    const mouseUp = () => {
+      if (draggingRef.current) {
+        el.style.cursor = ''
+        draggingRef.current = false
+      }
+    }
+
+    el.addEventListener('wheel', wheelHandler, { passive: false })
+    el.addEventListener('mousedown', mouseDown)
+    window.addEventListener('mousemove', mouseMove)
+    window.addEventListener('mouseup', mouseUp)
+    return () => {
+      el.removeEventListener('wheel', wheelHandler)
+      el.removeEventListener('mousedown', mouseDown)
+      window.removeEventListener('mousemove', mouseMove)
+      window.removeEventListener('mouseup', mouseUp)
+    }
   }, [])
 
   // Backdrop click
