@@ -63,6 +63,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
   const [imgNatural, setImgNatural] = useState({ w: 0, h: 0 })
 
   // Pan state
+  const [panMode, setPanMode] = useState(false)  // false=标注, true=拖拽
   const [isPanning, setIsPanning] = useState(false)
   const panStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 })
   const isDrawingRef = useRef(false)
@@ -415,9 +416,9 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
     setZoom(Math.min(fitW, fitH))
   }, [])
 
-  // Pan handlers
+  // Pan handlers — only active in panMode
   const handlePanStart = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0 || isDrawingRef.current) return
+    if (e.button !== 0 || !panMode || isDrawingRef.current) return
     const scroll = scrollRef.current
     if (!scroll) return
 
@@ -429,7 +430,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
       scrollTop: scroll.scrollTop,
     }
     e.preventDefault()
-  }, [])
+  }, [panMode])
 
   const handlePanMove = useCallback((e: React.MouseEvent) => {
     if (!isPanning) return
@@ -451,7 +452,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
     const el = scrollRef.current
     if (!el) return
     const handler = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return
+      // Always zoom on scroll (no Ctrl required in annotation)
       e.preventDefault()
       const oldZoom = zoomRef.current
       const factor = e.deltaY < 0 ? 1.02 : 1 / 1.02
@@ -517,6 +518,8 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
         labels={allLabels}
         activeLabel={activeLabel}
         onLabelChange={setActiveLabel}
+        panMode={panMode}
+        onPanModeChange={setPanMode}
         zoom={zoom}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
@@ -537,7 +540,9 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
         {/* Canvas area */}
         <div
           ref={scrollRef}
-          className={`flex-1 min-w-0 overflow-auto flex items-start justify-center p-6 anno-grid-bg ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`flex-1 min-w-0 overflow-auto flex items-start justify-center p-6 anno-grid-bg ${
+            panMode ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-crosshair'
+          }`}
           onMouseDown={handlePanStart}
           onMouseMove={handlePanMove}
           onMouseUp={handlePanEnd}
@@ -558,10 +563,11 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
                 width={displayW}
                 height={displayH}
                 viewBox={`0 0 ${imgNatural.w} ${imgNatural.h}`}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
+                style={panMode ? { pointerEvents: 'none' } : undefined}
+                onMouseDown={panMode ? undefined : handleMouseDown}
+                onMouseMove={panMode ? undefined : handleMouseMove}
+                onMouseUp={panMode ? undefined : handleMouseUp}
+                onMouseLeave={panMode ? undefined : handleMouseUp}
               >
                 {shapes.map(shape => {
                   const label = allLabels.find(l => l.name === shape.label)

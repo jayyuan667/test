@@ -5,6 +5,8 @@ interface Props {
   labels: AnnotationLabel[]
   activeLabel: string
   onLabelChange: (name: string) => void
+  panMode: boolean
+  onPanModeChange: (v: boolean) => void
   zoom: number
   onZoomIn: () => void
   onZoomOut: () => void
@@ -23,6 +25,7 @@ interface Props {
 
 export function AnnotationToolbar({
   labels, activeLabel, onLabelChange,
+  panMode, onPanModeChange,
   zoom, onZoomIn, onZoomOut, onZoomFit, onZoom100,
   pageNumber, totalPages, onPrevPage, onNextPage,
   shapeCount, onExport,
@@ -80,6 +83,21 @@ export function AnnotationToolbar({
           </button>
         )}
       </div>
+
+      <div className="w-px h-5 bg-slate-200/60" />
+
+      {/* Mode toggle */}
+      <button
+        onClick={() => onPanModeChange(!panMode)}
+        className={`btn !px-3 !py-1 !text-[11px] font-semibold transition-all duration-150 ${
+          panMode
+            ? 'bg-flame-500 text-white border-flame-500 shadow-sm'
+            : 'bg-white text-slate-500 border-slate-200 hover:border-flame-300'
+        }`}
+        title={panMode ? '拖拽模式（点击切换为标注）' : '标注模式（点击切换为拖拽）'}
+      >
+        {panMode ? '↕ 拖拽' : '✚ 标注'}
+      </button>
 
       <div className="w-px h-5 bg-slate-200/60" />
 

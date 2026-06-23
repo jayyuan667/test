@@ -94,7 +94,7 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
     }
     const mouseMove = (e: MouseEvent) => {
       if (!draggingRef.current) return
-      setPan({ x: dragStartRef.current.panX - (e.clientX - dragStartRef.current.x), y: dragStartRef.current.panY - (e.clientY - dragStartRef.current.y) })
+      setPan({ x: dragStartRef.current.panX + (e.clientX - dragStartRef.current.x), y: dragStartRef.current.panY + (e.clientY - dragStartRef.current.y) })
     }
     const mouseUp = () => {
       if (draggingRef.current) {
