@@ -22,11 +22,12 @@ interface Props {
 export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes, imageNaturalSize, labelColors }: Props) {
   const [index, setIndex] = useState(startIndex)
   const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
   const stageRef = useRef<HTMLDivElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
-  const dragStartRef = useRef({ x: 0, y: 0, scrollX: 0, scrollY: 0 })
+  const dragStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
 
   // GSAP: Entrance animation
   useEffect(() => {
@@ -56,7 +57,6 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
 
   // ── Scroll wheel zoom + mouse drag pan ──
   const zoomRef = useRef(zoom)
-  const panRef = useRef({ x: 0, y: 0 })
   useEffect(() => { zoomRef.current = zoom }, [zoom])
 
   useEffect(() => {
@@ -67,23 +67,16 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
     const wheelHandler = (e: WheelEvent) => {
       if ((e.target as HTMLElement)?.closest('svg')) return
       e.preventDefault()
-      const oldZoom = zoomRef.current
-      const factor = e.deltaY < 0 ? 1.02 : 1 / 1.02
-      const newZoom = Math.min(Math.max(oldZoom * factor, 0.1), 15)
-
-      const rect = el.getBoundingClientRect()
-      const cx = e.clientX - rect.left
-      const cy = e.clientY - rect.top
-      const ratio = newZoom / oldZoom
-      const px = panRef.current.x
-      const py = panRef.current.y
-
-      requestAnimationFrame(() => {
+      setPan(p => {
+        const oldZoom = zoomRef.current
+        const factor = e.deltaY < 0 ? 1.02 : 1 / 1.02
+        const newZoom = Math.min(Math.max(oldZoom * factor, 0.1), 15)
+        const rect = el.getBoundingClientRect()
+        const cx = e.clientX - rect.left
+        const cy = e.clientY - rect.top
+        const ratio = newZoom / oldZoom
         setZoom(newZoom)
-        panRef.current = {
-          x: cx - ratio * (cx - px),
-          y: cy - ratio * (cy - py),
-        }
+        return { x: cx - ratio * (cx - p.x), y: cy - ratio * (cy - p.y) }
       })
     }
 
@@ -92,17 +85,16 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
       if (e.button !== 0) return
       if ((e.target as HTMLElement)?.closest('svg, button, [data-no-drag]')) return
       draggingRef.current = true
-      dragStartRef.current = { x: e.clientX, y: e.clientY, scrollX: panRef.current.x, scrollY: panRef.current.y }
+      setPan(p => {
+        dragStartRef.current = { x: e.clientX, y: e.clientY, panX: p.x, panY: p.y }
+        return p
+      })
       el.style.cursor = 'grabbing'
       e.preventDefault()
     }
     const mouseMove = (e: MouseEvent) => {
       if (!draggingRef.current) return
-      const dx = e.clientX - dragStartRef.current.x
-      const dy = e.clientY - dragStartRef.current.y
-      panRef.current = { x: dragStartRef.current.scrollX - dx, y: dragStartRef.current.scrollY - dy }
-      // Force re-render via a counter ref → setZoom forces re-render
-      setZoom(z => z)
+      setPan({ x: dragStartRef.current.panX - (e.clientX - dragStartRef.current.x), y: dragStartRef.current.panY - (e.clientY - dragStartRef.current.y) })
     }
     const mouseUp = () => {
       if (draggingRef.current) {
@@ -123,8 +115,8 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
     }
   }, [])
 
-  // Reset pan on page change
-  useEffect(() => { panRef.current = { x: 0, y: 0 } }, [index])
+  // Reset zoom + pan on page change
+  useEffect(() => { setZoom(1); setPan({ x: 0, y: 0 }) }, [index])
 
   // Backdrop click
   const handleBackdropClick = useCallback((e: React.MouseEvent) => {
@@ -183,7 +175,7 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
               display: 'inline-block',
               maxWidth: '100%',
               maxHeight: '100%',
-              transform: `scale(${zoom}) translate(${panRef.current.x / zoom}px, ${panRef.current.y / zoom}px)`,
+              transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
               transformOrigin: 'center center',
               cursor: draggingRef.current ? 'grabbing' : zoom > 1 ? 'grab' : 'default',
             }}
