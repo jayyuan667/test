@@ -454,7 +454,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
       if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
       const oldZoom = zoomRef.current
-      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
+      const factor = e.deltaY < 0 ? 1.06 : 1 / 1.06
       const newZoom = Math.min(Math.max(oldZoom * factor, 0.05), 8)
 
       const rect = el.getBoundingClientRect()
