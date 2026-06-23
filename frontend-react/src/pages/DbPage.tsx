@@ -314,15 +314,20 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
   }, [filterScope])
 
   // Edit
+  const [editProcessRows, setEditProcessRows] = useState<{ code: string; trade: string; content: string }[]>([])
+
   const handleEdit = () => {
     if (!selectedRecord || browseOnly) return
+    const rows = normalizeProcessRows(selectedRecord.process_list)
     setEditDraft({
       prefix: selectedRecord.prefix,
       product_type: selectedRecord.product_type,
       process_summary: selectedRecord.process_summary,
       tech_requirement: selectedRecord.tech_requirement,
       content: selectedRecord.content,
-    })
+      process_list: rows,
+    } as Partial<LibraryRecord> & { process_list?: unknown })
+    setEditProcessRows(rows)
     setEditFeaturePage(0)
     setViewMode('edit')
   }
@@ -331,7 +336,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
     if (!selectedRecord) return
     setSaving(true)
     try {
-      const body = { ...editDraft } as Partial<LibraryRecord> & { library_key?: string }
+      const body = { ...editDraft, process_list: editProcessRows } as Partial<LibraryRecord> & { library_key?: string; process_list?: unknown }
       if (filterScope) body.library_key = filterScope
       const updated = await updateLibraryRecord(selectedRecord.id, body)
       setSelectedRecord(updated)
@@ -343,6 +348,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
 
   const handleCancelEdit = () => {
     setEditDraft({})
+    setEditProcessRows([])
     setViewMode(selectedRecord ? 'detail' : 'list')
   }
 
@@ -884,13 +890,29 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                     {selectedRecord.process_list?.length ? (
                       <div className="rounded-xl border border-slate-200 overflow-hidden">
                         <table className="data-table">
-                          <thead><tr><th style={{ width: 70 }}>工序号</th><th>内容</th></tr></thead>
+                          <thead><tr><th style={{ width: 60 }}>工序号</th><th style={{ width: 56 }}>工种</th><th>工序内容</th></tr></thead>
                           <tbody>
                             {normalizeProcessRows(selectedRecord.process_list).map((row, i) => {
                               return (
                                 <tr key={i}>
-                                  <td className="font-mono text-blue-600">{row.code || `#${i + 1}`}</td>
-                                  <td>{row.trade ? `${row.trade} | ${row.content}` : row.content}</td>
+                                  <td className="font-mono text-[12px] font-bold text-blue-600">{row.code || `#${i + 1}`}</td>
+                                  <td>
+                                    {row.trade ? (
+                                      <span className={[
+                                        'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border',
+                                        row.trade === '料' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' :
+                                        row.trade === '车' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                        row.trade === '铣' || row.trade === '数铣' ? 'bg-cyan-50 text-cyan-600 border-cyan-200' :
+                                        row.trade === '钻' ? 'bg-teal-50 text-teal-600 border-teal-200' :
+                                        row.trade === '钳' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                        row.trade === '检' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                                        row.trade === '热处理' ? 'bg-red-50 text-red-600 border-red-200' :
+                                        row.trade === '镀覆' || row.trade === '表处' ? 'bg-purple-50 text-purple-600 border-purple-200' :
+                                        'bg-slate-50 text-slate-600 border-slate-200'
+                                      ].join(' ')}>{row.trade}</span>
+                                    ) : <span className="text-[10px] text-slate-400">—</span>}
+                                  </td>
+                                  <td className="text-[12px]">{row.content}</td>
                                 </tr>
                               )
                             })}
@@ -940,13 +962,99 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-semibold text-slate-500">工艺内容</label>
+                    <label className="text-[11px] font-semibold text-slate-500">技术要求</label>
                     <textarea
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-700 font-mono focus:outline-none focus:border-flame-400 focus:ring-1 focus:ring-flame-glow transition-all resize-none"
-                      rows={6}
-                      value={editDraft.content || ''}
-                      onChange={e => setEditDraft(d => ({ ...d, content: e.target.value }))}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-1 focus:ring-flame-glow transition-all resize-none"
+                      rows={2}
+                      placeholder="例：调质处理 HB 240-280；未注倒角 C1"
+                      value={editDraft.tech_requirement || ''}
+                      onChange={e => setEditDraft(d => ({ ...d, tech_requirement: e.target.value }))}
                     />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-slate-500">工艺摘要</label>
+                    <textarea
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-1 focus:ring-flame-glow transition-all resize-none"
+                      rows={2}
+                      placeholder="例：0010 备料 | 0020 车 | 0030 铣 | 0040 钳 | 0050 检"
+                      value={editDraft.process_summary || ''}
+                      onChange={e => setEditDraft(d => ({ ...d, process_summary: e.target.value }))}
+                    />
+                  </div>
+
+                  {/* Editable process table */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-[11px] font-semibold text-slate-500">工艺规程表</label>
+                      <button
+                        className="btn btn-ghost !text-[10px] !py-1 !px-2 text-flame-600"
+                        onClick={() => {
+                          const newRow = { code: '', trade: '', content: '' }
+                          setEditProcessRows(prev => [...prev, newRow])
+                        }}
+                      >
+                        + 添加工序
+                      </button>
+                    </div>
+                    {editProcessRows.length > 0 ? (
+                      <div className="rounded-xl border border-slate-200 overflow-hidden">
+                        <table className="data-table">
+                          <thead><tr><th style={{ width: 56 }}>工序号</th><th style={{ width: 52 }}>工种</th><th>工序内容</th><th style={{ width: 32 }}></th></tr></thead>
+                          <tbody>
+                            {editProcessRows.map((row, i) => (
+                              <tr key={i} className="group">
+                                <td>
+                                  <input
+                                    className="w-full bg-transparent text-[11px] font-mono font-bold text-blue-600 border-0 outline-none focus:ring-1 focus:ring-flame-400 rounded px-1 py-0.5"
+                                    placeholder="0010"
+                                    value={row.code}
+                                    onChange={e => {
+                                      const next = [...editProcessRows]
+                                      next[i] = { ...next[i], code: e.target.value }
+                                      setEditProcessRows(next)
+                                    }}
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    className="w-full bg-transparent text-[11px] font-semibold border-0 outline-none focus:ring-1 focus:ring-flame-400 rounded px-1 py-0.5"
+                                    placeholder="车"
+                                    value={row.trade}
+                                    onChange={e => {
+                                      const next = [...editProcessRows]
+                                      next[i] = { ...next[i], trade: e.target.value }
+                                      setEditProcessRows(next)
+                                    }}
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    className="w-full bg-transparent text-[11px] border-0 outline-none focus:ring-1 focus:ring-flame-400 rounded px-1 py-0.5"
+                                    placeholder="工序内容..."
+                                    value={row.content}
+                                    onChange={e => {
+                                      const next = [...editProcessRows]
+                                      next[i] = { ...next[i], content: e.target.value }
+                                      setEditProcessRows(next)
+                                    }}
+                                  />
+                                </td>
+                                <td>
+                                  <button
+                                    className="text-[14px] text-slate-300 hover:text-red-500 transition-colors leading-none"
+                                    onClick={() => setEditProcessRows(prev => prev.filter((_, idx) => idx !== i))}
+                                    title="删除此行"
+                                  >×</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-slate-400 py-3 text-center border border-dashed border-slate-200 rounded-xl">暂无工序，点击"+ 添加工序"</div>
+                    )}
                   </div>
 
                   {/* Feature report page editor */}
@@ -960,7 +1068,6 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                           <button className="btn btn-ghost !text-[10px] !py-1 !px-2" disabled={editFeaturePage >= featurePages.length - 1} onClick={() => setEditFeaturePage(p => p + 1)}>&rarr;</button>
                         </div>
                       </div>
-                      {/* Page fields */}
                       {featurePages[editFeaturePage] && (
                         <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 p-3">
                           <div className="text-[11px] text-slate-500 mb-2">第 {String((featurePages[editFeaturePage] as Record<string, unknown>)._page_number || editFeaturePage + 1)} 页</div>
@@ -1093,13 +1200,27 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                   {selectedRecord?.process_list?.length ? (
                     <div className="rounded-xl border border-slate-200 overflow-hidden">
                       <table className="data-table">
-                        <thead><tr><th style={{ width: 60 }}>工序号</th><th>内容</th></tr></thead>
+                        <thead><tr><th style={{ width: 48 }}>工序号</th><th style={{ width: 44 }}>工种</th><th>工序内容</th></tr></thead>
                         <tbody>
                           {normalizeProcessRows(selectedRecord.process_list).map((row, i) => {
                             return (
                               <tr key={i}>
-                                <td className="font-mono text-blue-600 text-[11px]">{row.code || `#${i + 1}`}</td>
-                                <td className="text-[11px]">{row.trade ? `${row.trade} | ${row.content}` : row.content}</td>
+                                <td className="font-mono text-[10px] font-bold text-blue-600">{row.code || `#${i + 1}`}</td>
+                                <td>
+                                  {row.trade ? (
+                                    <span className={[
+                                      'inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold border',
+                                      row.trade === '料' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' :
+                                      row.trade === '车' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                      row.trade === '铣' || row.trade === '数铣' ? 'bg-cyan-50 text-cyan-600 border-cyan-200' :
+                                      row.trade === '钳' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                      row.trade === '检' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                                      row.trade === '热处理' ? 'bg-red-50 text-red-600 border-red-200' :
+                                      'bg-slate-50 text-slate-600 border-slate-200'
+                                    ].join(' ')}>{row.trade}</span>
+                                  ) : <span className="text-[9px] text-slate-400">—</span>}
+                                </td>
+                                <td className="text-[10px] leading-relaxed">{row.content}</td>
                               </tr>
                             )
                           })}
