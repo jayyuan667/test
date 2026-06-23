@@ -329,7 +329,7 @@ def _extract_trades_from_rows(process_list):
     for row in (process_list or []):
         text = str(row or "").strip()
         parts = [p.strip() for p in text.split("@") if p.strip()]
-        if len(parts) >= 3 and re.match(r'^[一-鿿\-]{1,6}$', parts[1]) and not parts[1].startswith(('工种', '设备', '工时')):
+        if len(parts) >= 3 and re.match(r'^[一-鿿\-\d]{1,8}$', parts[1]) and not parts[1].startswith(('工种', '设备', '工时')):
             trade = parts[1]
             if trade and trade not in seen:
                 seen.add(trade)

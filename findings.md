@@ -1,67 +1,74 @@
 # 发现与决策
 
-## 需求
-- 统一 Python 环境；无法完全统一的平台能力必须明确兼容和降级。
-- macOS 与 Windows 均可从干净克隆启动核心服务。
-- 缺少 YOLO、Creo、FreeCAD 等可选能力时不能拖垮后端启动。
-- 环境状态必须能由后端检查并由前端读取。
-- 当前阶段不调整工艺生成工作流、页面按钮和 SSE 流式输出。
+## 本次任务：Linux 服务器生产上线
 
-## 研究发现
-- 系统 `/usr/bin/python3` 为 3.9.6，项目 `.venv` 为 Python 3.11.15。
-- 项目缺少 `.python-version`、`pyproject.toml` 和 Python 锁文件。
-- 根 `requirements.txt` 与 `backend/requirements.txt` 内容不一致。
-- 根依赖包含 Ultralytics，后端依赖不包含；后端依赖包含 Windows 专属 pywinauto。
-- 两份依赖均未声明 PyMuPDF，但 PDF 转换代码优先导入 `fitz`。
-- macOS 未安装 Poppler 时，缺少 PyMuPDF 会导致 PDF 上传失败。
-- 当前 `.venv` 的基础依赖一致性检查通过，但 torch 和 ultralytics 未安装。
-- ONNX Runtime 已安装，模型文件缺失时系统会降级到人工标注。
-- macOS 启动兼容修改已在本地提交 `8cd8775`。
-- 数据库空库初始化测试通过。
+### 关键发现
 
-## 技术决策
+#### 代码审计
+- 本地有 **6 个已修改文件**未提交，其中 4 个是关键 bug 修复
+- `AGENTS.md` / `CLAUDE.md` 是 GitNexus 自动统计变更，可提交
+- `backups/` 是运行时产物，不应进入源码包
+- `frontend-react/tests/zip-to-db-flow.spec.ts` 是新增的 14 个测试文件
+
+#### 服务器状态（来自试跑报告）
+- 代码在 `~/smart-process-test/test`，使用 nohup 运行
+- 根分区 93% 使用率，需关注
+- Python 通过 uv 使用 3.11.15，Node 切到了 20.x
+- 上次打包时排除了 `.git/`、`node_modules/`、`.venv/` 等
+- tar 解压时有 macOS 扩展属性警告，不影响功能
+- 两层 SSH 链路，端口转发用 `-L 5191:127.0.0.1:5190`
+
+#### 已确认可用的能力
+- python.available = true
+- database.available = true, schema_ready = true
+- pdf.available = true (pymupdf)
+- vision_api.available = true (doubao)
+- yolo.available = false (模型文件缺失)
+- freecad.available = false
+- creo.available = false (Linux 预期不支持)
+
+#### 未确认的关键配置
+- LLM_API_KEY / LLM_BASE_URL / LLM_MODEL
+- EMBEDDING_API_KEY / EMBEDDING_BASE_URL
+
+#### 已知 Bug 修复状态
+| Bug | 修复提交 | 是否在服务器上 |
+|-----|---------|--------------|
+| drawing_features 表缺失 → 删除库记录崩溃 | e524e8d | ❓ 不确定（tar 包是工作区快照） |
+| sample ZIP 导入含无效 PDF | 未提交 | ❌ 不在服务器上 |
+| YOLO 跳转后 review 状态残留 | 未提交 | ❌ 不在服务器上 |
+| ZIP 入库后 DbPage 锁屏 | 未提交 | ❌ 不在服务器上 |
+
+#### 架构兼容性
+- 不需要数据库迁移（SQLite 原地升级，启动自动建表）
+- 不需要改前端 API 路径
+- .env 格式应向后兼容，需合并新增配置项
+- 前端需要重新 build（Vite 构建产物依赖代码版本）
+
+### 技术决策
 | 决策 | 理由 |
 |------|------|
-| `pyproject.toml` 是唯一手工维护的依赖清单 | 消除双 requirements 漂移 |
-| `uv.lock` 提供具体版本锁定 | 保证团队和 CI 复现 |
-| `requirements.txt` 由 uv 导出 | 兼容不能使用 uv 的部署方式 |
-| `core` 包含 PyMuPDF | PDF 是核心输入能力 |
-| `yolo` 包含 Ultralytics/PyTorch | 大体积且平台差异明显，按需安装 |
-| `windows-creo` 使用 `sys_platform == 'win32'` | macOS 不应安装或加载 Win32 依赖 |
-| `/api/system/capabilities` 返回结构化能力状态 | 前端不再依赖终端日志判断降级 |
-| 核心能力失败阻止启动，可选能力失败允许降级 | 区分系统不可用与局部能力不可用 |
+| 先提交再打包 | 确保服务器代码与 git 一致，可追溯 |
+| 保留旧代码备份而不是覆盖 | 快速回退 |
+| 用 `--exclude` 精确控制 tar 内容 | 避免上次的"工作区快照"问题 |
+| 不改变现有部署架构（nohup→systemd 等业务验收后） | 减少变量 |
 
-## 遇到的问题
-| 问题 | 解决方案 |
-|------|---------|
-| 开发机存在多个 Python 命令来源 | 所有项目命令统一通过 `uv run` 或 `.venv` 解释器执行 |
-| PDF 有两套运行时路径 | PyMuPDF 作为默认；Poppler仅保留兼容回退 |
-| YOLO模型不进入 Git | 使用模型清单记录路径、哈希、版本、类别和阈值 |
-| Creo仅适用 Windows | 能力检测返回“不适用”，不是异常 |
+### 风险清单
+| 风险 | 影响 | 缓解 |
+|------|------|------|
+| 服务器磁盘满 | 服务不可用 | 部署前 `df -h` 检查 |
+| .env 被覆盖 | LLM/Embedding 不可用 | 部署前备份，部署后 diff 对比 |
+| 旧进程未完全退出 | 端口冲突 | `ss -ltnp` 确认 5190 空闲后再启动 |
+| SSH 链路断开 | 部署中断 | 使用 `screen` 或 `tmux` 保持会话 |
+| 前端构建失败 | 页面无法访问 | `npm run build` 在 deploy_check 中已验证 |
+| 新代码引入兼容问题 | API 返回异常 | health check 是最小化验证 |
 
-## 资源
-- `README.md`
-- `INSTALL.md`
-- `START.md`
-- `requirements.txt`
-- `backend/requirements.txt`
-- `backend/pipeline/pdf_converter.py`
-- `backend/pipeline/yolo_detector.py`
-- `backend/prt_pipeline.py`
-- `backend/test_startup_import.py`
-- Astral官方文档建议GitHub Actions使用`astral-sh/setup-uv`，并支持所有uv支持的平台。
-- GitHub官方`actions/setup-python`和`actions/setup-node`用于固定Python和Node版本；CI计划使用固定主版本标签。
-
-## 影响分析
-- `convert_pdf_to_images`：HIGH，直接影响4个调用者，并波及图纸上传和知识库PDF导入流程。
-- `upload_drawing`：LOW。
-- `get_yolo_detector`：LOW。
-- `health`：LOW。
-- PDF相关实现必须同时覆盖上传和知识库导入回归测试。
-
-## 视觉/浏览器发现
-- 本阶段不修改视觉设计。
-- 后续工作流阶段需要处理按钮越序、重复提交和页面错误吞没问题。
+### 资源
+- Linux 试跑报告：`docs/reports/2026-06-21-linux-server-trial-run-handoff.md`
+- 竞品与技术栈评估：`docs/reports/智能工艺规程系统竞品与技术栈评估报告.docx`
+- 工作优先级计划：`docs/reports/智能工艺规程系统当前工作优先级与两周执行计划.docx`
+- 服务器代码路径：`~/smart-process-test/test`
+- 后端日志：`~/smart-process-test/test/server.log`
 
 ---
-*该文件记录环境统一设计的事实依据，实施前应重新读取。*
+*此文件记录上线实施的事实依据，决策前应重新读取。*

@@ -167,6 +167,15 @@ class ProcessGenerator:
                 current = content
                 continue
 
+            # 增强：识别工步子条目格式并合并到父工序
+            if re.match(r'^\s*工步\s*\d+\s*[:：]', content):
+                # 这是工步子条目，合并到上一道工序
+                if merged_lines:
+                    merged_lines[-1] = merged_lines[-1] + "；" + content
+                elif current:
+                    current = f"{current}；{content}"
+                continue
+
             if current:
                 current = f"{current}{continuation_separator}{content}"
 
@@ -257,6 +266,24 @@ class ProcessGenerator:
             fused_description, descriptions, prefix_hint, log_callback, library_key,
             top_k=rag_top_k,
         )
+
+        # ── 新增：判断 RAG 质量是否足够，低相似度时放弃 RAG 上下文 ──
+        best_rag_similarity = (
+            rag_results["matches"][0].get("similarity", 0)
+            if rag_results and rag_results.get("matches")
+            else 0
+        )
+        RAG_MIN_SIMILARITY = 0.40  # 低于此值不注入 RAG 上下文
+        if best_rag_similarity < RAG_MIN_SIMILARITY:
+            # 放弃 RAG，纯 LLM 自主生成
+            rag_context = ""
+            rag_results = None
+            use_rag_only = False
+            if log_callback:
+                log_callback(
+                    f"⚠️ 最佳 RAG 相似度 {best_rag_similarity:.1%} < {RAG_MIN_SIMILARITY:.0%}，"
+                    "放弃历史参考，基于特征自主生成"
+                )
 
         # ── Step 2: 图号精确匹配 + 高相似度 → 直接返回蓝本工艺原文 ──
         if use_rag_only and not force_llm:
@@ -434,7 +461,7 @@ class ProcessGenerator:
                     self.query_by_fused_text,
                     fused_description,
                     top_k=top_k,
-                    min_similarity=0.20,
+                    min_similarity=0.40,
                     prefix_hint=effective_prefix,
                     log_callback=log_callback,
                     library_key=library_key,
@@ -455,11 +482,11 @@ class ProcessGenerator:
             # 非公共库匹配度不足时，补充公共库检索
             if library_key and library_key != "public" and rag_results:
                 best_sim = rag_results["matches"][0].get("similarity", 0) if rag_results.get("matches") else 0
-                if best_sim < 0.25:
+                if best_sim < 0.40:
                     public_results = self.query_by_fused_text(
                         fused_description,
                         top_k=top_k,
-                        min_similarity=0.20,
+                        min_similarity=0.40,
                         prefix_hint=effective_prefix,
                         log_callback=log_callback,
                         library_key="public",
@@ -471,7 +498,7 @@ class ProcessGenerator:
                                 rag_results["matches"].append(pm)
                                 existing_ids.add(pm.get("drawing_id"))
                         if log_callback:
-                            log_callback("🔍 私有库匹配度不足（<0.3），已补充公共工艺库检索结果")
+                            log_callback("🔍 私有库匹配度不足（<0.40），已补充公共工艺库检索结果")
 
             use_rag_only, prefix_context, exact_result = self._check_exact_prefix(
                 effective_prefix, rag_results, library_key, log_callback,
@@ -538,14 +565,14 @@ class ProcessGenerator:
             return "", rag_results
         try:
             nearest = self.query_by_vector_similarity(
-                fused_description, top_k=1, min_similarity=0.0, library_key=library_key
+                fused_description, top_k=1, min_similarity=0.30, library_key=library_key
             )
             # 私有库无匹配时回退公共库
             if not nearest and library_key and library_key != "public":
                 if log_callback:
                     log_callback("🔍 私有工艺库无匹配，回退公共工艺库检索...")
                 nearest = self.query_by_vector_similarity(
-                    fused_description, top_k=1, min_similarity=0.0, library_key="public"
+                    fused_description, top_k=1, min_similarity=0.30, library_key="public"
                 )
             if not nearest:
                 return "", rag_results

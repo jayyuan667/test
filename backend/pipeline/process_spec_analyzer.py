@@ -54,7 +54,16 @@ PROCESS_SPEC_PROMPT = """\
 
 【工种字段规则】
 - 填写第3列"工序名称"的原始值（料/热/铣/车/钻/检/钳/数控冲 等）
-- 无工种单元格或为空时，填空字符串：NNNN@@工序内容
+- **工种强制规则**：每一道工序的工种字段（第 3 列）不可为空。若表格中该列留空，必须根据工序内容合理推断工种并填入，不可输出空工种（NNNN@@格式）。常见推断规则：
+  - 备料/下料 → 工种填"料"
+  - 铣/铣方/铣外形/铣六面 → 工种填"铣"
+  - 数控铣/加工中心/CNC → 工种填"数铣"
+  - 车/粗车/精车 → 工种填"车"
+  - 钻/钻孔 → 工种填"钻"
+  - 钳/去毛刺/攻丝/清洗/试装 → 工种填"钳"
+  - 镀覆/外协镀 → 工种填"镀覆"
+  - 阳极化/氧化/喷漆 → 工种填"表处"
+  - 检验/标识/入库 → 工种填"检"
 - 工种值不得含 @ 符号
 
 【内容合并规则】
@@ -237,6 +246,26 @@ def _parse_process_rows(raw: str) -> List[str]:
             pass
 
     # ── 回退：逐行正则匹配（兼容旧格式，工种置空） ───────────────────────────
+    # 回退路径的工种关键词推断表
+    _TRADE_KEYWORDS_FALLBACK = [
+        ("料", ["备料", "下料", "毛坯"]),
+        ("铣", ["铣方", "铣外形", "铣六面", "铣"]),
+        ("数铣", ["数控铣", "CNC", "加工中心"]),
+        ("车", ["车削", "车端面", "粗车", "精车"]),
+        ("钻", ["钻孔", "钻"]),
+        ("钳", ["去毛刺", "清洗", "试装", "钳", "攻丝"]),
+        ("镀覆", ["镀覆", "外协镀"]),
+        ("表处", ["阳极化", "电镀", "喷漆", "氧化"]),
+        ("检", ["检验", "标识", "入库", "检"]),
+    ]
+
+    def _infer_trade_from_content(content: str) -> str:
+        for trade, keywords in _TRADE_KEYWORDS_FALLBACK:
+            for kw in keywords:
+                if kw in content:
+                    return trade
+        return ""
+
     for line in raw.splitlines():
         line = line.strip().lstrip("-*•·\"'")
         if not line:
@@ -249,7 +278,9 @@ def _parse_process_rows(raw: str) -> List[str]:
         if not content or code in seen_codes:
             continue
         seen_codes.add(code)
-        rows.append(_build_row(code, '', content))
+        # 回退路径：尝试从内容推断工种
+        inferred_trade = _infer_trade_from_content(content)
+        rows.append(_build_row(code, inferred_trade, content))
     return rows
 
 

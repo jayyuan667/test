@@ -167,8 +167,8 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
         {/* Stage */}
         <div
           ref={stageRef}
-          className="flex-1 overflow-auto flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}
+          className="flex-1 overflow-hidden flex items-center justify-center"
+          style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', overscrollBehavior: 'none' }}
         >
           <div className="relative inline-block" style={{ width: `${zoom * 100}%`, minWidth: '100%', minHeight: '100%' }}>
             <img

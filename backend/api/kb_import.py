@@ -49,6 +49,54 @@ _DRAWING_FOLDER_NAMES = {"drawing", "drawings", "图纸"}
 _SHEET_NAME_PDF_CRAFT = "PDF工艺规程"
 _SHEET_NAME_TXT_CRAFT = "TXT工艺规程"
 
+# ── 工种推断关键词表（入库链路专用） ──────────────────────────────────────────
+_TRADE_KEYWORDS_IMPORT = [
+    ("料", ["备料", "下料", "毛坯"]),
+    ("铣", ["铣方", "铣外形", "铣六面", "铣"]),
+    ("数铣", ["数控铣", "CNC", "加工中心"]),
+    ("车", ["车削", "车端面", "粗车", "精车"]),
+    ("钻", ["钻孔", "钻"]),
+    ("钳", ["去毛刺", "清洗", "试装", "钳", "攻丝"]),
+    ("镀覆", ["镀覆", "外协镀"]),
+    ("表处", ["阳极化", "电镀", "喷漆", "氧化"]),
+    ("检", ["检验", "标识", "入库", "检"]),
+]
+
+
+def _infer_trade_from_content(content: str) -> str:
+    """从工序内容推断工种。"""
+    for trade, keywords in _TRADE_KEYWORDS_IMPORT:
+        for kw in keywords:
+            if kw in content:
+                return trade
+    return ""
+
+
+def _ensure_trade_on_rows(rows: list) -> list:
+    """确保每个工序行都有工种。缺失时从内容推断。
+
+    处理三种格式：
+    - 三段式 NNNN@工种@内容  → 已完整，保持不变
+    - 两段式 NNNN@@内容（空工种）→ 推断工种并补全
+    - 两段式 NNNN@内容（旧格式）→ 推断工种并转为三段式
+    """
+    fixed = []
+    for row in rows:
+        text = str(row or "").strip()
+        if not text:
+            fixed.append(row)
+            continue
+        # 检测工种缺失：空工种（@@）或旧两段式（只有1个@）
+        if "@@" in text or text.count("@") < 2:
+            parts = text.split("@", 2)
+            code = parts[0]
+            content = parts[-1]  # parts[2] for @@， parts[1] for old format
+            trade = _infer_trade_from_content(content)
+            fixed.append(f"{code}@{trade}@{content}" if trade else text)
+        else:
+            fixed.append(text)
+    return fixed
+
 
 def _ensure_import_tables():
     conn = sqlite3.connect(DB_PATH)
@@ -665,6 +713,8 @@ def _build_record_from_prefix(
     draft["xlsx_sheet_names"] = sorted({entry.get("sheet_name", "") for entry in xlsx_entries if entry.get("sheet_name")})
     draft["preview_task_id"] = f"kb_{batch_id}_{prefix}"
     draft["preview_total_pages"] = draft["pdf_page_count"]
+    # 入库前工种校验：缺失工种 → 从内容推断补全
+    content_rows = _ensure_trade_on_rows(content_rows)
     draft["process_list"] = content_rows
 
     preview_dir = os.path.join(KB_PREVIEW_FOLDER, draft["preview_task_id"])
