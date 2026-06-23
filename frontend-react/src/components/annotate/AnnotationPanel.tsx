@@ -263,9 +263,8 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
   const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     isDrawingRef.current = true
     if (e.button !== 0) return
-    const rect = e.currentTarget.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const x = e.nativeEvent.offsetX
+    const y = e.nativeEvent.offsetY
     setIsDrawing(true)
     setDrawStart({ x, y })
     setDrawCurrent({ x, y })
@@ -274,10 +273,9 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!isDrawing) return
-    const rect = e.currentTarget.getBoundingClientRect()
     setDrawCurrent({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: e.nativeEvent.offsetX,
+      y: e.nativeEvent.offsetY,
     })
   }, [isDrawing])
 
