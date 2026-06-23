@@ -642,15 +642,30 @@ export function HistoryPage() {
                       <table className="data-table">
                         <thead>
                           <tr>
-                            <th style={{ width: 60 }}>工序号</th>
-                            <th>内容</th>
+                            <th style={{ width: 56 }}>工序号</th>
+                            <th style={{ width: 48 }}>工种</th>
+                            <th>工序内容</th>
                           </tr>
                         </thead>
                         <tbody>
                           {normalizedProcessRows.map((row, i) => (
                             <tr key={i}>
-                              <td className="font-mono text-blue-600 text-[12px]">{row.code || `#${i + 1}`}</td>
-                              <td className="text-[12px]">{row.trade ? `${row.trade} | ${row.content}` : row.content}</td>
+                              <td className="font-mono text-blue-600 text-[11px] font-bold">{row.code || `#${i + 1}`}</td>
+                              <td>
+                                {row.trade ? (
+                                  <span className={[
+                                    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border',
+                                    row.trade === '料' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' :
+                                    row.trade === '车' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                    row.trade === '铣' || row.trade === '数铣' ? 'bg-cyan-50 text-cyan-600 border-cyan-200' :
+                                    row.trade === '钳' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                    row.trade === '检' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                                    row.trade === '热处理' ? 'bg-red-50 text-red-600 border-red-200' :
+                                    'bg-slate-50 text-slate-600 border-slate-200'
+                                  ].join(' ')}>{row.trade}</span>
+                                ) : <span className="text-[10px] text-slate-400">—</span>}
+                              </td>
+                              <td className="text-[11px]">{row.content}</td>
                             </tr>
                           ))}
                         </tbody>
