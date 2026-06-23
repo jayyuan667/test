@@ -68,7 +68,7 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
       if ((e.target as HTMLElement)?.closest('svg')) return
       e.preventDefault()
       const oldZoom = zoomRef.current
-      const factor = e.deltaY < 0 ? 1.06 : 1 / 1.06
+      const factor = e.deltaY < 0 ? 1.02 : 1 / 1.02
       const newZoom = Math.min(Math.max(oldZoom * factor, 0.1), 15)
 
       const rect = el.getBoundingClientRect()
