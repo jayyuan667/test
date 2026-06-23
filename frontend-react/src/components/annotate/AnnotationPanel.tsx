@@ -263,8 +263,9 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
   const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     isDrawingRef.current = true
     if (e.button !== 0) return
-    const x = e.nativeEvent.offsetX
-    const y = e.nativeEvent.offsetY
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
     setIsDrawing(true)
     setDrawStart({ x, y })
     setDrawCurrent({ x, y })
@@ -273,9 +274,10 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!isDrawing) return
+    const rect = e.currentTarget.getBoundingClientRect()
     setDrawCurrent({
-      x: e.nativeEvent.offsetX,
-      y: e.nativeEvent.offsetY,
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
     })
   }, [isDrawing])
 
@@ -561,11 +563,10 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
                 width={displayW}
                 height={displayH}
                 viewBox={`0 0 ${imgNatural.w} ${imgNatural.h}`}
-                style={panMode ? { pointerEvents: 'none' } : undefined}
-                onMouseDown={panMode ? undefined : handleMouseDown}
-                onMouseMove={panMode ? undefined : handleMouseMove}
-                onMouseUp={panMode ? undefined : handleMouseUp}
-                onMouseLeave={panMode ? undefined : handleMouseUp}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
               >
                 {shapes.map(shape => {
                   const label = allLabels.find(l => l.name === shape.label)
