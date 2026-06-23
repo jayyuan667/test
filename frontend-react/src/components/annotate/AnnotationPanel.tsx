@@ -115,7 +115,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
         for (const [pg, ann] of Object.entries(data)) {
           const pageNum = Number(pg)
           const shapes = (ann.shapes || []).map(s => ({
-            id: crypto.randomUUID(),
+            id: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
             label: s.label,
             x: s.points[0][0],
             y: s.points[0][1],
@@ -297,7 +297,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
     const size = toReal(w, h)
 
     const newShape: AnnotationShape = {
-      id: crypto.randomUUID(),
+      id: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
       label: activeLabel,
       x: topLeft.x,
       y: topLeft.y,
