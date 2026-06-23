@@ -54,8 +54,9 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
     return () => window.removeEventListener('keydown', handler)
   }, [urls.length, onClose])
 
-  // ── Scroll wheel zoom (no Ctrl required) + drag-to-pan ──
+  // ── Scroll wheel zoom + mouse drag pan ──
   const zoomRef = useRef(zoom)
+  const panRef = useRef({ x: 0, y: 0 })
   useEffect(() => { zoomRef.current = zoom }, [zoom])
 
   useEffect(() => {
@@ -64,7 +65,6 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
 
     // Wheel → zoom (cursor-anchored)
     const wheelHandler = (e: WheelEvent) => {
-      // Don't zoom if user is interacting with annotation SVG (pass through)
       if ((e.target as HTMLElement)?.closest('svg')) return
       e.preventDefault()
       const oldZoom = zoomRef.current
@@ -72,23 +72,27 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
       const newZoom = Math.min(Math.max(oldZoom * factor, 0.1), 15)
 
       const rect = el.getBoundingClientRect()
-      const cursorX = e.clientX - rect.left + el.scrollLeft
-      const cursorY = e.clientY - rect.top + el.scrollTop
+      const cx = e.clientX - rect.left
+      const cy = e.clientY - rect.top
       const ratio = newZoom / oldZoom
+      const px = panRef.current.x
+      const py = panRef.current.y
 
       requestAnimationFrame(() => {
         setZoom(newZoom)
-        el.scrollLeft = Math.max(0, cursorX * ratio - (e.clientX - rect.left))
-        el.scrollTop = Math.max(0, cursorY * ratio - (e.clientY - rect.top))
+        panRef.current = {
+          x: cx - ratio * (cx - px),
+          y: cy - ratio * (cy - py),
+        }
       })
     }
 
     // Mouse drag → pan
     const mouseDown = (e: MouseEvent) => {
-      if (e.button !== 0) return // 只响应左键
+      if (e.button !== 0) return
       if ((e.target as HTMLElement)?.closest('svg, button, [data-no-drag]')) return
       draggingRef.current = true
-      dragStartRef.current = { x: e.clientX, y: e.clientY, scrollX: el.scrollLeft, scrollY: el.scrollTop }
+      dragStartRef.current = { x: e.clientX, y: e.clientY, scrollX: panRef.current.x, scrollY: panRef.current.y }
       el.style.cursor = 'grabbing'
       e.preventDefault()
     }
@@ -96,8 +100,9 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
       if (!draggingRef.current) return
       const dx = e.clientX - dragStartRef.current.x
       const dy = e.clientY - dragStartRef.current.y
-      el.scrollLeft = dragStartRef.current.scrollX - dx
-      el.scrollTop = dragStartRef.current.scrollY - dy
+      panRef.current = { x: dragStartRef.current.scrollX - dx, y: dragStartRef.current.scrollY - dy }
+      // Force re-render via a counter ref → setZoom forces re-render
+      setZoom(z => z)
     }
     const mouseUp = () => {
       if (draggingRef.current) {
@@ -117,6 +122,9 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
       window.removeEventListener('mouseup', mouseUp)
     }
   }, [])
+
+  // Reset pan on page change
+  useEffect(() => { panRef.current = { x: 0, y: 0 } }, [index])
 
   // Backdrop click
   const handleBackdropClick = useCallback((e: React.MouseEvent) => {
@@ -170,20 +178,29 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
           className="flex-1 overflow-hidden flex items-center justify-center"
           style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', overscrollBehavior: 'none' }}
         >
-          <div className="relative inline-block" style={{ width: `${zoom * 100}%`, minWidth: '100%', minHeight: '100%' }}>
-            <img
-              src={urls[index]}
-              alt={`Page ${index + 1}`}
-              className="block w-full h-auto transition-none select-none"
-              draggable={false}
-              style={{ maxWidth: 'none' }}
-            />
-            {annotationShapes && annotationShapes[index + 1] && imageNaturalSize && imageNaturalSize.w > 0 && (
-              <svg
-                className="absolute inset-0 w-full h-full pointer-events-none"
-                viewBox={`0 0 ${imageNaturalSize.w} ${imageNaturalSize.h}`}
-                preserveAspectRatio="xMidYMid meet"
-              >
+          <div
+            style={{
+              display: 'inline-block',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              transform: `scale(${zoom}) translate(${panRef.current.x / zoom}px, ${panRef.current.y / zoom}px)`,
+              transformOrigin: 'center center',
+              cursor: draggingRef.current ? 'grabbing' : zoom > 1 ? 'grab' : 'default',
+            }}
+          >
+            <div className="relative inline-block" style={{ maxWidth: '100%', maxHeight: '92vh' }}>
+              <img
+                src={urls[index]}
+                alt={`Page ${index + 1}`}
+                className="block select-none max-w-full max-h-[92vh] object-contain"
+                draggable={false}
+              />
+              {annotationShapes && annotationShapes[index + 1] && imageNaturalSize && imageNaturalSize.w > 0 && (
+                <svg
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  viewBox={`0 0 ${imageNaturalSize.w} ${imageNaturalSize.h}`}
+                  preserveAspectRatio="xMidYMid meet"
+                >
                 {annotationShapes[index + 1].map((shape, i) => {
                   const displayName = LABEL_DISPLAY_NAMES[shape.label] || shape.label
                   const color = labelColors?.[shape.label] || '#f97316'
@@ -221,6 +238,7 @@ export function FullscreenPreview({ urls, startIndex, onClose, annotationShapes,
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   )
