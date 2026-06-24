@@ -25,6 +25,8 @@ export function AuthVisualStage({ mode }: { mode: 'login' | 'register' }) {
       <div className="auth-stage-sheet" />
       <div className="auth-stage-sheet auth-stage-sheet-secondary" />
       <div className="auth-stage-hud" />
+      <div className="auth-stage-reticle" />
+      <div className="auth-stage-pulse" />
       <div className="auth-stage-scan" />
     </div>
   )

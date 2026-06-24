@@ -52,7 +52,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
         </p>
       )}
     >
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-5 auth-form">
           {/* Username */}
           <div>
             <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-1.5">

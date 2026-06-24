@@ -35,6 +35,16 @@ test.describe('auth ui redesign', () => {
     await expect(page.getByLabel('确认密码')).toBeVisible()
   })
 
+  test('shows clear auth actions and field labels after switching views', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: '立即注册' }).click()
+    await page.getByRole('button', { name: '立即登录' }).click()
+
+    await expect(page.getByLabel('用户名')).toBeVisible()
+    await expect(page.getByRole('button', { name: '登录' })).toBeVisible()
+    await expect(page.getByText('图纸解析与工艺编制控制台')).toBeVisible()
+  })
+
   test('keeps form as priority on narrow screens', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/')
