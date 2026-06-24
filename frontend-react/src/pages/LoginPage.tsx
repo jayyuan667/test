@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { AuthShell } from '../components/auth/AuthShell'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../hooks/useToast'
 
@@ -41,25 +42,17 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-slate-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        {/* Brand */}
-        <div className="flex flex-col items-center mb-8">
-          <div
-            className="w-12 h-12 rounded-xl mb-4 relative overflow-hidden"
-            style={{
-              background: 'linear-gradient(135deg, #f97316 0%, #ea580c 50%, #c2410c 100%)',
-              boxShadow: '0 4px 12px rgba(249, 115, 22, 0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
-            }}
-          />
-          <h1 className="text-xl font-bold text-slate-800">欢迎登录</h1>
-        </div>
-
-        {/* Form card */}
-        <form
-          onSubmit={handleSubmit}
-          className="bg-white border border-slate-200 rounded-lg p-6 space-y-5"
-        >
+    <AuthShell
+      mode="login"
+      title="欢迎登录"
+      subtitle="进入图纸检视台，继续你的工艺流程。"
+      footer={(
+        <p className="text-center text-xs text-slate-400">
+          &copy; {new Date().getFullYear()} 二维工艺系统
+        </p>
+      )}
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
           {/* Username */}
           <div>
             <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -146,13 +139,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
               立即注册
             </button>
           </p>
-        </form>
-
-        {/* Footer */}
-        <p className="text-center text-xs text-slate-400 mt-6">
-          &copy; {new Date().getFullYear()} GitNexus. All rights reserved.
-        </p>
-      </div>
-    </div>
+      </form>
+    </AuthShell>
   )
 }
