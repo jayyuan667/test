@@ -105,3 +105,4 @@ docs/*.pptx
 .worktrees/
 .DS_Store
 Thumbs.db
+.handoff-runtime/
