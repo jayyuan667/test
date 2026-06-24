@@ -673,21 +673,37 @@
 
   .auth-stage-wrap {
     order: -1;
-    min-height: 220px;
+    min-height: auto;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
   .auth-panel-wrap {
-    padding-top: 20px;
+    padding: 12px 16px 16px;
     align-items: flex-start;
   }
 
   .auth-panel {
     width: 100%;
     max-width: 100%;
+    padding: 24px 20px;
+  }
+
+  .auth-stage-copy {
+    padding: 16px 16px 0;
+  }
+
+  .auth-stage-text {
+    font-size: 18px;
+  }
+
+  .auth-stage-label {
+    margin-bottom: 8px;
   }
 
   .auth-stage {
-    min-height: 220px;
+    height: 136px;
+    min-height: 136px;
+    margin: 12px 16px 16px;
+    border-radius: 20px;
   }
 }

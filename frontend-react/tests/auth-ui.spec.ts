@@ -40,9 +40,43 @@ test.describe('auth ui redesign', () => {
     await page.goto('/')
 
     const submit = page.getByRole('button', { name: '登录' })
+    const stage = page.getByTestId('auth-visual-stage')
+    const username = page.getByLabel('用户名')
+
     await expect(submit).toBeVisible()
-    await expect(page.getByLabel('用户名')).toBeVisible()
-    await expect(page.getByTestId('auth-visual-stage')).toBeVisible()
-    await expect(page.getByTestId('auth-visual-stage')).toHaveCSS('min-height', '220px')
+    await expect(username).toBeVisible()
+    await expect(stage).toBeVisible()
+
+    const layout = await page.evaluate(() => {
+      const readRect = (selector: string) => {
+        const element = document.querySelector(selector)
+        if (!element) {
+          return null
+        }
+
+        const rect = element.getBoundingClientRect()
+        return {
+          top: rect.top,
+          bottom: rect.bottom,
+          height: rect.height,
+        }
+      }
+
+      return {
+        stage: readRect('[data-testid="auth-visual-stage"]'),
+        panel: readRect('.auth-panel'),
+        username: readRect('#username'),
+        viewportHeight: window.innerHeight,
+      }
+    })
+
+    expect(layout.stage).not.toBeNull()
+    expect(layout.panel).not.toBeNull()
+    expect(layout.username).not.toBeNull()
+
+    expect(layout.stage!.height).toBeLessThan(180)
+    expect(layout.stage!.bottom).toBeLessThan(layout.viewportHeight * 0.34)
+    expect(layout.panel!.top).toBeLessThan(layout.viewportHeight * 0.46)
+    expect(layout.username!.top).toBeLessThan(layout.viewportHeight * 0.66)
   })
 })
