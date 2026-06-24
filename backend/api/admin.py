@@ -10,11 +10,6 @@ from ._response import ok, fail, ERR_VALIDATION, ERR_FORBIDDEN
 admin_bp = Blueprint("admin", __name__)
 
 
-def _is_super_admin() -> bool:
-    user = getattr(g, "current_user", None)
-    return user and user["role"] == "super_admin"
-
-
 def _user_to_dict(user: dict) -> dict:
     enterprise = None
     if user.get("enterprise_id"):
@@ -168,9 +163,17 @@ def update_user(user_id):
     if "role" in data and current_user["role"] == "super_admin":
         kwargs["role"] = data["role"]
     if "enterprise_id" in data and current_user["role"] == "super_admin":
-        kwargs["enterprise_id"] = data.get("enterprise_id")
+        eid = data.get("enterprise_id")
+        if eid is not None:
+            enterprise = auth_store.get_enterprise(eid)
+            if not enterprise:
+                return fail(ERR_VALIDATION, "企业不存在")
+        kwargs["enterprise_id"] = eid
     if "quota_total" in data:
-        total = int(data["quota_total"])
+        try:
+            total = int(data["quota_total"])
+        except ValueError:
+            return fail(ERR_VALIDATION, "配额必须为整数")
         if total < 0:
             return fail(ERR_VALIDATION, "配额不能为负数")
         auth_store.set_quota(user_id, total)
@@ -199,7 +202,10 @@ def create_grant():
     data = request.get_json(silent=True) or {}
     user_id = data.get("user_id")
     enterprise_id = data.get("enterprise_id")
-    duration_days = int(data.get("duration_days", 365))
+    try:
+        duration_days = int(data.get("duration_days", 365))
+    except ValueError:
+        return fail(ERR_VALIDATION, "授权天数必须为整数")
 
     if not user_id or not enterprise_id:
         return fail(ERR_VALIDATION, "user_id 和 enterprise_id 不能为空")
