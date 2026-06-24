@@ -6,6 +6,11 @@ import { GeneratePage } from './pages/GeneratePage'
 import { ZipPage } from './pages/ZipPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { DbPage } from './pages/DbPage'
+import { LoginPage } from './pages/LoginPage'
+import { RegisterPage } from './pages/RegisterPage'
+import { ProfilePage } from './pages/ProfilePage'
+import { AdminPage } from './pages/admin/AdminPage'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import gsap from 'gsap'
 import { usePrefersReducedMotion } from './hooks/usePrefersReducedMotion'
 
@@ -13,6 +18,44 @@ import type { PageId } from './types'
 
 
 export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
+  )
+}
+
+function AppShell() {
+  const { isAuthenticated, isLoading } = useAuth()
+  const [authPage, setAuthPage] = useState<'login' | 'register'>('login')
+  const { toasts } = useToast()
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center bg-slate-50">
+        <div className="text-slate-400 text-sm">加载中...</div>
+      </div>
+    )
+  }
+
+  // Not authenticated: show login/register (no Sidebar)
+  if (!isAuthenticated) {
+    return (
+      <>
+        {authPage === 'login' && <LoginPage onNavigate={setAuthPage} />}
+        {authPage === 'register' && <RegisterPage onNavigate={setAuthPage} />}
+        <ToastStack toasts={toasts} />
+      </>
+    )
+  }
+
+  // Authenticated: show main app layout
+  return <AppLayout />
+}
+
+function AppLayout() {
+  const { user, logout } = useAuth()
   const [page, setPage] = useState<PageId>('generate')
   const [collapsed, setCollapsed] = useState(false)
   const [generateBusy, setGenerateBusy] = useState(false)
@@ -39,6 +82,12 @@ export default function App() {
   }, [])
 
   const handleNavigate = useCallback((id: PageId) => {
+    // Handle logout trigger (from Sidebar logout button)
+    if (id === 'login') {
+      logout()
+      return
+    }
+
     if (anyBusy && id !== page) {
       if (!window.confirm('当前有任务正在进行中，切换页面将中断进程。\n\n确定要离开吗？')) return
       // User confirmed — reset busy flags so the new page starts clean
@@ -47,7 +96,7 @@ export default function App() {
     }
     setMountedPages(prev => prev.has(id) ? prev : new Set([...prev, id]))
     setPage(id)
-  }, [anyBusy, page])
+  }, [anyBusy, page, logout])
 
   // GSAP: Page transition
   useEffect(() => {
@@ -65,6 +114,8 @@ export default function App() {
     }
   }, [page, reduceMotion])
 
+  const isAdmin = user?.role === 'super_admin' || user?.role === 'enterprise_admin'
+
   return (
     <div className="flex h-screen overflow-hidden relative">
       <Sidebar
@@ -73,6 +124,7 @@ export default function App() {
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed(c => !c)}
         disabled={anyBusy}
+        userRole={user?.role}
       />
       <main className="flex-1 min-w-0 flex flex-col relative z-10">
         {/* Page content — pages kept mounted after first visit to preserve state */}
@@ -90,6 +142,12 @@ export default function App() {
           </div>
           <div className="h-full overflow-y-auto overflow-x-hidden" style={{ display: page === 'db' ? 'block' : 'none' }}>
             {mountedPages.has('db') && <DbPage onNavigate={handleNavigate} />}
+          </div>
+          <div className="h-full overflow-y-auto overflow-x-hidden" style={{ display: page === 'profile' ? 'block' : 'none' }}>
+            {mountedPages.has('profile') && <ProfilePage />}
+          </div>
+          <div className="h-full overflow-y-auto overflow-x-hidden" style={{ display: page === 'admin' && isAdmin ? 'block' : 'none' }}>
+            {mountedPages.has('admin') && isAdmin && <AdminPage />}
           </div>
         </div>
         <footer className="shrink-0 text-center text-[12px] text-slate-500 py-2.5 bg-slate-50 border-t border-slate-200">

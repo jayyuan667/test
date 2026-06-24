@@ -1,7 +1,12 @@
+import type { User, Enterprise, QuotaInfo, AdminUser } from '../types/auth'
+
 const BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init)
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    credentials: 'include',
+  })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error || body.message || `HTTP ${res.status}`)
@@ -14,7 +19,7 @@ export async function uploadFile(file: File, opts?: { retrieval_library_key?: st
   fd.append('file', file)
   if (opts?.retrieval_library_key) fd.append('retrieval_library_key', opts.retrieval_library_key)
   if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
-  const res = await fetch(`${BASE}/upload`, { method: 'POST', body: fd })
+  const res = await fetch(`${BASE}/upload`, { method: 'POST', body: fd, credentials: 'include' })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error || body.message || `Upload failed: ${res.status}`)
@@ -32,7 +37,7 @@ export async function batchUpload(files: File[], opts?: { retrieval_library_key?
   files.forEach(f => fd.append('files', f))
   if (opts?.retrieval_library_key) fd.append('retrieval_library_key', opts.retrieval_library_key)
   if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
-  const res = await fetch(`${BASE}/batch_upload`, { method: 'POST', body: fd })
+  const res = await fetch(`${BASE}/batch_upload`, { method: 'POST', body: fd, credentials: 'include' })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error || body.message || `Batch upload failed: ${res.status}`)
@@ -54,6 +59,7 @@ export async function submitReview(taskId: string, payload: { review_text: strin
   const res = await fetch(`${BASE}/review/${taskId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(payload),
   })
   if (res.ok) return { message: 'Review accepted', task_id: taskId }
@@ -106,6 +112,7 @@ export async function downloadExport(taskId: string, format: 'pdf' | 'xlsx', row
   const res = await fetch(`${BASE}/export/${taskId}?format=${format}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(`Export failed: ${res.status}`)
@@ -283,7 +290,7 @@ export async function importZipZip(params: {
   fd.append('library_mode', params.library_mode)
   if (params.library_name) fd.append('library_name', params.library_name)
   if (params.library_key) fd.append('library_key', params.library_key)
-  const res = await fetch(`${BASE}/kb/import_zip`, { method: 'POST', body: fd })
+  const res = await fetch(`${BASE}/kb/import_zip`, { method: 'POST', body: fd, credentials: 'include' })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error || body.message || `Import failed: ${res.status}`)
@@ -456,7 +463,7 @@ export async function uploadDrawing(file: File, opts?: { retrieval_library_key?:
   fd.append('file', file)
   if (opts?.retrieval_library_key) fd.append('retrieval_library_key', opts.retrieval_library_key)
   if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
-  const res = await fetch(`${BASE}/upload_drawing`, { method: 'POST', body: fd })
+  const res = await fetch(`${BASE}/upload_drawing`, { method: 'POST', body: fd, credentials: 'include' })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error?.message || body.error || body.message || `Upload failed: ${res.status}`)
@@ -495,6 +502,7 @@ export async function saveAnnotation(taskId: string, payload: {
   const res = await fetch(`${BASE}/annotations/${taskId}/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
@@ -510,7 +518,90 @@ export async function finalizeAnnotation(taskId: string): Promise<{ ok: boolean;
 }
 
 export async function exportAnnotations(taskId: string): Promise<Blob> {
-  const res = await fetch(`${BASE}/annotations/${taskId}/export`)
+  const res = await fetch(`${BASE}/annotations/${taskId}/export`, { credentials: 'include' })
   if (!res.ok) throw new Error(`Export failed: ${res.status}`)
   return res.blob()
+}
+
+/* ── Auth / Admin ── */
+
+export async function login(username: string, password: string): Promise<{ user: User }> {
+  return request<{ user: User }>('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+}
+
+export async function register(username: string, password: string): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>('/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+}
+
+export async function logout(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>('/auth/logout', { method: 'POST' })
+}
+
+export async function getMe(): Promise<{ user: User }> {
+  return request<{ user: User }>('/auth/me')
+}
+
+export async function getProfile(): Promise<{ user: User }> {
+  return request<{ user: User }>('/user/profile')
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>('/user/password', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  })
+}
+
+export async function getEnterprises(): Promise<Enterprise[]> {
+  return request<Enterprise[]>('/admin/enterprises')
+}
+
+export async function createEnterprise(name: string): Promise<Enterprise> {
+  return request<Enterprise>('/admin/enterprises', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+export async function updateEnterprise(id: number, updates: Partial<Enterprise>): Promise<Enterprise> {
+  return request<Enterprise>(`/admin/enterprises/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  })
+}
+
+export async function getAdminUsers(enterpriseId?: number): Promise<AdminUser[]> {
+  const qs = enterpriseId ? `?enterprise_id=${enterpriseId}` : ''
+  return request<AdminUser[]>(`/admin/users${qs}`)
+}
+
+export async function updateAdminUser(userId: number, updates: Partial<AdminUser>): Promise<AdminUser> {
+  return request<AdminUser>(`/admin/users/${userId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  })
+}
+
+export async function createAdminGrant(userId: number, enterpriseId: number, durationDays = 365): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>('/admin/grants', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, enterprise_id: enterpriseId, duration_days: durationDays }),
+  })
+}
+
+export async function getAdminQuotas(): Promise<QuotaInfo[]> {
+  return request<QuotaInfo[]>('/admin/quotas')
 }

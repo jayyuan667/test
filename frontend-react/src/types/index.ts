@@ -54,4 +54,4 @@ export interface ReviewPayload {
   library_key?: string
 }
 
-export type PageId = 'generate' | 'zip' | 'history' | 'db'
+export type PageId = 'generate' | 'zip' | 'history' | 'db' | 'profile' | 'admin' | 'login' | 'register'
