@@ -206,3 +206,52 @@ Running 3 tests using 1 worker
 
 3 passed (3.6s)
 ```
+
+---
+
+## Follow-up Fixes (Auth Grid Contract)
+
+### Fix Applied
+
+- Completed the brief’s `auth-grid` class contract in Task 2 scope
+- Added `auth-grid` to the rendered stage grid element while preserving the existing `auth-stage-grid` hook
+- Aliased the existing grid CSS so the new contract is satisfied without changing the current visual behavior
+
+### Verification
+
+Focused auth UI package run:
+
+```bash
+npm exec -- playwright test tests/auth-ui.spec.ts --config=playwright.config.ts --project=chromium
+```
+
+Output:
+
+```text
+Running 3 tests using 1 worker
+✓  1 [chromium] › tests/auth-ui.spec.ts:14:3 › auth ui redesign › shows login screen with auth stage and form panel (3.3s)
+✓  2 [chromium] › tests/auth-ui.spec.ts:27:3 › auth ui redesign › switches from login to register form (4.0s)
+✓  3 [chromium] › tests/auth-ui.spec.ts:36:3 › auth ui redesign › keeps form as priority on narrow screens (758ms)
+
+3 passed (8.8s)
+```
+
+Build verification:
+
+```bash
+npm run build
+```
+
+Output:
+
+```text
+vite v6.4.3 building for production...
+transforming...
+✓ 65 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.41 kB │ gzip:   0.30 kB
+dist/assets/index-JKsAesD1.css   56.31 kB │ gzip:  11.50 kB
+dist/assets/index-D1csYmkT.js   439.86 kB │ gzip: 128.61 kB
+✓ built in 1.08s
+```

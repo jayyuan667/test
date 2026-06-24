@@ -579,7 +579,7 @@
 }
 
 .auth-stage-beam,
-.auth-stage-grid,
+.auth-grid,
 .auth-stage-sheet,
 .auth-stage-hud,
 .auth-stage-scan {
@@ -594,6 +594,7 @@
   filter: blur(10px);
 }
 
+.auth-grid,
 .auth-stage-grid {
   inset: 0;
   background-image:

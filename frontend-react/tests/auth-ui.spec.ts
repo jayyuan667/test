@@ -19,6 +19,7 @@ test.describe('auth ui redesign', () => {
     await expect(page.getByText('图纸解析与工艺编制控制台')).toBeVisible()
     await expect(page.getByText('进入图纸检视台，继续你的工艺流程。')).toBeVisible()
     await expect(page.getByTestId('auth-visual-stage')).toBeVisible()
+    await expect(page.locator('.auth-grid')).toBeVisible()
     await expect(page.getByLabel('用户名', { exact: true })).toBeVisible()
     await expect(page.getByLabel('密码', { exact: true })).toBeVisible()
   })

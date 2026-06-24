@@ -21,7 +21,7 @@ export function AuthVisualStage({ mode }: { mode: 'login' | 'register' }) {
   return (
     <div ref={rootRef} data-testid="auth-visual-stage" className="auth-stage" aria-hidden="true">
       <div className="auth-stage-beam" />
-      <div className="auth-stage-grid" />
+      <div className="auth-grid auth-stage-grid" />
       <div className="auth-stage-sheet" />
       <div className="auth-stage-sheet auth-stage-sheet-secondary" />
       <div className="auth-stage-hud" />
