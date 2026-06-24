@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sidebar } from './components/layout/Sidebar'
 import { ToastStack } from './components/shared/Toast'
 import { useToast } from './hooks/useToast'
+import { ToastProvider } from './contexts/ToastContext'
 import { GeneratePage } from './pages/GeneratePage'
 import { ZipPage } from './pages/ZipPage'
 import { HistoryPage } from './pages/HistoryPage'
@@ -19,9 +20,11 @@ import type { PageId } from './types'
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
+    </ToastProvider>
   )
 }
 
@@ -30,7 +33,6 @@ function AppShell() {
   const [authPage, setAuthPage] = useState<'login' | 'register'>('login')
   const { toasts } = useToast()
 
-  // Loading state
   if (isLoading) {
     return (
       <div className="min-h-[100dvh] flex items-center justify-center bg-slate-50">
@@ -39,7 +41,6 @@ function AppShell() {
     )
   }
 
-  // Not authenticated: show login/register (no Sidebar)
   if (!isAuthenticated) {
     return (
       <>
@@ -50,7 +51,6 @@ function AppShell() {
     )
   }
 
-  // Authenticated: show main app layout
   return <AppLayout />
 }
 
@@ -66,7 +66,6 @@ function AppLayout() {
   const prevPageRef = useRef<PageId>('generate')
   const reduceMotion = usePrefersReducedMotion()
 
-  // Lazy-mount pages: first visit mounts, then stays mounted to preserve state
   const [mountedPages, setMountedPages] = useState<Set<PageId>>(() => new Set(['generate']))
 
   const handleError = useCallback((msg: string) => {
@@ -82,15 +81,12 @@ function AppLayout() {
   }, [])
 
   const handleNavigate = useCallback((id: PageId) => {
-    // Handle logout trigger (from Sidebar logout button)
     if (id === 'login') {
       logout()
       return
     }
-
     if (anyBusy && id !== page) {
       if (!window.confirm('当前有任务正在进行中，切换页面将中断进程。\n\n确定要离开吗？')) return
-      // User confirmed — reset busy flags so the new page starts clean
       setGenerateBusy(false)
       setZipBusy(false)
     }
@@ -98,7 +94,6 @@ function AppLayout() {
     setPage(id)
   }, [anyBusy, page, logout])
 
-  // GSAP: Page transition
   useEffect(() => {
     if (prevPageRef.current === page) return
     prevPageRef.current = page
@@ -127,13 +122,10 @@ function AppLayout() {
         userRole={user?.role}
       />
       <main className="flex-1 min-w-0 flex flex-col relative z-10">
-        {/* Page content — pages kept mounted after first visit to preserve state */}
         <div ref={pageContentRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-8 pb-6">
-          {/* GeneratePage: flex layout to fill viewport, handles internal scroll */}
           <div style={{ display: page === 'generate' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
             {mountedPages.has('generate') && <GeneratePage onError={handleError} onSuccess={(msg) => show(msg, 'success')} onBusyChange={handleGenerateBusy} />}
           </div>
-          {/* Other pages: independent scroll containers */}
           <div className="h-full overflow-y-auto overflow-x-hidden" style={{ display: page === 'zip' ? 'block' : 'none' }}>
             {mountedPages.has('zip') && <ZipPage onBusyChange={handleZipBusy} />}
           </div>

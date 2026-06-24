@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { getEnterprises, createEnterprise, updateEnterprise, createAdminGrant } from '../../api/client'
+import { getEnterprises, createEnterprise, updateEnterprise, createAdminGrant, getAdminUsers } from '../../api/client'
 import { useToast } from '../../hooks/useToast'
-import type { Enterprise } from '../../types/auth'
+import type { Enterprise, AdminUser } from '../../types/auth'
 
 export function EnterpriseTab() {
   const { show } = useToast()
@@ -12,8 +12,9 @@ export function EnterpriseTab() {
 
   const [renewModal, setRenewModal] = useState<{
     enterprise: Enterprise
-    userId: string
+    userId: number | null
     durationDays: number
+    unassignedUsers: AdminUser[]
   } | null>(null)
 
   const fetchEnterprises = async () => {
@@ -60,11 +61,24 @@ export function EnterpriseTab() {
     }
   }
 
+  const openRenewModal = async (enterprise: Enterprise) => {
+    try {
+      // Fetch unassigned users (no enterprise) as candidates for admin role
+      const data = await getAdminUsers()
+      const unassigned = data.users.filter(
+        u => (u.enterprise_id === null || u.enterprise_id === enterprise.id) && u.role !== 'super_admin'
+      )
+      setRenewModal({ enterprise, userId: null, durationDays: 365, unassignedUsers: unassigned })
+    } catch {
+      setRenewModal({ enterprise, userId: null, durationDays: 365, unassignedUsers: [] })
+    }
+  }
+
   const handleRenew = async () => {
     if (!renewModal) return
     const { enterprise, userId, durationDays } = renewModal
-    if (!userId.trim()) {
-      show('请输入用户 ID', 'error')
+    if (!userId) {
+      show('请选择用户', 'error')
       return
     }
     if (!durationDays || durationDays <= 0) {
@@ -72,9 +86,10 @@ export function EnterpriseTab() {
       return
     }
     try {
-      await createAdminGrant(Number(userId), enterprise.id, durationDays)
+      await createAdminGrant(userId, enterprise.id, durationDays)
       show('管理员续期成功', 'success')
       setRenewModal(null)
+      await fetchEnterprises()
     } catch (err: unknown) {
       show(err instanceof Error ? err.message : '续期失败', 'error')
     }
@@ -149,9 +164,7 @@ export function EnterpriseTab() {
                       {ent.is_active ? '停用' : '启用'}
                     </button>
                     <button
-                      onClick={() =>
-                        setRenewModal({ enterprise: ent, userId: '', durationDays: 365 })
-                      }
+                      onClick={() => openRenewModal(ent)}
                       className="text-orange-600 hover:text-orange-800 text-xs font-medium"
                     >
                       续期管理员
@@ -166,25 +179,33 @@ export function EnterpriseTab() {
 
       {/* Renew Modal */}
       {renewModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop flex items-center justify-center">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" onClick={() => setRenewModal(null)}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl mx-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-slate-800 mb-4">
               续期管理员 - {renewModal.enterprise.name}
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">用户 ID</label>
-                <input
-                  type="number"
-                  value={renewModal.userId}
+                <label className="block text-sm font-medium text-slate-700 mb-1">选择用户</label>
+                <select
+                  value={renewModal.userId ?? ''}
                   onChange={e =>
                     setRenewModal(prev =>
-                      prev ? { ...prev, userId: e.target.value } : null,
+                      prev ? { ...prev, userId: e.target.value ? Number(e.target.value) : null } : null
                     )
                   }
                   className="block w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition"
-                  placeholder="输入用户 ID"
-                />
+                >
+                  <option value="">-- 选择用户 --</option>
+                  {renewModal.unassignedUsers.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.username} (ID: {u.id}) {u.enterprise_name ? `- ${u.enterprise_name}` : '- 未分配'}
+                    </option>
+                  ))}
+                </select>
+                {renewModal.unassignedUsers.length === 0 && (
+                  <p className="text-xs text-slate-400 mt-1">暂无可分配的用户</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">续期天数</label>
@@ -193,7 +214,7 @@ export function EnterpriseTab() {
                   value={renewModal.durationDays}
                   onChange={e =>
                     setRenewModal(prev =>
-                      prev ? { ...prev, durationDays: Number(e.target.value) } : null,
+                      prev ? { ...prev, durationDays: Number(e.target.value) } : null
                     )
                   }
                   className="block w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition"
@@ -211,7 +232,7 @@ export function EnterpriseTab() {
                   onClick={handleRenew}
                   className="bg-orange-500 hover:bg-orange-600 active:scale-[0.97] text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all"
                 >
-                  确认
+                  确认续期
                 </button>
               </div>
             </div>
