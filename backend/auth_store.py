@@ -131,7 +131,7 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
     return _row_to_dict(row)
 
 
-def update_user(user_id: int, **kwargs):
+def update_user(user_id: int, **kwargs) -> None:
     """Update allowed user fields: username, password_hash, role, enterprise_id, is_active."""
     allowed = {"username", "password_hash", "role", "enterprise_id", "is_active"}
     updates = {k: v for k, v in kwargs.items() if k in allowed}
@@ -143,8 +143,6 @@ def update_user(user_id: int, **kwargs):
         c.execute(
             f"UPDATE users SET {set_clause} WHERE id=?", values
         )
-        row = c.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
-    return _row_to_dict(row)
 
 
 def list_all_users() -> list[dict]:
@@ -259,14 +257,18 @@ def consume_quota(user_id: int) -> bool:
         return c.execute("SELECT changes()").fetchone()[0] > 0
 
 
-def set_quota(user_id: int, total_granted: int):
-    """Upsert a user's total_granted quota. Resets used to 0."""
+def set_quota(user_id: int, total_granted: int) -> dict:
+    """Upsert a user's total_granted quota. Resets used to 0. Returns updated quota."""
     with _conn() as c:
         c.execute(
             "INSERT INTO quotas (user_id, total_granted, used) VALUES (?, ?, 0) "
             "ON CONFLICT(user_id) DO UPDATE SET total_granted=excluded.total_granted, used=excluded.used",
             (user_id, total_granted),
         )
+        row = c.execute(
+            "SELECT * FROM quotas WHERE user_id=?", (user_id,)
+        ).fetchone()
+    return _row_to_dict(row)
 
 
 # ── Enterprise Admin Grants ───────────────────────────────────────────────────
@@ -290,6 +292,19 @@ def get_enterprise_admin_grant(user_id: int) -> Optional[dict]:
     with _conn() as c:
         row = c.execute(
             "SELECT * FROM enterprise_admin_grants WHERE user_id=?", (user_id,)
+        ).fetchone()
+    return _row_to_dict(row)
+
+
+def get_enterprise_admin_grant_by_enterprise(enterprise_id: int) -> Optional[dict]:
+    """Get the admin grant for an enterprise (finds the active admin user)."""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT g.* FROM enterprise_admin_grants g "
+            "JOIN users u ON u.id = g.user_id "
+            "WHERE g.enterprise_id = ? AND u.is_active = 1 "
+            "LIMIT 1",
+            (enterprise_id,),
         ).fetchone()
     return _row_to_dict(row)
 
@@ -338,7 +353,7 @@ def check_user_can_infer(user_id: int) -> Optional[str]:
         return "所属企业已被停用，请联系管理员"
 
     # Check if enterprise admin grant for this enterprise exists and is expired
-    grant = get_enterprise_admin_grant(user_id)
+    grant = get_enterprise_admin_grant_by_enterprise(user["enterprise_id"])
     if grant and grant["expires_at"] < datetime.now().isoformat():
         return "所属企业管理员授权已到期，企业功能暂不可用"
 
