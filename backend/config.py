@@ -237,3 +237,17 @@ def get_freecad_qt_plugin_paths() -> list[str]:
         r"C:\Program Files\FreeCAD 1.1\bin\Lib\site-packages\PySide6\plugins",
     ]
     return [p for p in candidates if p and os.path.exists(os.path.join(p, "platforms"))]
+
+
+import secrets
+
+
+def get_jwt_secret() -> str:
+    """Return JWT secret key from env or generate a random one for dev."""
+    secret = os.getenv("JWT_SECRET_KEY", "").strip()
+    if secret:
+        return secret
+    # Auto-generate for development; note this invalidates all tokens on restart
+    generated = secrets.token_hex(32)
+    os.environ["JWT_SECRET_KEY"] = generated
+    return generated
