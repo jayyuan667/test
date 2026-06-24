@@ -565,11 +565,11 @@
 
 .auth-stage {
   position: relative;
-  min-height: 420px;
+  min-height: 320px;
   height: calc(100dvh - 168px);
   margin: 24px 40px 40px;
   border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 32px;
+  border-radius: 28px;
   background:
     linear-gradient(180deg, rgba(13, 27, 58, 0.84), rgba(8, 18, 40, 0.96)),
     radial-gradient(circle at top, rgba(42, 74, 138, 0.18), transparent 52%);
@@ -666,28 +666,28 @@
   filter: blur(2px);
 }
 
-@media (max-width: 960px) {
+@media (max-width: 900px) {
   .auth-shell {
     grid-template-columns: 1fr;
   }
 
   .auth-stage-wrap {
-    min-height: 280px;
-    order: 2;
+    order: -1;
+    min-height: 220px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
   .auth-panel-wrap {
-    order: 1;
-    padding: 24px 16px 16px;
+    padding-top: 20px;
+    align-items: flex-start;
   }
 
-  .auth-stage-copy {
-    padding: 20px 24px 0;
+  .auth-panel {
+    width: 100%;
+    max-width: 100%;
   }
 
   .auth-stage {
-    height: 260px;
-    min-height: 260px;
-    margin: 16px 16px 24px;
+    min-height: 220px;
   }
 }

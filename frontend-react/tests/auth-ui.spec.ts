@@ -30,6 +30,8 @@ test.describe('auth ui redesign', () => {
     await page.getByRole('button', { name: '立即注册' }).click()
 
     await expect(page.getByRole('heading', { name: '创建账号' })).toBeVisible()
+    await expect(page.getByText('注册后可申请企业授权并继续工艺入库与生成流程。')).toBeVisible()
+    await expect(page.locator('.auth-shell')).toBeVisible()
     await expect(page.getByLabel('确认密码')).toBeVisible()
   })
 
@@ -41,5 +43,6 @@ test.describe('auth ui redesign', () => {
     await expect(submit).toBeVisible()
     await expect(page.getByLabel('用户名')).toBeVisible()
     await expect(page.getByTestId('auth-visual-stage')).toBeVisible()
+    await expect(page.getByTestId('auth-visual-stage')).toHaveCSS('min-height', '220px')
   })
 })
