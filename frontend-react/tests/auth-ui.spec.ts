@@ -23,13 +23,12 @@ test.describe('auth ui redesign', () => {
     await expect(page.getByLabel('密码', { exact: true })).toBeVisible()
   })
 
-  test('switches from login to register without losing themed shell', async ({ page }) => {
+  test('switches from login to register form', async ({ page }) => {
     await page.goto('/')
 
     await page.getByRole('button', { name: '立即注册' }).click()
 
     await expect(page.getByRole('heading', { name: '创建账号' })).toBeVisible()
-    await expect(page.getByTestId('auth-visual-stage')).toBeVisible()
     await expect(page.getByLabel('确认密码')).toBeVisible()
   })
 

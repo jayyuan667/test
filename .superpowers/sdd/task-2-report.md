@@ -172,3 +172,37 @@ dist/assets/index-eW9z6qsz.css   56.31 kB │ gzip:  11.50 kB
 dist/assets/index-CJH2TMbX.js   439.85 kB │ gzip: 128.61 kB
 ✓ built in 1.07s
 ```
+
+---
+
+## Follow-up Fixes (Task Package Cleanup)
+
+### Fix Applied
+
+- Narrowed `frontend-react/tests/auth-ui.spec.ts` to Task 2 scope by removing the register-shell parity assertion from the register navigation test
+- Kept the register navigation coverage itself, so Task 3 can add the shared-shell/register-stage assertions back when `RegisterPage.tsx` is migrated
+
+Updated test intent:
+
+- `shows login screen with auth stage and form panel`
+- `switches from login to register form`
+- `keeps form as priority on narrow screens`
+
+### Verification
+
+Focused auth UI package run:
+
+```bash
+npm exec -- playwright test tests/auth-ui.spec.ts --config=playwright.config.ts --project=chromium
+```
+
+Output:
+
+```text
+Running 3 tests using 1 worker
+✓  1 [chromium] › tests/auth-ui.spec.ts:14:3 › auth ui redesign › shows login screen with auth stage and form panel (1.6s)
+✓  2 [chromium] › tests/auth-ui.spec.ts:26:3 › auth ui redesign › switches from login to register form (564ms)
+✓  3 [chromium] › tests/auth-ui.spec.ts:35:3 › auth ui redesign › keeps form as priority on narrow screens (873ms)
+
+3 passed (3.6s)
+```
