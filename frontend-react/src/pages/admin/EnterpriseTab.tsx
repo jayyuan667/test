@@ -20,7 +20,7 @@ export function EnterpriseTab() {
     try {
       setLoading(true)
       const data = await getEnterprises()
-      setEnterprises(data)
+      setEnterprises(data.enterprises)
     } catch (err: unknown) {
       show(err instanceof Error ? err.message : '获取企业列表失败', 'error')
     } finally {

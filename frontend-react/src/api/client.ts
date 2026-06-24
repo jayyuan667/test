@@ -525,83 +525,89 @@ export async function exportAnnotations(taskId: string): Promise<Blob> {
 
 /* ── Auth / Admin ── */
 
+// Helper: auth/admin endpoints wrap responses in {success, data}
+async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const json = await request<{ success: boolean; data: T }>(path, init)
+  return json.data
+}
+
 export async function login(username: string, password: string): Promise<{ user: User }> {
-  return request<{ user: User }>('/auth/login', {
+  return authRequest<{ user: User }>('/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   })
 }
 
-export async function register(username: string, password: string): Promise<Record<string, unknown>> {
-  return request<Record<string, unknown>>('/auth/register', {
+export async function register(username: string, password: string): Promise<{ user: User }> {
+  return authRequest<{ user: User }>('/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   })
 }
 
-export async function logout(): Promise<Record<string, unknown>> {
-  return request<Record<string, unknown>>('/auth/logout', { method: 'POST' })
+export async function logout(): Promise<void> {
+  await authRequest('/auth/logout', { method: 'POST' })
 }
 
 export async function getMe(): Promise<{ user: User }> {
-  return request<{ user: User }>('/auth/me')
+  return authRequest<{ user: User }>('/auth/me')
 }
 
 export async function getProfile(): Promise<{ user: User }> {
-  return request<{ user: User }>('/user/profile')
+  return authRequest<{ user: User }>('/user/profile')
 }
 
-export async function changePassword(currentPassword: string, newPassword: string): Promise<Record<string, unknown>> {
-  return request<Record<string, unknown>>('/user/password', {
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await authRequest('/user/password', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
   })
 }
 
-export async function getEnterprises(): Promise<Enterprise[]> {
-  return request<Enterprise[]>('/admin/enterprises')
+export async function getEnterprises(): Promise<{ enterprises: Enterprise[] }> {
+  return authRequest<{ enterprises: Enterprise[] }>('/admin/enterprises')
 }
 
-export async function createEnterprise(name: string): Promise<Enterprise> {
-  return request<Enterprise>('/admin/enterprises', {
+export async function createEnterprise(name: string): Promise<{ enterprise: Enterprise }> {
+  return authRequest<{ enterprise: Enterprise }>('/admin/enterprises', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   })
 }
 
-export async function updateEnterprise(id: number, updates: Partial<Enterprise>): Promise<Enterprise> {
-  return request<Enterprise>(`/admin/enterprises/${id}`, {
+export async function updateEnterprise(id: number, updates: Partial<Enterprise>): Promise<{ enterprise: Enterprise }> {
+  return authRequest<{ enterprise: Enterprise }>(`/admin/enterprises/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   })
 }
 
-export async function getAdminUsers(enterpriseId?: number): Promise<AdminUser[]> {
+export async function getAdminUsers(enterpriseId?: number): Promise<{ users: AdminUser[] }> {
   const qs = enterpriseId ? `?enterprise_id=${enterpriseId}` : ''
-  return request<AdminUser[]>(`/admin/users${qs}`)
+  return authRequest<{ users: AdminUser[] }>(`/admin/users${qs}`)
 }
 
-export async function updateAdminUser(userId: number, updates: Partial<AdminUser>): Promise<AdminUser> {
-  return request<AdminUser>(`/admin/users/${userId}`, {
+export async function updateAdminUser(userId: number, updates: Partial<AdminUser>): Promise<{ user: AdminUser }> {
+  return authRequest<{ user: AdminUser }>(`/admin/users/${userId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   })
 }
 
-export async function createAdminGrant(userId: number, enterpriseId: number, durationDays = 365): Promise<Record<string, unknown>> {
-  return request<Record<string, unknown>>('/admin/grants', {
+export async function createAdminGrant(userId: number, enterpriseId: number, durationDays = 365): Promise<{ grant: Record<string, unknown> }> {
+  return authRequest<{ grant: Record<string, unknown> }>('/admin/grants', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId, enterprise_id: enterpriseId, duration_days: durationDays }),
   })
 }
 
-export async function getAdminQuotas(): Promise<QuotaInfo[]> {
-  return request<QuotaInfo[]>('/admin/quotas')
+export async function getAdminQuotas(): Promise<{ quotas: QuotaInfo[] }> {
+  return authRequest<{ quotas: QuotaInfo[] }>('/admin/quotas')
 }

@@ -19,7 +19,7 @@ export function QuotaTab() {
       try {
         setLoading(true)
         const data = await getAdminQuotas()
-        setQuotas(data)
+        setQuotas(data.quotas)
       } catch (err: unknown) {
         show(err instanceof Error ? err.message : '获取配额数据失败', 'error')
       } finally {

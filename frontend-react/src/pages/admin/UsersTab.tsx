@@ -30,10 +30,10 @@ export function UsersTab() {
       setLoading(true)
       const [usersData, enterprisesData] = await Promise.all([
         getAdminUsers(filterEnt),
-        isSuperAdmin ? getEnterprises() : Promise.resolve([]),
+        isSuperAdmin ? getEnterprises() : Promise.resolve({ enterprises: [] }),
       ])
-      setUsers(usersData)
-      if (isSuperAdmin) setEnterprises(enterprisesData)
+      setUsers(usersData.users)
+      if (isSuperAdmin) setEnterprises(enterprisesData.enterprises)
     } catch (err: unknown) {
       show(err instanceof Error ? err.message : '获取数据失败', 'error')
     } finally {
