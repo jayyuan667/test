@@ -69,7 +69,10 @@ ensure_poppler_path()
 # Create Flask app
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app, resources={r"/api/*": {
+    "origins": ["http://localhost:3200", "http://localhost:5190", "http://127.0.0.1:3200", "http://127.0.0.1:5190"],
+    "supports_credentials": True,
+}})
 
 
 @app.route("/api/startup_token")
