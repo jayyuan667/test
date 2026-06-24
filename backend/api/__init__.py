@@ -36,5 +36,7 @@ def register_routes(app):
     app.register_blueprint(kb_import_bp, url_prefix="/api")
     from .auth import auth_bp
     app.register_blueprint(auth_bp, url_prefix="/api")
+    from .admin import admin_bp
+    app.register_blueprint(admin_bp, url_prefix="/api")
     from .annotations import annotations_bp
     app.register_blueprint(annotations_bp, url_prefix="/api")
