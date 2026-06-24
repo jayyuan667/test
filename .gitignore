@@ -57,6 +57,9 @@ history.json
 backend/task_store.db
 backend/task_store.db-shm
 backend/task_store.db-wal
+backend/auth.db
+backend/auth.db-shm
+backend/auth.db-wal
 task_store.db
 task_store.db-shm
 task_store.db-wal
