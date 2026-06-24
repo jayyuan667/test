@@ -14,6 +14,7 @@ from ..config import UPLOAD_FOLDER, OUTPUT_FOLDER, validate_vision_config
 from ..feature_report import build_feature_report, write_feature_report_json
 from ..history import add_history_entry
 from ._response import fail, ERR_FILE_MISSING, ERR_FILE_TYPE
+from ..auth_utils import login_required, require_quota
 from ..task_store import insert_task, update_task_status, save_result
 from ..prt_pipeline import prepare_prt_artifacts
 from ..services.event_emitter import (
@@ -78,6 +79,8 @@ def _build_upload_mode_meta(file_count: int, page_count: int):
 
 
 @batch_bp.route("/batch_upload", methods=["POST"])
+@login_required
+@require_quota
 def batch_upload():
     if "files" not in request.files:
         return fail(ERR_FILE_MISSING, "No files provided")

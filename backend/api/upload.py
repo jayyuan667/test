@@ -45,6 +45,7 @@ from ..services.review_session import (
 from ..vision_utils import split_vision_results, format_vision_failure_message
 from ..task_store import insert_task, update_task_status, save_result, get_prt_cache, save_prt_cache
 from ._response import fail, ERR_FILE_MISSING, ERR_FILE_TYPE, ERR_CONFIG, ERR_CAPABILITY
+from ..auth_utils import login_required, require_quota
 from ..services.capabilities import inspect_pdf_capability
 from ._utils import PRT_FILE_RE, extract_prefix_from_filename
 from ..services.observability import time_block
@@ -629,6 +630,8 @@ def _is_upload_template_ready(task: dict) -> bool:
 
 
 @upload_bp.route("/upload", methods=["POST"])
+@login_required
+@require_quota
 def upload():
     if "file" not in request.files:
         return fail(ERR_FILE_MISSING, "No file provided")
@@ -1137,6 +1140,8 @@ def cancel_task_route(task_id):
 
 
 @upload_bp.route("/upload_drawing", methods=["POST"])
+@login_required
+@require_quota
 def upload_drawing():
     """Upload a 2D drawing file (PDF, PNG, JPG) for feature extraction and process generation."""
     if "file" not in request.files:

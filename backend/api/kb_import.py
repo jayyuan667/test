@@ -1243,6 +1243,17 @@ def import_zip_route():
     zip_path = os.path.join(temp_dir, f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{filename}")
     upload.save(zip_path)
 
+    # Validate minimum file count inside ZIP
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            file_count = len([f for f in zf.namelist() if not f.endswith('/')])
+        if file_count < 30:
+            os.unlink(zip_path)
+            return jsonify({"error": f"数据量太少，压缩包内文件数为 {file_count}，必须大于 30 个文件"}), 400
+    except zipfile.BadZipFile:
+        os.unlink(zip_path)
+        return jsonify({"error": "无效的 ZIP 文件"}), 400
+
     try:
         report = import_zip_knowledge(
             zip_path,
