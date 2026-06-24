@@ -495,14 +495,16 @@ def build_message(args: argparse.Namespace, runtime: Path) -> tuple[dict[str, An
     }
     summary = args.summary
     note_text: str | None = None
-    if len(summary) > 180:
+    _auto_note = args.type in {"done", "handoff", "question"} and not args.notes_file
+    if len(summary) > 180 or _auto_note:
         note_rel = refs["notes_file"] or f"notes/{msg_id}.md"
-        note_text = "# Original summary\n\n" + summary + "\n"
+        note_text = "# " + args.type.title() + ": " + summary + "\n"
         if context:
             note_text += "\n# Context\n\n" + context.rstrip() + "\n"
             context = None
         refs["notes_file"] = note_rel
-        summary = truncate_summary(summary, note_rel)
+        if len(summary) > 180:
+            summary = truncate_summary(summary, note_rel)
     thread = infer_thread(args.reply_to, args.thread, streams, msg_id)
     from_session = resolve_session_id(args, runtime)
     to_session = infer_to_session(args.reply_to, args.to_session, args.broadcast, streams)

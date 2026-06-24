@@ -78,7 +78,17 @@ from user direction, the current accepted plan, or a handoff thread:
 
 Avoid delegating broad authorship, unbounded rewriting, or decisions that require the user's taste unless the user has already given clear boundaries.
 
-Use `.handoff/tools/send.py --side claude --session <MY_SESSION>` for outbound messages whenever possible. The helper will include `from_session` and infer `to_session` from `--reply-to`; add `--broadcast` only when the reply should be side-level rather than directed to the original session. Keep `summary` single-line. Put long context in `.handoff-runtime/notes/<message-id>.md`.
+Use `.handoff/tools/send.py --side claude --session <MY_SESSION>` for outbound messages whenever possible. The helper will include `from_session` and infer `to_session` from `--reply-to`; add `--broadcast` only when the reply should be side-level rather than directed to the original session. Keep `summary` single-line.
+
+**Always include project context in replies.** Before sending `done`/`handoff`/`question`, discover relevant docs:
+- List `docs/superpowers/specs/` and `docs/superpowers/plans/` for specs and plans
+- Read `PROJECT.md` and any handoff docs in `docs/superpowers/`
+- Pass discovered files via `--context-file-ref` (repeatable flag) so the peer knows where to look
+- If the peer referenced wrong/missing files, correct them in the notes and context
+
+Put long context in `.handoff-runtime/notes/<message-id>.md`. The send.py helper auto-creates notes files for `done`/`handoff`/`question` types.
+
+**done messages must include:** what was actually done, files created/modified, link to relevant spec/plan docs, next recommended action for the peer. Use `--file-changed` (repeatable) to list changed files.
 
 If this loop makes a large or user-visible change, follow `.handoff/PROTOCOL.md` §6.5: finish local verification first, then send Codex a `handoff` asking for review and listing `context_files`, `files_changed`, verification, and specific review questions. Do not use a `status` message as the only notification for a large change.
 
