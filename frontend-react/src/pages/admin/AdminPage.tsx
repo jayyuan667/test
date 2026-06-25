@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { EnterpriseTab } from './EnterpriseTab'
 import { UsersTab } from './UsersTab'
@@ -30,6 +30,14 @@ export function AdminPage() {
 
   const firstVisible = tabs.find(t => t.visible)
   const [activeTab, setActiveTab] = useState<AdminTab>(firstVisible?.id ?? 'users')
+  const visibleTabs = tabs.filter(t => t.visible)
+
+  useEffect(() => {
+    const activeTabVisible = tabs.some(tab => tab.id === activeTab && tab.visible)
+    if (!activeTabVisible && firstVisible) {
+      setActiveTab(firstVisible.id)
+    }
+  }, [activeTab, firstVisible, tabs])
 
   return (
     <div className="max-w-6xl mx-auto py-8">
@@ -71,9 +79,9 @@ export function AdminPage() {
       </div>
 
       {/* Tab panels */}
-      {activeTab === 'enterprise' && <EnterpriseTab />}
-      {activeTab === 'users' && <UsersTab />}
-      {activeTab === 'quota' && <QuotaTab />}
+      {visibleTabs.some(tab => tab.id === activeTab) && activeTab === 'enterprise' && <EnterpriseTab />}
+      {visibleTabs.some(tab => tab.id === activeTab) && activeTab === 'users' && <UsersTab />}
+      {visibleTabs.some(tab => tab.id === activeTab) && activeTab === 'quota' && <QuotaTab />}
     </div>
   )
 }

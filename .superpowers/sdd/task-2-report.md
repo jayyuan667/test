@@ -1,4 +1,4 @@
-# Task 2 Report: Shared Auth Shell and Login Screen
+# Task 2 Report: Split Admin Console Semantics By Role
 
 ## Status
 
@@ -6,252 +6,165 @@ DONE_WITH_CONCERNS
 
 ## Scope Completed
 
-- Created `frontend-react/src/components/auth/AuthShell.tsx`
-- Created `frontend-react/src/components/auth/AuthVisualStage.tsx`
-- Migrated `frontend-react/src/pages/LoginPage.tsx` into the shared auth shell
-- Added auth-shell/stage styling to `frontend-react/src/index.css`
-- Updated `frontend-react/tests/auth-ui.spec.ts` for the new login subtitle and tightened two existing locators that became ambiguous once the brief’s footer copy was added
+- Updated `frontend-react/src/pages/admin/AdminPage.tsx` to split admin-console title, intro copy, and visible tabs by `user.role`
+- Updated `frontend-react/src/pages/admin/EnterpriseTab.tsx` so non-super-admin access returns `null`
+- Updated `frontend-react/src/pages/admin/UsersTab.tsx` to show `企业筛选` only for super admins, `成员列表` for enterprise admins, and to stop sending enterprise reassignment updates for enterprise-admin edits
+- Updated `frontend-react/src/pages/admin/QuotaTab.tsx` to show role-specific summary framing: `平台配额概览` vs `本企业配额概览`
+- Added focused Playwright coverage in `frontend-react/tests/auth-ui.spec.ts` for enterprise-admin wording isolation and super-admin governance visibility
+
+## Requirements Mapping
+
+- Enterprise admin sees `企业运营台`
+- Enterprise admin sees intro `管理本企业成员、配额与授权状态。`
+- Enterprise admin does not see the enterprise-governance tab
+- Enterprise admin does not see platform-governance wording such as `平台管理`, `全部企业`, `跨企业治理`
+- Super admin keeps `企业管理` tab visibility
+- Super admin sees `平台管理` and `平台配额概览`
 
 ## Blast Radius / Impact Analysis
 
-Pre-edit GitNexus impact check:
+Pre-edit GitNexus impact checks:
 
 ```bash
-node .gitnexus/run.cjs impact LoginPage --direction upstream
+cd frontend-react
+npx gitnexus impact AdminPage --direction upstream
+npx gitnexus impact EnterpriseTab --direction upstream
+npx gitnexus impact UsersTab --direction upstream
+npx gitnexus impact QuotaTab --direction upstream
 ```
 
-Result:
+Results:
 
-- Target: `LoginPage`
-- Risk: `LOW`
-- Direct upstream caller: `AppShell`
-- Affected processes: `App → UseAuth`, `App → UseToast`
+- `AdminPage`: risk `LOW`, 1 direct caller (`AppLayout`), 1 affected process group
+- `EnterpriseTab`: risk `LOW`, direct caller `AdminPage`
+- `UsersTab`: risk `LOW`, direct caller `AdminPage`
+- `QuotaTab`: risk `LOW`, direct caller `AdminPage`
 
-This matched the task guidance to keep the change in the unauthenticated view layer and avoid auth logic/request-flow edits.
+This matched the task boundary: admin-console-only wording and visibility changes, no backend capability expansion.
 
 ## TDD Evidence
 
 ### RED
 
-Added the required subtitle assertion:
+Added these focused tests first in `frontend-react/tests/auth-ui.spec.ts`:
 
-```ts
-await expect(page.getByText('进入图纸检视台，继续你的工艺流程。')).toBeVisible()
-```
+- `enterprise admin sees enterprise console wording only`
+- `super admin sees enterprise governance tab`
 
-Initial focused run showed the suite was not yet configured correctly from repo root, then with the frontend server running the focused spec failed against the old UI before implementation:
+Then ran:
 
 ```bash
-npm exec -- playwright test tests/auth-ui.spec.ts --config=playwright.config.ts --project=chromium --grep "shows login screen"
+cd frontend-react
+npx playwright test tests/auth-ui.spec.ts --grep "console wording|enterprise governance tab"
 ```
 
-Observed failures during RED:
+Observed failures before implementation:
 
-- Missing new auth-shell content before implementation
-- Existing test locators became too broad once the required footer copy and password toggle were present
+- enterprise-admin test failed because `企业运营台` did not exist
+- super-admin test was still exercising the old generic admin framing
 
 ### GREEN
 
-After implementing the shell, stage, login migration, and CSS, the focused test passed:
+After implementing the admin-shell and tab wording split, reran the same focused command:
 
 ```bash
-npm exec -- playwright test tests/auth-ui.spec.ts --config=playwright.config.ts --project=chromium --grep "shows login screen"
+cd frontend-react
+npx playwright test tests/auth-ui.spec.ts --grep "console wording|enterprise governance tab"
 ```
 
 Result:
 
-- `1 passed (1.2s)`
-
-## Verification
-
-Build verification:
-
-```bash
-npm run build
-```
-
-Result:
-
-- Build succeeded
-
-Broader auth UI verification:
-
-```bash
-npm exec -- playwright test tests/auth-ui.spec.ts --config=playwright.config.ts --project=chromium
-```
-
-Result:
-
-- `shows login screen with auth stage and form panel`: PASS
-- `keeps form as priority on narrow screens`: PASS
-- `switches from login to register without losing themed shell`: FAIL
-
-Failure reason:
-
-- `RegisterPage` still renders the pre-redesign standalone card and does not include `auth-visual-stage`
-- `RegisterPage.tsx` was outside the write scope for this task, so I did not change it
+- `2 passed (5.2s)`
 
 ## GitNexus Change Check
 
 Pre-commit staged check:
 
 ```bash
-node .gitnexus/run.cjs detect_changes --scope staged
+git add frontend-react/src/pages/admin/AdminPage.tsx \
+        frontend-react/src/pages/admin/EnterpriseTab.tsx \
+        frontend-react/src/pages/admin/UsersTab.tsx \
+        frontend-react/src/pages/admin/QuotaTab.tsx \
+        frontend-react/tests/auth-ui.spec.ts
+cd frontend-react
+npx gitnexus detect_changes --scope staged
 ```
 
 Result:
 
-- Changes: `5 files, 1 symbol`
-- Risk: `medium`
-- Changed symbol: `LoginPage`
-- Affected flows: `App → UseAuth`, `App → UseToast`
+- Changes: `5 files, 9 symbols`
+- Affected processes: `6`
+- Risk level: `high`
+- Changed symbols: `AdminPage`, `tabs`, `EnterpriseTab`, `fetchEnterprises`, `QuotaTab`, `fetchQuotas`, `UsersTab`, `fetchData`, `saveEditing`
 
-## Commit
+Affected execution flows reported by GitNexus:
 
-- `f7e716e feat: add themed auth shell for login`
+- `AdminPage → Request`
+- `UsersTab → Request`
+- `EnterpriseTab → Request`
+- `HandleToggleActive → Request`
+- `AdminPage → UseToast`
+- `AdminPage → UseAuth`
 
-## Concerns
+The high staged-risk rating came from touching several admin symbols at once, but the changed files remained within the requested task-owned admin surface.
 
-- The full `auth-ui.spec.ts` file is still not green because the register screen has not been migrated to the shared auth shell yet.
-- The task brief’s stated write scope excluded `frontend-react/src/pages/RegisterPage.tsx`, so I left that failure untouched and reported it explicitly.
+## Verification
 
----
-
-## Follow-up Fixes (Reviewer Round)
-
-### Scope
-
-- Kept changes inside the existing Task 2 files only
-- Did not modify `RegisterPage.tsx`
-
-### Fixes Applied
-
-1. Reduced palette drift in `frontend-react/src/index.css`
-   - Reworked the auth shell background to use the existing `--navy-*`, `--bg-page`, and `--flame-glow` tokens
-   - Replaced the visibly separate raw blue accents in the stage with the existing navy system
-   - Kept the auth panel and stage aligned with the existing slate/navy/flame palette rather than introducing a parallel color language
-
-2. Restored accessibility-oriented selectors in `frontend-react/tests/auth-ui.spec.ts`
-   - Replaced `#username` and `#password` checks with `getByLabel(..., { exact: true })`
-   - Kept the stricter brand assertion for `.auth-kicker`, since the footer still contains the same product text and would make plain text matching ambiguous
-
-### Verification
-
-Focused auth UI checks:
+Focused verification run:
 
 ```bash
-npm exec -- playwright test tests/auth-ui.spec.ts --config=playwright.config.ts --project=chromium --grep "shows login screen|keeps form as priority"
+cd frontend-react
+npx playwright test tests/auth-ui.spec.ts --grep "console wording|enterprise governance tab"
 ```
 
-Output:
+Output summary:
 
 ```text
 Running 2 tests using 1 worker
-✓  1 [chromium] › tests/auth-ui.spec.ts:14:3 › auth ui redesign › shows login screen with auth stage and form panel (4.1s)
-✓  2 [chromium] › tests/auth-ui.spec.ts:36:3 › auth ui redesign › keeps form as priority on narrow screens (882ms)
-
-2 passed (5.7s)
+✓ enterprise admin sees enterprise console wording only
+✓ super admin sees enterprise governance tab
+2 passed (5.2s)
 ```
 
-Build verification:
+## Commit
 
-```bash
-npm run build
-```
+- `781c24f feat: split admin console semantics by role`
 
-Output:
+## Concerns
 
-```text
-vite v6.4.3 building for production...
-transforming...
-✓ 65 modules transformed.
-rendering chunks...
-computing gzip size...
-dist/index.html                   0.41 kB │ gzip:   0.30 kB
-dist/assets/index-eW9z6qsz.css   56.31 kB │ gzip:  11.50 kB
-dist/assets/index-CJH2TMbX.js   439.85 kB │ gzip: 128.61 kB
-✓ built in 1.07s
-```
+- The workspace still contains many unrelated uncommitted changes outside this task, including files explicitly excluded from my write scope. I left them untouched.
+- Several task-owned files already contained uncommitted visual/style edits before this task. I preserved and worked with those edits rather than reverting them, so the task commit is scoped to the five requested files but is not a pristine isolation from all earlier local changes inside those same files.
 
 ---
 
-## Follow-up Fixes (Task Package Cleanup)
+## Reviewer Follow-up Fixes
 
-### Fix Applied
+### Fixes Applied
 
-- Narrowed `frontend-react/tests/auth-ui.spec.ts` to Task 2 scope by removing the register-shell parity assertion from the register navigation test
-- Kept the register navigation coverage itself, so Task 3 can add the shared-shell/register-stage assertions back when `RegisterPage.tsx` is migrated
-
-Updated test intent:
-
-- `shows login screen with auth stage and form panel`
-- `switches from login to register form`
-- `keeps form as priority on narrow screens`
-
-### Verification
-
-Focused auth UI package run:
-
-```bash
-npm exec -- playwright test tests/auth-ui.spec.ts --config=playwright.config.ts --project=chromium
-```
-
-Output:
-
-```text
-Running 3 tests using 1 worker
-✓  1 [chromium] › tests/auth-ui.spec.ts:14:3 › auth ui redesign › shows login screen with auth stage and form panel (1.6s)
-✓  2 [chromium] › tests/auth-ui.spec.ts:26:3 › auth ui redesign › switches from login to register form (564ms)
-✓  3 [chromium] › tests/auth-ui.spec.ts:35:3 › auth ui redesign › keeps form as priority on narrow screens (873ms)
-
-3 passed (3.6s)
-```
-
----
-
-## Follow-up Fixes (Auth Grid Contract)
-
-### Fix Applied
-
-- Completed the brief’s `auth-grid` class contract in Task 2 scope
-- Added `auth-grid` to the rendered stage grid element while preserving the existing `auth-stage-grid` hook
-- Aliased the existing grid CSS so the new contract is satisfied without changing the current visual behavior
+- Updated `frontend-react/src/pages/admin/AdminPage.tsx` so `activeTab` is corrected to the first visible tab whenever role-driven tab visibility makes the current tab invalid
+- Updated `frontend-react/tests/auth-ui.spec.ts` so `mockAuthSession` accepts `User` rather than only `typeof UNASSIGNED_USER`
+- Extended enterprise-admin coverage to assert:
+  - `本企业配额概览` appears on the quota tab
+  - enterprise-admin quota save sends only `{ quota_total: ... }`
+  - enterprise-admin status toggle sends only `{ is_active: ... }`
+  - neither enterprise-admin request includes `enterprise_id`
 
 ### Verification
 
-Focused auth UI package run:
+Focused Playwright rerun:
 
 ```bash
-npm exec -- playwright test tests/auth-ui.spec.ts --config=playwright.config.ts --project=chromium
+cd frontend-react
+npx playwright test tests/auth-ui.spec.ts --grep "console wording|enterprise governance tab|enterprise admin saves user changes"
 ```
 
-Output:
+Exact output summary:
 
 ```text
 Running 3 tests using 1 worker
-✓  1 [chromium] › tests/auth-ui.spec.ts:14:3 › auth ui redesign › shows login screen with auth stage and form panel (3.3s)
-✓  2 [chromium] › tests/auth-ui.spec.ts:27:3 › auth ui redesign › switches from login to register form (4.0s)
-✓  3 [chromium] › tests/auth-ui.spec.ts:36:3 › auth ui redesign › keeps form as priority on narrow screens (758ms)
+✓  1 [chromium] › tests/auth-ui.spec.ts:248:3 › admin console role wording › enterprise admin sees enterprise console wording only (2.9s)
+✓  2 [chromium] › tests/auth-ui.spec.ts:268:3 › admin console role wording › super admin sees enterprise governance tab (942ms)
+✓  3 [chromium] › tests/auth-ui.spec.ts:281:3 › admin console role wording › enterprise admin saves user changes without enterprise reassignment payload (1.5s)
 
-3 passed (8.8s)
-```
-
-Build verification:
-
-```bash
-npm run build
-```
-
-Output:
-
-```text
-vite v6.4.3 building for production...
-transforming...
-✓ 65 modules transformed.
-rendering chunks...
-computing gzip size...
-dist/index.html                   0.41 kB │ gzip:   0.30 kB
-dist/assets/index-JKsAesD1.css   56.31 kB │ gzip:  11.50 kB
-dist/assets/index-D1csYmkT.js   439.86 kB │ gzip: 128.61 kB
-✓ built in 1.08s
+3 passed (5.9s)
 ```

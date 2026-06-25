@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import type { User } from '../src/types/auth'
 
 const UNASSIGNED_USER = {
   id: 42,
@@ -48,7 +49,7 @@ const SUPER_ADMIN_USER = {
   },
 }
 
-async function mockAuthSession(page: import('@playwright/test').Page, user: typeof UNASSIGNED_USER) {
+async function mockAuthSession(page: import('@playwright/test').Page, user: User) {
   await page.route('**/api/auth/me', async route => {
     await route.fulfill({
       contentType: 'application/json',
@@ -259,6 +260,9 @@ test.describe('admin console role wording', () => {
     await expect(page.getByText('平台管理')).toHaveCount(0)
     await expect(page.getByText('全部企业')).toHaveCount(0)
     await expect(page.getByText('跨企业治理')).toHaveCount(0)
+
+    await page.getByRole('tab', { name: '配额概览' }).click()
+    await expect(page.getByText('本企业配额概览')).toBeVisible()
   })
 
   test('super admin sees enterprise governance tab', async ({ page }) => {
@@ -272,5 +276,55 @@ test.describe('admin console role wording', () => {
     await expect(page.getByRole('tab', { name: '企业管理' })).toBeVisible()
     await page.getByRole('tab', { name: '配额概览' }).click()
     await expect(page.getByText('平台配额概览')).toBeVisible()
+  })
+
+  test('enterprise admin saves user changes without enterprise reassignment payload', async ({ page }) => {
+    const updatePayloads: Record<string, unknown>[] = []
+
+    await mockAuthSession(page, ENTERPRISE_ADMIN_USER)
+    await mockAdminApis(page)
+    await page.route('**/api/admin/users/*', async route => {
+      if (route.request().method() === 'PUT') {
+        updatePayloads.push(route.request().postDataJSON() as Record<string, unknown>)
+      }
+
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 200,
+        body: JSON.stringify({
+          success: true,
+          data: {
+            user: {
+              id: 11,
+              username: 'factory_user',
+              role: 'user',
+              enterprise_id: 3,
+              enterprise_name: '华东工厂',
+              is_active: true,
+              created_at: '2026-06-25T00:00:00.000Z',
+              grant_expires_at: null,
+              quota_total: 81,
+              quota_used: 12,
+            },
+          },
+        }),
+      })
+    })
+
+    await openAdminConsole(page)
+
+    await page.getByRole('button', { name: '修改配额' }).click()
+    await page.locator('input[type="number"]').fill('81')
+    await page.getByRole('button', { name: '保存' }).click()
+
+    await expect.poll(() => updatePayloads.length).toBe(1)
+    expect(updatePayloads[0]).toEqual({ quota_total: 81 })
+    expect(updatePayloads[0]).not.toHaveProperty('enterprise_id')
+
+    await page.getByRole('button', { name: '停用' }).click()
+
+    await expect.poll(() => updatePayloads.length).toBe(2)
+    expect(updatePayloads[1]).toEqual({ is_active: false })
+    expect(updatePayloads[1]).not.toHaveProperty('enterprise_id')
   })
 })
