@@ -1,4 +1,54 @@
 import { test, expect } from '@playwright/test'
+import type { User } from '../src/types/auth'
+
+const ADMIN = { username: 'admin', password: 'admin123' }
+const ASSIGNED_USER: User = {
+  id: 21,
+  username: 'assigned_user',
+  role: 'user',
+  enterprise_id: 9,
+  enterprise_name: '华东工厂',
+  is_active: true,
+  created_at: '2026-06-25T00:00:00.000Z',
+  grant_expires_at: null,
+  quota: {
+    total_granted: 20,
+    used: 4,
+    remaining: 16,
+  },
+}
+
+const ENTERPRISE_ADMIN_USER: User = {
+  id: 22,
+  username: 'enterprise_admin',
+  role: 'enterprise_admin',
+  enterprise_id: 9,
+  enterprise_name: '华东工厂',
+  is_active: true,
+  created_at: '2026-06-25T00:00:00.000Z',
+  grant_expires_at: '2027-06-25T00:00:00.000Z',
+  quota: {
+    total_granted: 120,
+    used: 10,
+    remaining: 110,
+  },
+}
+
+const SUPER_ADMIN_USER: User = {
+  id: 1,
+  username: 'admin',
+  role: 'super_admin',
+  enterprise_id: null,
+  enterprise_name: null,
+  is_active: true,
+  created_at: '2026-06-25T00:00:00.000Z',
+  grant_expires_at: null,
+  quota: {
+    total_granted: 999999,
+    used: 0,
+    remaining: 999999,
+  },
+}
 
 /**
  * ZIP 入库 → 数据库浏览 完整链路测试
@@ -60,6 +110,42 @@ async function uploadTestZip(page: import('@playwright/test').Page) {
   })
 }
 
+async function loginAs(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await page.getByRole('button', { name: '进入系统' }).click()
+  await page.getByLabel('用户名').fill(ADMIN.username)
+  await page.locator('#password').fill(ADMIN.password)
+  await page.getByRole('button', { name: '登录' }).click()
+  await expect(page.getByText('工艺生成')).toBeVisible({ timeout: 10000 })
+}
+
+async function mockAuthSession(page: import('@playwright/test').Page, user: User) {
+  await page.route('**/api/auth/me', async route => {
+    await route.fulfill({
+      contentType: 'application/json',
+      status: 200,
+      body: JSON.stringify({ success: true, data: { user } }),
+    })
+  })
+}
+
+async function openZipPage(page: import('@playwright/test').Page) {
+  await loginAs(page)
+  await page.getByRole('button', { name: /工艺入库/ }).click()
+}
+
+async function openZipPageAs(page: import('@playwright/test').Page, user: User) {
+  await mockAuthSession(page, user)
+  await page.goto('/')
+  await expect(page.getByText('工艺生成')).toBeVisible({ timeout: 10000 })
+  await page.getByRole('button', { name: /工艺入库/ }).click()
+}
+
+async function openDbPage(page: import('@playwright/test').Page) {
+  await loginAs(page)
+  await page.getByRole('button', { name: /知识库浏览/ }).click()
+}
+
 /* ── Mock data ── */
 
 const MOCK_ZIP_REPORT = {
@@ -88,7 +174,10 @@ const MOCK_ZIP_REPORT = {
 }
 
 const MOCK_SCOPES_BEFORE = {
-  items: [{ library_key: 'public', library_name: '公共工艺库', scope_type: 'public', record_count: 0 }],
+  items: [
+    { library_key: 'public', library_name: '公共工艺库', scope_type: 'public', record_count: 0 },
+    { library_key: 'private-huadong', library_name: '华东工厂知识库', scope_type: 'private', record_count: 0 },
+  ],
   can_browse_db: false, imported_batches: 0,
 }
 
@@ -135,11 +224,53 @@ async function mockRecords(page: import('@playwright/test').Page, data = MOCK_RE
 
 test.describe('ZIP 入库 → 数据库浏览 完整链路', () => {
 
+  test('regular assigned user defaults to personal library target', async ({ page }) => {
+    await mockScopes(page)
+
+    await openZipPageAs(page, ASSIGNED_USER)
+
+    await expect(page.locator('#zip-target-library')).not.toContainText('公共工艺库')
+    await expect(page.locator('#zip-target-library')).toContainText('华东工厂知识库')
+    await expect(page.getByText('默认推荐先写入我的工艺库，确认后再决定共享。', { exact: true })).toBeVisible()
+  })
+
+  test('enterprise admin sees enterprise-only helper copy without platform governance wording', async ({ page }) => {
+    await mockScopes(page)
+
+    await openZipPageAs(page, ENTERPRISE_ADMIN_USER)
+
+    await expect(page.getByText('本阶段企业范围仅做界面引导；真实入库仍写入你当前可用的个人工艺库。')).toBeVisible()
+    await expect(page.getByText(/平台|全部企业|跨企业治理/)).not.toBeVisible()
+  })
+
+  test('super admin can still choose public baseline target', async ({ page }) => {
+    await page.addInitScript(() => sessionStorage.clear())
+    await mockScopes(page)
+
+    let submittedMode = ''
+    let submittedKey = ''
+    await page.route('**/api/kb/import_zip', async route => {
+      const body = route.request().postData() || ''
+      submittedMode = body.includes('name="library_mode"\r\n\r\npublic') ? 'public' : ''
+      submittedKey = body.includes('name="library_key"\r\n\r\npublic') ? 'public' : ''
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify(MOCK_ZIP_REPORT) })
+    })
+
+    await openZipPageAs(page, SUPER_ADMIN_USER)
+
+    await expect(page.locator('#zip-target-library')).toContainText('公共工艺库（平台基线库 · 0条）')
+    await page.selectOption('#zip-target-library', 'public')
+    await uploadTestZip(page)
+
+    await expect(page.getByText('入库完成')).toBeVisible({ timeout: 10000 })
+    expect(submittedMode).toBe('public')
+    expect(submittedKey).toBe('public')
+  })
+
   test('1. ZipPage 加载后显示下载示例 ZIP 按钮和上传区域', async ({ page }) => {
     await mockScopes(page)
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /工艺入库/ }).click()
+    await openZipPage(page)
 
     await expect(page.getByText('上传一个 ZIP')).toBeVisible()
     await expect(page.getByText('下载示例 ZIP')).toBeVisible()
@@ -152,8 +283,7 @@ test.describe('ZIP 入库 → 数据库浏览 完整链路', () => {
     await page.addInitScript(() => sessionStorage.clear())
     await mockScopes(page)
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /知识库浏览/ }).click()
+    await openDbPage(page)
 
     await expect(page.getByText('数据库未解锁')).toBeVisible()
     await expect(page.getByText('请先完成知识库导入操作后再浏览数据库')).toBeVisible()
@@ -166,8 +296,7 @@ test.describe('ZIP 入库 → 数据库浏览 完整链路', () => {
     await mockScopes(page, { ...MOCK_SCOPES_BEFORE, can_browse_db: true })
     await mockRecords(page)
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /知识库浏览/ }).click()
+    await openDbPage(page)
 
     await expect(page.getByText('数据库未解锁')).toBeVisible()
 
@@ -185,8 +314,7 @@ test.describe('ZIP 入库 → 数据库浏览 完整链路', () => {
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify(MOCK_ZIP_REPORT) })
     })
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /工艺入库/ }).click()
+    await openZipPage(page)
     await uploadTestZip(page)
 
     await expect(page.getByText('入库完成')).toBeVisible({ timeout: 10000 })
@@ -212,8 +340,7 @@ test.describe('ZIP 入库 → 数据库浏览 完整链路', () => {
     })
     await mockRecords(page)
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /工艺入库/ }).click()
+    await openZipPage(page)
     await uploadTestZip(page)
     await expect(page.getByText('入库完成')).toBeVisible({ timeout: 10000 })
 
@@ -234,8 +361,7 @@ test.describe('ZIP 入库 → 数据库浏览 完整链路', () => {
     await mockScopes(page, MOCK_SCOPES_AFTER)
     await mockRecords(page)
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /知识库浏览/ }).click()
+    await openDbPage(page)
 
     await expect(page.getByText('数据库未解锁')).not.toBeVisible()
     await expect(page.getByText('记录列表')).toBeVisible()
@@ -255,8 +381,7 @@ test.describe('ZIP 入库 → 数据库浏览 完整链路', () => {
       }
     })
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /知识库浏览/ }).click()
+    await openDbPage(page)
     await expect(page.getByText('记录列表')).toBeVisible()
 
     // Click on record card
@@ -297,8 +422,7 @@ test.describe('ZIP 入库 → 数据库浏览 完整链路', () => {
       }
     })
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /知识库浏览/ }).click()
+    await openDbPage(page)
 
     await expect(page.getByText('TEST-181200A001')).toBeVisible({ timeout: 5000 })
 
@@ -331,8 +455,7 @@ test.describe('ZIP 入库 → 数据库浏览 完整链路', () => {
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify(MOCK_ZIP_REPORT) })
     })
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /工艺入库/ }).click()
+    await openZipPage(page)
     await uploadTestZip(page)
     await expect(page.getByText('入库完成')).toBeVisible({ timeout: 10000 })
 
@@ -358,8 +481,7 @@ test.describe('ZIP 入库 → 数据库浏览 完整链路', () => {
       })
     })
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /工艺入库/ }).click()
+    await openZipPage(page)
     await uploadTestZip(page)
 
     // Should show error
@@ -386,8 +508,7 @@ test.describe('ZIP 入库 → 数据库浏览 完整链路', () => {
       }
     })
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /知识库浏览/ }).click()
+    await openDbPage(page)
     await expect(page.getByText('记录列表')).toBeVisible()
 
     // "删除当前数据库" button — it's disabled for public libraries but our scope is private
@@ -412,8 +533,7 @@ test.describe('边界情况', () => {
     await mockScopes(page, MOCK_SCOPES_AFTER)
     await mockRecords(page, { ...MOCK_RECORDS_RES, items: [], total: 0, product_types: [] })
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /知识库浏览/ }).click()
+    await openDbPage(page)
 
     await expect(page.getByText('暂无记录')).toBeVisible()
     await expect(page.getByText('调整筛选条件或先完成工艺入库')).toBeVisible()
@@ -424,8 +544,7 @@ test.describe('边界情况', () => {
     await mockScopes(page, { ...MOCK_SCOPES_AFTER, can_browse_db: false })
     await mockRecords(page)
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /知识库浏览/ }).click()
+    await openDbPage(page)
 
     // Read-only banner
     await expect(page.getByText('只读浏览模式')).toBeVisible()
@@ -445,8 +564,7 @@ test.describe('边界情况', () => {
       await route.abort('failed')
     })
 
-    await page.goto('/')
-    await page.getByRole('button', { name: /知识库浏览/ }).click()
+    await openDbPage(page)
 
     // When ready === false, DbPage shows the fallback lock screen
     await expect(page.getByText('请先完成知识入库')).toBeVisible()

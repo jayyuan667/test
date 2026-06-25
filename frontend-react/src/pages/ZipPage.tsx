@@ -10,6 +10,7 @@ import type {
 } from '../api/client'
 import gsap from 'gsap'
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion'
+import { useAuth } from '../contexts/AuthContext'
 
 type StatusZone = 'idle' | 'running' | 'done' | 'error'
 type ResultTab = 'matched' | 'unmatched' | 'log'
@@ -22,6 +23,7 @@ interface LibraryTarget {
 }
 
 export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => void }) {
+  const { user } = useAuth()
   const [scopes, setScopes] = useState<LibraryScope[]>([])
   const [selectedScope, setSelectedScope] = useState<string>('__new__')
   const [newLibName, setNewLibName] = useState('我的工艺库')
@@ -60,6 +62,17 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
   }, [])
 
   useEffect(() => { loadScopes() }, [loadScopes])
+
+  const visibleScopes = scopes.filter(scope => {
+    if (user?.role === 'super_admin') return true
+    return scope.scope_type !== 'public'
+  })
+
+  useEffect(() => {
+    if (selectedScope === '__new__') return
+    const stillVisible = visibleScopes.some(scope => scope.library_key === selectedScope)
+    if (!stillVisible) setSelectedScope('__new__')
+  }, [selectedScope, visibleScopes])
 
   // GSAP: Page load animation
   useEffect(() => {
@@ -189,8 +202,12 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
         key: '',
       }
     }
+    const selected = visibleScopes.find(scope => scope.library_key === selectedScope)
+    if (selected?.scope_type === 'public') {
+      return { mode: 'public', name: '', key: selectedScope }
+    }
     return { mode: 'private_empty', name: '', key: selectedScope }
-  }, [selectedScope, seedPublic, newLibName])
+  }, [selectedScope, seedPublic, newLibName, visibleScopes])
 
   const handleUpload = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.zip')) return
@@ -292,9 +309,21 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
 
   const activeScopeLabel = (() => {
     if (selectedScope === '__new__') return `当前目标：${newLibName.trim() || '新工艺库'}（新建）`
-    const opt = scopes.find(s => s.library_key === selectedScope)
+    const opt = visibleScopes.find(s => s.library_key === selectedScope)
     return `当前目标：${opt?.library_name || selectedScope}`
   })()
+
+  const heroTitle = user?.role === 'super_admin'
+    ? '上传一个 ZIP，把工艺写进你的库或平台基线库。'
+    : '上传一个 ZIP，把工艺写进你的个人工艺库。'
+  const heroDescription = user?.role === 'super_admin'
+    ? '默认推荐先建"我的工艺库"，确认结果后再决定是否补充到平台基线库。这样更稳，也方便平台侧统一校核共享内容。'
+    : user?.role === 'enterprise_admin'
+      ? '默认推荐先写入我的工艺库，先确认本次导入结果；本阶段企业范围仅做界面引导，不扩展后端入库范围。'
+      : '默认推荐先写入我的工艺库，确认后再决定共享。这样最安全，也方便后续只看自己的入库结果。'
+  const helperText = user?.role === 'enterprise_admin'
+    ? '本阶段企业范围仅做界面引导；真实入库仍写入你当前可用的个人工艺库。'
+    : '默认推荐先写入我的工艺库，确认后再决定共享。'
 
   return (
     <div className="flex flex-col gap-5">
@@ -306,12 +335,12 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
           <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-bl from-flame-50/40 to-transparent rounded-bl-full pointer-events-none" />
 
           <div className="relative z-10">
-            <div className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">知识库构建</div>
-            <h2 className="text-[22px] font-extrabold text-slate-800 leading-tight mb-3">
-              上传一个 ZIP，把工艺直接写进你的库或公共库。
+            <div className="text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-secondary)' }}>知识库构建</div>
+            <h2 className="text-[22px] font-extrabold leading-tight mb-3" style={{ color: 'var(--text-primary)' }}>
+              {heroTitle}
             </h2>
-            <p className="text-[13px] text-slate-500 leading-relaxed mb-4 max-w-[52ch]">
-              默认推荐先建"我的工艺库"，可选复制公共基线后再导入。这样最安全，也方便后续只看自己的入库结果；如需共享，再直接追加到公共库。
+            <p className="text-[13px] leading-relaxed mb-4 max-w-[52ch]" style={{ color: 'var(--text-secondary)' }}>
+              {heroDescription}
             </p>
             <div className="flex gap-2 flex-wrap">
               <button className="btn btn-primary" onClick={handleFileInput} disabled={busy}>
@@ -345,22 +374,22 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
         {/* Right card: library target */}
         <div className="card-solid flex flex-col gap-3 relative overflow-hidden">
           {/* Decorative gradient */}
-          <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-blue-50/40 to-transparent rounded-tr-full pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-orange-50/40 to-transparent rounded-tr-full pointer-events-none" />
 
           <div className="relative z-10">
-            <h3 className="text-[16px] font-bold text-slate-800 mb-3">入库目标</h3>
+            <h3 className="text-[16px] font-bold mb-3" style={{ color: 'var(--text-primary)' }}>入库目标</h3>
             <div className="mb-3">
-              <label htmlFor="zip-target-library" className="text-[12px] font-semibold text-slate-500 mb-1.5 block">选择目标库</label>
+              <label htmlFor="zip-target-library" className="text-[12px] font-semibold mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>选择目标库</label>
               <select
                 id="zip-target-library"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-2 focus:ring-flame-glow transition-all"
+                className="theme-form-field w-full rounded-xl px-3.5 py-2.5 text-[13px] transition-all"
                 value={selectedScope}
                 onChange={e => setSelectedScope(e.target.value)}
                 disabled={busy}
               >
-                {scopes.map(s => (
+                {visibleScopes.map(s => (
                   <option key={s.library_key} value={s.library_key}>
-                    {s.library_name}（{s.scope_type === 'public' ? '公共库' : '私有库'}{s.record_count != null ? ` · ${s.record_count}条` : ''}）
+                    {s.library_name}（{s.scope_type === 'public' ? '平台基线库' : '我的工艺库'}{s.record_count != null ? ` · ${s.record_count}条` : ''}）
                   </option>
                 ))}
                 <option value="__new__">＋ 新建工艺库</option>
@@ -371,13 +400,13 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
               <div className="flex flex-col gap-2 mb-3">
                 <input
                   aria-label="新工艺库名称"
-                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-2 focus:ring-flame-glow transition-all"
+                  className="theme-form-field rounded-xl px-3.5 py-2.5 text-[13px] transition-all"
                   placeholder="例如：张三-液压项目库"
                   value={newLibName}
                   onChange={e => setNewLibName(e.target.value)}
                   disabled={busy}
                 />
-                <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
+                <label className="flex items-center gap-2 text-[12px] cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
                   <input
                     type="checkbox"
                     checked={seedPublic}
@@ -391,16 +420,16 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
             )}
 
             <div className="flex gap-2 flex-wrap mb-3">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200 text-[11px] font-semibold text-slate-500">
+              <span className="theme-surface-chip inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold">
                 SQLite：2d-v.db
               </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200 text-[11px] font-semibold text-slate-500">
+              <span className="theme-surface-chip inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold">
                 {activeScopeLabel}
               </span>
             </div>
 
-            <p className="text-[11px] text-slate-500">
-              数据库浏览页会在至少完成一次 ZIP 入库后解锁，并默认打开你刚刚导入的那一个库。
+            <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+              {helperText}
             </p>
           </div>
         </div>
@@ -410,7 +439,7 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
       <div ref={workspaceRef} className="card-solid flex flex-col gap-4">
         {/* Toolbar */}
         <div className="flex items-center justify-between">
-          <div className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">工艺入库工作台</div>
+          <div className="text-[12px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>工艺入库工作台</div>
           <button
             className="btn btn-secondary !text-[12px] !py-2"
             onClick={() => setConflictMode(m => m === 'replace' ? 'keep' : 'replace')}
@@ -433,38 +462,38 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
               ${dragOver ? 'drag-over' : ''}
             `}
           >
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-4">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+            <div className="theme-empty-accent w-16 h-16 rounded-2xl flex items-center justify-center mb-4">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--surface-empty-accent-stroke)' }}>
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
               </svg>
             </div>
-            <div className="text-[16px] font-bold text-slate-600 mb-1">拖拽 ZIP 工艺包到此处</div>
-            <div className="text-[12px] text-slate-500 max-w-[42ch]">
+            <div className="text-[16px] font-bold mb-1" style={{ color: 'var(--text-primary)' }}>拖拽 ZIP 工艺包到此处</div>
+            <div className="text-[12px] max-w-[42ch]" style={{ color: 'var(--text-secondary)' }}>
               或点击上方 <strong>"上传工艺包"</strong> 按钮 · 将 PDF 工艺图纸打包为 ZIP 后上传，文件名主干需与图纸编号一致
             </div>
           </div>
         )}
 
         {statusZone === 'running' && (
-          <div ref={statusRef} className="rounded-2xl border border-blue-200 bg-gradient-to-br from-white to-blue-50/50 p-5">
+          <div ref={statusRef} className="rounded-2xl border p-5 theme-surface-panel" style={{ borderColor: 'var(--surface-empty-accent-border)', background: 'linear-gradient(135deg, rgba(255,253,249,0.98) 0%, rgba(255,243,232,0.82) 100%)' }}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-                <span className="text-[14px] font-bold text-slate-800">{phaseText}</span>
+                <span className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: 'var(--accent-action)' }} />
+                <span className="text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>{phaseText}</span>
               </div>
-              <span className="text-[18px] font-extrabold text-blue-600 tabular-nums">{percent}%</span>
+              <span className="text-[18px] font-extrabold tabular-nums" style={{ color: 'var(--accent-action-strong)' }}>{percent}%</span>
             </div>
-            <div className="h-2.5 rounded-full bg-slate-100 border border-slate-200 overflow-hidden mb-4">
+            <div className="h-2.5 rounded-full overflow-hidden mb-4" style={{ background: 'var(--surface-panel-subtle)', border: '1px solid var(--border)' }}>
               <div
-                className="h-full rounded-full bg-gradient-to-r from-blue-600 to-blue-400 transition-all duration-500 ease-out"
-                style={{ width: `${percent}%` }}
+                className="h-full rounded-full transition-all duration-500 ease-out"
+                style={{ background: 'var(--accent-action-gradient)', width: `${percent}%` }}
               />
             </div>
             {report && (
-              <div className="flex gap-5 text-[12px] text-slate-500">
-                <span>总文件 <strong className="text-slate-700">{report.summary?.total_files || 0}</strong></span>
-                <span>配对 <strong className="text-slate-700">{report.summary?.matched_pairs || 0}</strong></span>
-                <span>未匹配 <strong className="text-slate-700">{unmatchedPrts.length + unmatchedPdfs.length}</strong></span>
+              <div className="flex gap-5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                <span>总文件 <strong style={{ color: 'var(--text-primary)' }}>{report.summary?.total_files || 0}</strong></span>
+                <span>配对 <strong style={{ color: 'var(--text-primary)' }}>{report.summary?.matched_pairs || 0}</strong></span>
+                <span>未匹配 <strong style={{ color: 'var(--text-primary)' }}>{unmatchedPrts.length + unmatchedPdfs.length}</strong></span>
                 <span>错误 <strong className="text-red-500">{report.summary?.error_count || 0}</strong></span>
               </div>
             )}
@@ -504,7 +533,7 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
         {report && (
           <div ref={resultRef} className="flex flex-col gap-3">
             {/* Tabs */}
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-gradient-to-r from-slate-100/80 to-slate-50/80 w-fit">
+            <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background: 'var(--surface-panel-subtle)' }}>
               {([
                 { id: 'matched' as ResultTab, label: '已匹配记录' },
                 { id: 'unmatched' as ResultTab, label: '未匹配项' },
@@ -516,9 +545,10 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
                   className={`
                     px-4 py-2 rounded-lg text-[12px] font-semibold transition-all duration-200
                     ${resultTab === tab.id
-                      ? 'bg-white text-slate-800 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'}
+                      ? 'theme-surface-panel shadow-sm'
+                      : ''}
                   `}
+                  style={resultTab === tab.id ? { color: 'var(--text-primary)' } : { color: 'var(--text-secondary)' }}
                 >
                   {tab.label}
                 </button>
@@ -529,20 +559,20 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
             {resultTab === 'matched' && (
               <div>
                 {matchedPairs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center mb-3">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-blue-400">
+                  <div className="flex flex-col items-center justify-center py-12" style={{ color: 'var(--text-muted)' }}>
+                    <div className="theme-empty-accent w-16 h-16 rounded-full flex items-center justify-center mb-3">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--surface-empty-accent-stroke)' }}>
                         <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 21V9" />
                       </svg>
                     </div>
-                    <div className="text-[15px] font-bold text-slate-500">暂无匹配记录</div>
+                    <div className="text-[15px] font-bold" style={{ color: 'var(--text-secondary)' }}>暂无匹配记录</div>
                     <div className="text-[12px] mt-1">点击"上传工艺包"后，这里会展示匹配记录。</div>
                   </div>
                 ) : (
                   <>
                     {/* Pager */}
                     <div className="flex items-center justify-between mb-3">
-                      <div className="text-[12px] text-slate-500">当前页：第 {matchedPage} / {matchedTotalPages} 页</div>
+                      <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>当前页：第 {matchedPage} / {matchedTotalPages} 页</div>
                       <div className="flex gap-2">
                         <button className="btn btn-secondary !text-[11px] !py-1.5 !px-3" disabled={matchedPage <= 1} onClick={() => setMatchedPage(p => p - 1)}>上一页</button>
                         <button className="btn btn-secondary !text-[11px] !py-1.5 !px-3" disabled={matchedPage >= matchedTotalPages} onClick={() => setMatchedPage(p => p + 1)}>下一页</button>
@@ -556,14 +586,14 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
                         <div
                           key={i}
                           ref={el => { matchCardsRef.current[i] = el }}
-                          className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50/50 p-4 mb-3 cursor-default"
+                          className="theme-surface-panel rounded-2xl border p-4 mb-3 cursor-default"
                           onMouseEnter={() => handleMatchCardHover(i, true)}
                           onMouseLeave={() => handleMatchCardHover(i, false)}
                         >
                           <div className="flex items-start justify-between mb-3">
                             <div>
-                              <div className="text-[15px] font-extrabold text-slate-800">{pair.prefix || '未命名模型'}</div>
-                              <div className="text-[12px] text-slate-500 mt-0.5">
+                              <div className="text-[15px] font-extrabold" style={{ color: 'var(--text-primary)' }}>{pair.prefix || '未命名模型'}</div>
+                              <div className="text-[12px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                                 图纸：{(pair.prt_names || []).join(' · ') || '无'} · 工艺：{(pair.xlsx_names || []).join(' · ') || '无'}
                               </div>
                             </div>
@@ -577,15 +607,15 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
                             </span>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                            <div className="rounded-xl bg-gradient-to-br from-blue-50/50 to-blue-100/30 border border-blue-100 p-3">
+                            <div className="theme-empty-accent rounded-xl p-3">
                               <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">已有记录</div>
-                              <div className="text-[12px] text-slate-600 leading-relaxed">
+                              <div className="text-[12px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                                 {pair.existing?.process_summary || pair.existing?.context || '未检测到历史记录'}
                               </div>
                             </div>
                             <div className="rounded-xl bg-gradient-to-br from-emerald-50/50 to-emerald-100/30 border border-emerald-100 p-3">
                               <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">本次导入</div>
-                              <div className="text-[12px] text-slate-600 leading-relaxed">
+                              <div className="text-[12px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                                 {draft.process_summary || draft.context || '未生成工艺摘要'}
                               </div>
                             </div>
@@ -607,27 +637,27 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
             {resultTab === 'unmatched' && (
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-[12px] text-slate-500">当前页：第 {unmatchedPage} / {unmatchedTotalPages} 页</div>
+                  <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>当前页：第 {unmatchedPage} / {unmatchedTotalPages} 页</div>
                   <div className="flex gap-2">
                     <button className="btn btn-secondary !text-[11px] !py-1.5 !px-3" disabled={unmatchedPage <= 1} onClick={() => setUnmatchedPage(p => p - 1)}>上一页</button>
                     <button className="btn btn-secondary !text-[11px] !py-1.5 !px-3" disabled={unmatchedPage >= unmatchedTotalPages} onClick={() => setUnmatchedPage(p => p + 1)}>下一页</button>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100/50 border border-slate-200 p-3">
+                  <div className="theme-surface-panel-muted rounded-xl border p-3" style={{ borderColor: 'var(--border)' }}>
                     <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">其他文件</div>
                     <div className="flex flex-wrap gap-2">
                       {unmatchedPrtItems.length ? unmatchedPrtItems.map((f, i) => (
                         <span key={i} className="chip">{f}</span>
-                      )) : <span className="chip text-slate-400">暂无</span>}
+                      )) : <span className="chip" style={{ color: 'var(--text-muted)' }}>暂无</span>}
                     </div>
                   </div>
-                  <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100/50 border border-slate-200 p-3">
+                  <div className="theme-surface-panel-muted rounded-xl border p-3" style={{ borderColor: 'var(--border)' }}>
                     <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">未匹配 PDF</div>
                     <div className="flex flex-wrap gap-2">
                       {unmatchedPdfItems.length ? unmatchedPdfItems.map((f, i) => (
                         <span key={i} className="chip">{f}</span>
-                      )) : <span className="chip text-slate-400">暂无</span>}
+                      )) : <span className="chip" style={{ color: 'var(--text-muted)' }}>暂无</span>}
                     </div>
                   </div>
                 </div>
