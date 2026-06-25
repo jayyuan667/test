@@ -51,23 +51,3 @@ def get_enterprise_scope():
         return None, False
 
     return int(enterprise_id), False
-
-
-def require_enterprise_access():
-    """
-    Check that the current user's enterprise_id matches the target.
-    Returns (True, None) if access granted, (False, error_response) if denied.
-
-    Usage:
-        allowed, error = require_enterprise_access()
-        if not allowed:
-            return error
-    """
-    from flask import jsonify
-
-    ent_id, is_super = get_enterprise_scope()
-    if is_super:
-        return True, None
-    if ent_id is None:
-        return False, (jsonify({"error": "未分配企业，无权访问"}), 403)
-    return True, None

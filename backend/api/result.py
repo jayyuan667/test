@@ -5,6 +5,7 @@ import os
 import json
 from flask import Blueprint, jsonify, send_from_directory
 
+from ..auth_utils import login_required
 from ..config import OUTPUT_FOLDER, KB_PREVIEW_FOLDER
 from ._response import fail, ERR_TASK_NOT_FOUND
 from ._utils import get_enterprise_scope
@@ -87,6 +88,7 @@ def set_tasks(tasks_dict):
 
 
 @result_bp.route("/result/<task_id>", methods=["GET"])
+@login_required
 def get_result(task_id):
     # 1. Check in-memory cache
     if task_id in tasks:
@@ -136,6 +138,12 @@ def get_result(task_id):
         try:
             with open(result_file, "r", encoding="utf-8") as f:
                 result_data = json.load(f)
+            # ── Enterprise isolation check ──
+            ent_id, is_super = get_enterprise_scope()
+            if not is_super and ent_id is not None:
+                task_ent = result_data.get("enterprise_id")
+                if task_ent is not None and int(task_ent) != ent_id:
+                    return jsonify({"error": "Task not found"}), 404
             return jsonify(_enrich_result_payload(task_id, result_data))
         except Exception as e:
             return fail("INTERNAL_ERROR", f"Failed to read result file: {str(e)}", 500)
@@ -145,6 +153,12 @@ def get_result(task_id):
         try:
             with open(pending_file, "r", encoding="utf-8") as f:
                 pending_data = json.load(f)
+            # ── Enterprise isolation check ──
+            ent_id, is_super = get_enterprise_scope()
+            if not is_super and ent_id is not None:
+                task_ent = pending_data.get("enterprise_id")
+                if task_ent is not None and int(task_ent) != ent_id:
+                    return jsonify({"error": "Task not found"}), 404
             return jsonify(
                 _enrich_result_payload(task_id, {
                     "task_id": task_id,
@@ -166,6 +180,7 @@ def get_result(task_id):
 
 
 @result_bp.route("/result/<task_id>/asset/<path:filename>", methods=["GET"])
+@login_required
 def get_result_asset(task_id, filename):
     result_dir = _result_dir(task_id)
     file_path = os.path.join(result_dir, filename)

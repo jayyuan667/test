@@ -29,6 +29,7 @@ from openpyxl import load_workbook
 from PIL import Image
 from werkzeug.utils import secure_filename
 
+from ..auth_utils import login_required
 from ..config import OUTPUT_FOLDER, UPLOAD_FOLDER, KB_PREVIEW_FOLDER, validate_vision_config, ensure_poppler_path
 from ..feature_report import build_feature_report, write_feature_report_json
 from ..library_scope import PUBLIC_LIBRARY_KEY, ensure_scope, mark_scope_batch, resolve_scope, sanitize_identifier
@@ -1186,6 +1187,7 @@ def import_folder_knowledge(
 
 
 @kb_import_bp.route("/kb/import_folder", methods=["POST"])
+@login_required
 def import_folder_route():
     """从本地两个文件夹（图纸/工艺）批量入库，接受 JSON body。
 
@@ -1232,6 +1234,7 @@ def import_folder_route():
 
 
 @kb_import_bp.route("/kb/import_zip", methods=["POST"])
+@login_required
 def import_zip_route():
     upload = request.files.get("zip_file") or request.files.get("file")
     if not upload or not upload.filename:

@@ -1086,6 +1086,7 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
 
 
 @library_bp.route("/library/preview", methods=["POST"])
+@login_required
 def preview_library_record():
     payload = request.get_json(silent=True) or request.form.to_dict() or {}
     source_type = payload.get("source_type") or request.form.get("source_type")

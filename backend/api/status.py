@@ -3,6 +3,7 @@
 
 from flask import Blueprint, jsonify
 
+from ..auth_utils import login_required
 from ._utils import get_enterprise_scope
 
 status_bp = Blueprint("status", __name__)
@@ -17,6 +18,7 @@ def set_tasks(tasks_dict):
 
 
 @status_bp.route("/status/<task_id>", methods=["GET"])
+@login_required
 def get_status(task_id):
     if task_id not in tasks:
         return jsonify({"error": "Task not found"}), 404
