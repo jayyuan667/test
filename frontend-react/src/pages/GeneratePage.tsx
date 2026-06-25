@@ -758,7 +758,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
                     </div>
                     <div>
                       <h3 className="text-[14px] font-bold mb-1" style={{ color: 'var(--text-primary)' }}>等待标注确认</h3>
-                      <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>YOLO 已预标注以下特征，请审阅或补充</p>
+                      <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>YOLO 已预标注 7 类工程特征（编码孔/通孔/盲孔/螺纹孔/倒角/沉头孔/锥口孔），请审阅或补充</p>
                     </div>
 
                     {/* Summary chips */}
