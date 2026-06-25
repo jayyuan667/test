@@ -211,6 +211,11 @@ YOLO_IOU         = float(os.getenv("YOLO_IOU",  "0.45"))
 YOLO_IMG_SIZE    = int(os.getenv("YOLO_IMG_SIZE", "1280"))
 YOLO_DEVICE      = os.getenv("YOLO_DEVICE", "cpu")
 
+# ============ YOLO GPU 服务配置 ============
+YOLO_SERVICE_URL       = os.getenv("YOLO_SERVICE_URL", "http://127.0.0.1:8000")
+YOLO_SERVICE_TOKEN     = os.getenv("YOLO_SERVICE_TOKEN", "")
+YOLO_SERVICE_TIMEOUT   = float(os.getenv("YOLO_SERVICE_TIMEOUT", "15"))
+
 # ============ FreeCAD / OnShape 配置 ============
 
 def get_freecad_paths() -> list[str]:
