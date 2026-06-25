@@ -81,6 +81,11 @@ def init_db():
             c.execute("ALTER TABLE tasks ADD COLUMN source_name TEXT DEFAULT ''")
             c.execute("UPDATE tasks SET source_name = COALESCE(prt_name, pdf_name, task_id) WHERE source_name = '' OR source_name IS NULL")
 
+        # Migration: add enterprise_id column (data isolation)
+        if "enterprise_id" not in columns:
+            c.execute("ALTER TABLE tasks ADD COLUMN enterprise_id INTEGER")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_enterprise ON tasks(enterprise_id)")
+
 
 def insert_task(task_id: str, pdf_name: str = "", prt_name: str = "",
                 output_dir: str = "", prefix_hint: str = "",

@@ -55,6 +55,13 @@ def ensure_import_tracking_tables():
             """
         )
         conn.commit()
+
+        # Migration: add enterprise_id column to kb_import_batches
+        cursor.execute("PRAGMA table_info(kb_import_batches)")
+        if "enterprise_id" not in {r[1] for r in cursor.fetchall()}:
+            cursor.execute("ALTER TABLE kb_import_batches ADD COLUMN enterprise_id INTEGER")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_batches_enterprise ON kb_import_batches(enterprise_id)")
+        conn.commit()
     finally:
         conn.close()
 
@@ -102,6 +109,13 @@ def ensure_scope_registry():
                 "",
             ),
         )
+
+        # Migration: add enterprise_id column
+        cursor.execute("PRAGMA table_info(kb_library_scopes)")
+        if "enterprise_id" not in {r[1] for r in cursor.fetchall()}:
+            cursor.execute("ALTER TABLE kb_library_scopes ADD COLUMN enterprise_id INTEGER")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_scopes_enterprise ON kb_library_scopes(enterprise_id)")
+
         conn.commit()
     finally:
         conn.close()
@@ -169,6 +183,13 @@ def ensure_vector_table(table_name: str):
             WHERE COALESCE(real, 1) = 1
             """
         )
+
+        # Migration: add enterprise_id column
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        if "enterprise_id" not in {r[1] for r in cursor.fetchall()}:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN enterprise_id INTEGER")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_enterprise ON {table_name}(enterprise_id)")
+
         conn.commit()
     finally:
         conn.close()
