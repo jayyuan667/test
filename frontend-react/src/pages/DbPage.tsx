@@ -343,7 +343,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
   const [editProcessRows, setEditProcessRows] = useState<{ code: string; trade: string; content: string }[]>([])
 
   const handleEdit = () => {
-    if (!selectedRecord || browseOnly) return
+    if (!selectedRecord || !canManageRecords) return
     const rows = normalizeProcessRows(selectedRecord.process_list)
     setEditDraft({
       prefix: selectedRecord.prefix,
@@ -359,7 +359,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
   }
 
   const handleSave = async () => {
-    if (!selectedRecord) return
+    if (!selectedRecord || !canManageRecords) return
     setSaving(true)
     try {
       const body = { ...editDraft, process_list: editProcessRows } as Partial<LibraryRecord> & { library_key?: string; process_list?: unknown }
@@ -380,7 +380,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
 
   // Delete record with confirmation
   const handleDeleteRecord = async () => {
-    if (!deleteRecordConfirm) return
+    if (!deleteRecordConfirm || !canManageRecords) return
     try {
       await deleteLibraryRecord(deleteRecordConfirm.id, filterScope || undefined)
       if (selectedRecord?.id === deleteRecordConfirm.id) {
@@ -476,6 +476,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
 
   const selectedScope = scopes.find(scope => scope.library_key === filterScope) ?? activeScope
   const currentScopeLabel = getScopeUiLabel(selectedScope)
+  const canManageRecords = !browseOnly && selectedScope?.scope_type !== 'public' && user?.role !== 'user'
   const allowDeleteScope = selectedScope?.scope_type !== 'public' && user?.role !== 'user'
   const bannerCopy = user?.role === 'super_admin'
     ? '查看平台与个人工艺记录。'
@@ -891,13 +892,13 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                 </div>
               </div>
               <div className="flex gap-2">
-                {viewMode === 'detail' && !browseOnly && (
+                {viewMode === 'detail' && canManageRecords && (
                   <>
                     <button className="btn btn-secondary !text-[12px] !py-2" onClick={handleEdit}>编辑记录</button>
                     <button className="btn btn-ghost theme-link-danger !text-[12px] !py-2" onClick={() => setDeleteRecordConfirm(selectedRecord)}>删除</button>
                   </>
                 )}
-                {viewMode === 'detail' && browseOnly && (
+                {viewMode === 'detail' && !canManageRecords && (
                   <span className="chip !text-[11px]">只读浏览</span>
                 )}
               </div>

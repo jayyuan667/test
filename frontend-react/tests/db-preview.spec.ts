@@ -20,9 +20,19 @@ const ENTERPRISE_ADMIN_USER = {
   created_at: '2026-06-20T00:00:00',
 }
 
+const ASSIGNED_USER = {
+  id: 3,
+  username: 'worker',
+  role: 'user',
+  enterprise_id: 9,
+  enterprise_name: '演示企业',
+  is_active: true,
+  created_at: '2026-06-20T00:00:00',
+}
+
 async function mockAuthenticatedUser(
   page: import('@playwright/test').Page,
-  user: typeof SUPER_ADMIN_USER | typeof ENTERPRISE_ADMIN_USER = SUPER_ADMIN_USER,
+  user: typeof SUPER_ADMIN_USER | typeof ENTERPRISE_ADMIN_USER | typeof ASSIGNED_USER = SUPER_ADMIN_USER,
 ) {
   await page.route('**/api/auth/me', async route => {
     await route.fulfill({
@@ -65,6 +75,12 @@ test.beforeEach(async ({ page }) => {
   })
 
   await page.route('**/api/library/records?**', async route => {
+    const url = new URL(route.request().url())
+    const libraryKey = url.searchParams.get('library_key') || 'public'
+    const activeScope = libraryKey === 'private'
+      ? { library_key: 'private', library_name: '我的工艺库', scope_type: 'private' }
+      : { library_key: 'public', library_name: '公共工艺库', scope_type: 'public' }
+
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
@@ -119,7 +135,7 @@ test.beforeEach(async ({ page }) => {
         total: 2,
         total_pages: 1,
         product_types: ['轴类'],
-        active_scope: { library_key: 'public', library_name: '公共工艺库', scope_type: 'public' },
+        active_scope: activeScope,
       }),
     })
   })
@@ -202,4 +218,26 @@ test('enterprise admin does not see platform governance copy in db page', async 
   await expect(page.getByText('查看企业复用相关记录与个人工艺库。')).toBeVisible()
   await expect(page.getByText('查看平台与个人工艺记录。')).toHaveCount(0)
   await expect(page.getByText('跨企业治理')).toHaveCount(0)
+})
+
+test('public scope keeps record detail actions read-only for super admin', async ({ page }) => {
+  await openDbPage(page)
+
+  await page.getByText('D125A-181200A003').click()
+
+  await expect(page.getByRole('button', { name: '编辑记录' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '删除', exact: true })).toHaveCount(0)
+  await expect(page.getByText('只读浏览')).toBeVisible()
+})
+
+test('assigned user cannot edit or delete records even in private scope', async ({ page }) => {
+  await mockAuthenticatedUser(page, ASSIGNED_USER)
+
+  await openDbPage(page)
+  await page.locator('select').first().selectOption('private')
+  await page.getByText('D125A-181200A003').click()
+
+  await expect(page.getByRole('button', { name: '编辑记录' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '删除', exact: true })).toHaveCount(0)
+  await expect(page.getByText('只读浏览')).toBeVisible()
 })
