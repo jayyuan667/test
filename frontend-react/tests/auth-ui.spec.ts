@@ -130,6 +130,59 @@ async function mockAdminApis(page: import('@playwright/test').Page) {
   })
 }
 
+async function mockGenerateApis(page: import('@playwright/test').Page) {
+  await page.route('**/api/library/scopes', async route => {
+    await route.fulfill({
+      contentType: 'application/json',
+      status: 200,
+      body: JSON.stringify({
+        items: [
+          {
+            library_key: 'public',
+            library_name: '公共工艺库',
+            scope_type: 'public',
+          },
+          {
+            library_key: 'enterprise-hd',
+            library_name: '华东工厂知识库',
+            scope_type: 'private',
+          },
+        ],
+      }),
+    })
+  })
+}
+
+async function mockHistoryApis(page: import('@playwright/test').Page) {
+  await page.route('**/api/history**', async route => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 200,
+        body: JSON.stringify({
+          history: [
+            {
+              task_id: 'task-001',
+              pdf_name: '法兰盘.pdf',
+              progress: 100,
+              created_at: '2026-06-25T00:00:00.000Z',
+              completed_at: '2026-06-25T00:05:00.000Z',
+              file_count: 8,
+            },
+          ],
+        }),
+      })
+      return
+    }
+
+    await route.fulfill({
+      contentType: 'application/json',
+      status: 200,
+      body: JSON.stringify({ success: true, data: { message: 'ok' } }),
+    })
+  })
+}
+
 async function openAdminConsole(page: import('@playwright/test').Page) {
   await page.goto('/')
   await page.locator('button').filter({ hasText: '管理后台' }).first().click()
@@ -326,5 +379,73 @@ test.describe('admin console role wording', () => {
     await expect.poll(() => updatePayloads.length).toBe(2)
     expect(updatePayloads[1]).toEqual({ is_active: false })
     expect(updatePayloads[1]).not.toHaveProperty('enterprise_id')
+  })
+})
+
+test.describe('light-touch role cues', () => {
+  test('profile highlights enterprise assignment and authorization state', async ({ page }) => {
+    await mockAuthSession(page, ENTERPRISE_ADMIN_USER)
+    await mockGenerateApis(page)
+
+    await page.goto('/')
+    await page.getByRole('button', { name: '个人中心' }).click()
+
+    await expect(page.getByText('你当前负责本企业运营治理。')).toBeVisible()
+    await expect(page.getByText('企业授权有效期持续到')).toBeVisible()
+    await expect(page.getByText('华东工厂')).toBeVisible()
+
+    await mockAuthSession(page, SUPER_ADMIN_USER)
+    await page.reload()
+    await page.getByRole('button', { name: '个人中心' }).click()
+
+    await expect(page.getByText('你当前拥有平台治理权限。')).toBeVisible()
+    await expect(page.getByText('可统筹企业、用户与平台级配额策略。')).toBeVisible()
+
+    await mockAuthSession(page, UNASSIGNED_USER)
+    await page.reload()
+
+    await expect(page.getByText('当前账号尚未分配企业，业务能力受限。')).toBeVisible()
+    await expect(page.getByText('请联系管理员完成企业分配后再执行工艺任务。')).toBeVisible()
+  })
+
+  test('generate shows light retrieval cues for each role', async ({ page }) => {
+    await mockGenerateApis(page)
+
+    await mockAuthSession(page, ENTERPRISE_ADMIN_USER)
+    await page.goto('/')
+    await expect(page.getByText('优先关注企业复用影响与入库去向。')).toBeVisible()
+    await expect(page.getByText('当前检索范围：公共工艺库')).toBeVisible()
+
+    await mockAuthSession(page, SUPER_ADMIN_USER)
+    await page.reload()
+    await expect(page.getByText('当前可切换平台基线检索。')).toBeVisible()
+
+    await mockAuthSession(page, UNASSIGNED_USER)
+    await page.reload()
+    await expect(page.getByText('当前账号尚未分配企业，业务能力受限。')).toBeVisible()
+  })
+
+  test('history remains execution-focused for all roles', async ({ page }) => {
+    await mockGenerateApis(page)
+    await mockHistoryApis(page)
+    await mockAuthSession(page, SUPER_ADMIN_USER)
+
+    await page.goto('/')
+    await page.getByRole('button', { name: '历史记录' }).click()
+    const main = page.locator('main')
+
+    await expect(main.getByRole('heading', { name: '历史记录' })).toBeVisible()
+    await expect(main.getByText('查看历史输出、快照与工艺回看，不承载治理操作。')).toBeVisible()
+    await expect(main.getByText('平台治理')).toHaveCount(0)
+    await expect(main.getByText('全部企业')).toHaveCount(0)
+    await expect(main.getByText('跨企业治理')).toHaveCount(0)
+    await expect(main.getByRole('table').getByText('法兰盘.pdf')).toBeVisible()
+
+    await mockAuthSession(page, ENTERPRISE_ADMIN_USER)
+    await page.reload()
+    await page.getByRole('button', { name: '历史记录' }).click()
+
+    await expect(main.getByText('查看历史输出、快照与工艺回看，不承载治理操作。')).toBeVisible()
+    await expect(main.getByText('平台治理')).toHaveCount(0)
   })
 })

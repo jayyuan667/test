@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { changePassword } from '../api/client'
 import { useToast } from '../hooks/useToast'
+import { UNASSIGNED_ENTERPRISE_LABEL } from '../types/auth'
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: '超级管理员',
@@ -52,7 +53,7 @@ export function ProfilePage() {
   if (!user) {
     return (
       <div className="max-w-2xl mx-auto py-8 space-y-6">
-        <p className="text-slate-500 text-sm">请先登录</p>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>请先登录</p>
       </div>
     )
   }
@@ -63,11 +64,27 @@ export function ProfilePage() {
   const quotaRemaining = quota?.remaining ?? 0
   const quotaPercent = quotaTotal > 0 ? Math.round((quotaRemaining / quotaTotal) * 100) : 0
   const isLowQuota = quotaPercent < 20
+  const statusHint = user.role === 'enterprise_admin'
+    ? '你当前负责本企业运营治理。'
+    : user.role === 'super_admin'
+      ? '你当前拥有平台治理权限。'
+      : user.enterprise_id == null
+        ? '当前账号尚未分配企业，业务能力受限。'
+        : '当前账号可执行工艺业务任务。'
+  const statusDetail = user.role === 'enterprise_admin'
+    ? user.grant_expires_at
+      ? `企业授权有效期持续到 ${new Date(user.grant_expires_at).toLocaleDateString('zh-CN')}。`
+      : '请持续关注本企业成员配额与授权状态。'
+    : user.role === 'super_admin'
+      ? '可统筹企业、用户与平台级配额策略。'
+      : user.enterprise_id == null
+        ? '请联系管理员完成企业分配后再执行工艺任务。'
+        : '可继续处理工艺生成、入库与历史回看。'
 
   const infoRows = [
     { label: '用户名', value: user.username },
     { label: '角色', value: ROLE_LABELS[user.role] || user.role },
-    { label: '所属企业', value: user.enterprise_name || '-' },
+    { label: '所属企业', value: user.enterprise_name || UNASSIGNED_ENTERPRISE_LABEL },
     {
       label: '账户状态',
       value: user.is_active ? '正常' : '已停用',
@@ -84,34 +101,38 @@ export function ProfilePage() {
   return (
     <div className="max-w-2xl mx-auto py-8 space-y-6">
       {/* Account Info Card */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
+      <div className="theme-surface-panel border rounded-lg p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide mb-4" style={{ color: 'var(--text-secondary)' }}>
           账户信息
         </h2>
+        <div className="mb-4 rounded-lg border px-4 py-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-panel-subtle)' }}>
+          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{statusHint}</p>
+          <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{statusDetail}</p>
+        </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm">
           {infoRows.map((row) => (
             <div key={row.label} className="contents">
-              <dt className="text-slate-500 whitespace-nowrap">{row.label}</dt>
-              <dd className={`text-slate-800 ${row.color || ''}`}>{row.value}</dd>
+              <dt className="whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>{row.label}</dt>
+              <dd className={row.color || ''} style={{ color: row.color ? undefined : 'var(--text-primary)' }}>{row.value}</dd>
             </div>
           ))}
         </dl>
       </div>
 
       {/* Quota Card */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
+      <div className="theme-surface-panel border rounded-lg p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide mb-4" style={{ color: 'var(--text-secondary)' }}>
           使用配额
         </h2>
         <div className="flex items-baseline gap-1 mb-3">
-          <span className="text-3xl font-bold text-slate-800">
+          <span className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
             {quotaRemaining}
           </span>
-          <span className="text-sm text-slate-500">
+          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             / {quotaTotal}
           </span>
         </div>
-        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden mb-2">
+        <div className="h-2.5 rounded-full overflow-hidden mb-2" style={{ background: 'var(--surface-panel-subtle)' }}>
           <div
             className={`h-full rounded-full transition-all duration-300 ${
               isLowQuota
@@ -121,19 +142,19 @@ export function ProfilePage() {
             style={{ width: `${quotaPercent}%` }}
           />
         </div>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           已使用 {quotaUsed} 次
         </p>
       </div>
 
       {/* Password Change Card */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
+      <div className="theme-surface-panel border rounded-lg p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide mb-4" style={{ color: 'var(--text-secondary)' }}>
           修改密码
         </h2>
         <form onSubmit={handlePasswordChange} className="space-y-4">
           <div>
-            <label htmlFor="current-password" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="current-password" className="block text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
               当前密码
             </label>
             <input
@@ -141,12 +162,12 @@ export function ProfilePage() {
               type="password"
               value={currentPassword}
               onChange={e => setCurrentPassword(e.target.value)}
-              className="block w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition"
+              className="theme-form-field block w-full rounded-lg px-3 py-2 text-sm transition"
               autoComplete="current-password"
             />
           </div>
           <div>
-            <label htmlFor="new-password" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="new-password" className="block text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
               新密码
             </label>
             <input
@@ -154,12 +175,12 @@ export function ProfilePage() {
               type="password"
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
-              className="block w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition"
+              className="theme-form-field block w-full rounded-lg px-3 py-2 text-sm transition"
               autoComplete="new-password"
             />
           </div>
           <div>
-            <label htmlFor="confirm-password" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="confirm-password" className="block text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
               确认新密码
             </label>
             <input
@@ -167,7 +188,7 @@ export function ProfilePage() {
               type="password"
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
-              className="block w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition"
+              className="theme-form-field block w-full rounded-lg px-3 py-2 text-sm transition"
               autoComplete="new-password"
             />
           </div>

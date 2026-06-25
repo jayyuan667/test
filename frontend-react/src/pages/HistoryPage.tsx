@@ -317,20 +317,33 @@ export function HistoryPage() {
     return `${mm}-${dd} ${hh}:${mi}`
   }
 
+  const getTradeBadgeClass = (trade?: string) => {
+    if (!trade) return 'bg-stone-50 text-stone-600 border-stone-200'
+    if (trade === '检') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    if (trade === '热处理') return 'bg-red-50 text-red-700 border-red-200'
+    if (trade === '钳') return 'bg-amber-50 text-amber-700 border-amber-200'
+    return 'bg-stone-50 text-stone-700 border-stone-200'
+  }
+
   // Stat card data
   const statCards = [
-    { label: '总数', value: total, color: 'from-slate-500 to-slate-600', bgColor: 'bg-gradient-to-br from-slate-50 to-slate-100',
-      iconSvg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><path d="M18 20V10" /><path d="M12 20V4" /><path d="M6 20v-6" /></svg> },
+    { label: '总数', value: total, color: 'from-stone-500 to-stone-700', bgColor: 'theme-surface-panel-subtle',
+      iconSvg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500"><path d="M18 20V10" /><path d="M12 20V4" /><path d="M6 20v-6" /></svg> },
     { label: '完成', value: completedCount, color: 'from-emerald-500 to-emerald-600', bgColor: 'bg-gradient-to-br from-emerald-50 to-emerald-100',
       iconSvg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><polyline points="20 6 9 17 4 12" /></svg> },
     { label: '待审阅', value: reviewCount, color: 'from-amber-500 to-amber-600', bgColor: 'bg-gradient-to-br from-amber-50 to-amber-100',
       iconSvg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg> },
-    { label: '工序', value: stepCount, color: 'from-blue-500 to-blue-600', bgColor: 'bg-gradient-to-br from-blue-50 to-blue-100',
-      iconSvg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg> },
+    { label: '工序', value: stepCount, color: 'from-orange-500 to-orange-600', bgColor: 'bg-gradient-to-br from-orange-50 to-orange-100',
+      iconSvg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-orange-500"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg> },
   ]
 
   return (
     <div className="flex flex-col gap-4 h-full min-h-0">
+      <div className="shrink-0">
+        <h1 className="text-[22px] font-bold" style={{ color: 'var(--text-primary)' }}>历史记录</h1>
+        <p className="mt-1 text-[12px]" style={{ color: 'var(--text-secondary)' }}>查看历史输出、快照与工艺回看，不承载治理操作。</p>
+      </div>
+
       {/* Toolbar */}
       <div ref={headerRef} className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
@@ -341,10 +354,10 @@ export function HistoryPage() {
             </span>
           </button>
           <div className="flex items-center gap-2">
-            <label className="text-[11px] font-semibold text-slate-500">完成日期</label>
+            <label className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>完成日期</label>
             <input
               type="date"
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-1 focus:ring-flame-glow transition-all"
+              className="theme-form-field rounded-lg px-2.5 py-1.5 text-[12px] transition-all"
               value={dateFilter}
               onChange={e => { setDateFilter(e.target.value); setPage(1) }}
             />
@@ -378,7 +391,7 @@ export function HistoryPage() {
                 {stat.label}
               </span>
             </div>
-            <div className="text-[22px] lg:text-[28px] font-extrabold text-slate-800 leading-none">
+            <div className="text-[22px] lg:text-[28px] font-extrabold leading-none" style={{ color: 'var(--text-primary)' }}>
               {stat.value}
             </div>
           </div>
@@ -389,12 +402,12 @@ export function HistoryPage() {
       <div ref={tableRef} className="card-solid flex-1 min-h-0 overflow-auto flex flex-col">
         {/* Table header meta */}
         <div className="flex items-center justify-between mb-3 shrink-0">
-          <div className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">历史任务表</div>
-          <div className="text-[11px] text-slate-500">{filtered.length} 条 · 当前展示第 {page} 页，共 {totalPages} 页，最近任务会优先显示。</div>
+          <div className="text-[12px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>历史任务表</div>
+          <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{filtered.length} 条 · 当前展示第 {page} 页，共 {totalPages} 页，最近任务会优先显示。</div>
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-20 text-slate-400 text-[14px]">
+          <div className="flex items-center justify-center py-20 text-[14px]" style={{ color: 'var(--text-muted)' }}>
             <div className="flex items-center gap-3">
               <svg className="animate-spin h-5 w-5 text-flame-500" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -404,14 +417,14 @@ export function HistoryPage() {
             </div>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-4">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-400">
+          <div className="flex flex-col items-center justify-center py-20" style={{ color: 'var(--text-muted)' }}>
+            <div className="theme-empty-accent w-20 h-20 rounded-full flex items-center justify-center mb-4">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--surface-empty-accent-stroke)' }}>
                 <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 21V9" />
               </svg>
             </div>
-            <div className="text-[16px] font-bold text-slate-500 mb-1">暂无历史任务</div>
-            <div className="text-[13px] text-slate-500">上传文件生成工艺后，记录会出现在这里。</div>
+            <div className="text-[16px] font-bold mb-1" style={{ color: 'var(--text-secondary)' }}>暂无历史任务</div>
+            <div className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>上传文件生成工艺后，记录会出现在这里。</div>
           </div>
         ) : (
           <>
@@ -422,18 +435,18 @@ export function HistoryPage() {
               return (
                 <div
                   key={h.task_id}
-                  className="rounded-xl border border-slate-200 bg-white p-3.5"
+                  className="theme-surface-panel rounded-xl border p-3.5"
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-semibold text-slate-800 truncate">{h.pdf_name || h.task_id}</div>
-                      <div className="text-[11px] text-slate-500 mt-0.5 font-mono">{h.task_id}</div>
+                      <div className="text-[13px] font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{h.pdf_name || h.task_id}</div>
+                      <div className="text-[11px] mt-0.5 font-mono" style={{ color: 'var(--text-secondary)' }}>{h.task_id}</div>
                     </div>
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0 ml-2 ${isDone ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
                       {isDone ? '已完成' : '待审阅'}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-500 mb-2">
+                  <div className="text-[11px] mb-2" style={{ color: 'var(--text-secondary)' }}>
                     {formatDate(h.completed_at || h.created_at)}
                     {h.file_count != null ? ` · 已输出 ${h.file_count} 条工序` : ''}
                   </div>
@@ -445,13 +458,13 @@ export function HistoryPage() {
                       className="rounded accent-flame-500"
                     />
                     <button
-                      className="btn btn-ghost !text-[11px] !py-1 !px-2.5 !text-blue-600"
+                      className="btn btn-ghost theme-link-action !text-[11px] !py-1 !px-2.5"
                       onClick={() => openSnapshot(h.task_id)}
                     >
                       查看快照
                     </button>
                     <button
-                      className="btn btn-ghost !text-[11px] !py-1 !px-2 !text-red-400 ml-auto"
+                      className="btn btn-ghost theme-link-danger !text-[11px] !py-1 !px-2 ml-auto"
                       disabled={deleting === h.task_id}
                       onClick={() => handleDelete(h.task_id)}
                     >
@@ -504,19 +517,19 @@ export function HistoryPage() {
                         />
                       </td>
                       <td>
-                        <div className="text-[13px] font-semibold text-slate-800">{h.pdf_name || h.task_id}</div>
-                        <div className="text-[11px] text-slate-500 mt-0.5 font-mono">{h.task_id} · {formatDate(h.created_at)}</div>
+                        <div className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>{h.pdf_name || h.task_id}</div>
+                        <div className="text-[11px] mt-0.5 font-mono" style={{ color: 'var(--text-secondary)' }}>{h.task_id} · {formatDate(h.created_at)}</div>
                       </td>
                       <td>
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${isDone ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
                           {isDone ? '已完成' : '待审阅'}
                         </span>
                       </td>
-                      <td className="text-[12px] text-slate-500">{formatDate(h.completed_at || h.created_at)}</td>
-                      <td className="text-[12px] text-slate-600">{h.file_count != null ? `已输出 ${h.file_count} 条工序` : '-'}</td>
+                      <td className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{formatDate(h.completed_at || h.created_at)}</td>
+                      <td className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{h.file_count != null ? `已输出 ${h.file_count} 条工序` : '-'}</td>
                       <td>
                         <button
-                          className="btn btn-ghost !text-[11px] !py-1 !px-2.5 !text-blue-600 hover:!underline"
+                          className="btn btn-ghost theme-link-action !text-[11px] !py-1 !px-2.5 hover:!underline"
                           onClick={() => openSnapshot(h.task_id)}
                         >
                           查看快照
@@ -524,7 +537,7 @@ export function HistoryPage() {
                       </td>
                       <td>
                         <button
-                          className="btn btn-ghost !text-[11px] !py-1 !px-2 !text-red-400"
+                          className="btn btn-ghost theme-link-danger !text-[11px] !py-1 !px-2"
                           disabled={deleting === h.task_id}
                           onClick={() => handleDelete(h.task_id)}
                         >
@@ -543,7 +556,7 @@ export function HistoryPage() {
 
       {/* Pagination */}
       {filtered.length > 0 && (
-        <div ref={paginationRef} className="flex items-center justify-between shrink-0 text-[12px] text-slate-500">
+        <div ref={paginationRef} className="flex items-center justify-between shrink-0 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
           <span>第 {page} / {totalPages} 页</span>
           <div className="flex gap-2">
             <button className="btn btn-secondary !text-[11px] !py-1.5 !px-3" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>上一页</button>
@@ -555,44 +568,44 @@ export function HistoryPage() {
       {/* Snapshot Modal */}
       {snapshot && (
         <div className="snapshot-modal fixed inset-0 z-[2000] flex items-center justify-center" onClick={closeSnapshot}>
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="absolute inset-0 backdrop-blur-sm" style={{ background: 'var(--modal-overlay)' }} />
           <div
-            className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-[960px] w-[92vw] max-h-[88vh] overflow-hidden flex flex-col"
+            className="theme-modal-shell relative rounded-2xl shadow-2xl border max-w-[960px] w-[92vw] max-h-[88vh] overflow-hidden flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 shrink-0">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b shrink-0" style={{ borderColor: 'var(--modal-subtle-border)' }}>
               <div>
-                <div className="text-[15px] font-bold text-slate-800">{snapshot.pdf_name || '工艺快照'}</div>
-                <div className="text-[11px] text-slate-500 mt-0.5">{snapshot.task_id} · {snapshotUrls.length} 页视图</div>
+                <div className="text-[15px] font-bold" style={{ color: 'var(--text-primary)' }}>{snapshot.pdf_name || '工艺快照'}</div>
+                <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>{snapshot.task_id} · {snapshotUrls.length} 页视图</div>
               </div>
-              <button onClick={closeSnapshot} className="btn btn-ghost !p-1.5 !text-[18px] text-slate-400 hover:text-slate-700">&times;</button>
+              <button onClick={closeSnapshot} className="btn btn-ghost !p-1.5 !text-[18px]" style={{ color: 'var(--text-muted)' }}>&times;</button>
             </div>
 
             {/* Body */}
             <div className="flex-1 min-h-0 overflow-auto flex flex-col md:flex-row">
               {/* Left: Image preview */}
-              <div className="flex-1 min-w-0 md:border-r border-slate-200 flex flex-col items-center justify-center p-4 bg-slate-50">
+              <div className="theme-preview-frame flex-1 min-w-0 md:border-r border flex flex-col items-center justify-center p-4">
                 {snapshotLoading ? (
-                  <div className="text-slate-400 text-[13px]">加载中...</div>
+                  <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>加载中...</div>
                 ) : snapshotError ? (
-                  <div className="max-w-sm rounded-xl border border-red-200 bg-red-50 p-4 text-center">
-                    <div className="text-[13px] font-semibold text-red-700">快照加载失败</div>
-                    <div className="mt-1 text-[11px] text-red-500">{snapshotError}</div>
+                  <div className="theme-danger-note max-w-sm rounded-xl p-4 text-center">
+                    <div className="text-[13px] font-semibold">快照加载失败</div>
+                    <div className="mt-1 text-[11px]">{snapshotError}</div>
                   </div>
                 ) : snapshotUrls.length === 0 && !has3D ? (
-                  <div className="flex flex-col items-center text-slate-400">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-2 text-slate-300"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+                  <div className="flex flex-col items-center" style={{ color: 'var(--text-muted)' }}>
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-2" style={{ color: 'var(--text-muted)' }}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
                     <div className="text-[13px] font-semibold">暂无可预览图片</div>
                     <div className="text-[11px] mt-1">该任务未生成预览视图</div>
                   </div>
                 ) : (
                   <>
                     {/* Source info */}
-                    <div className="text-[11px] text-slate-400 mb-2 shrink-0">{snapshot.task_id} · {has3D ? '3D 模型' : `${snapshotUrls.length} 页视图`}</div>
+                    <div className="text-[11px] mb-2 shrink-0" style={{ color: 'var(--text-muted)' }}>{snapshot.task_id} · {has3D ? '3D 模型' : `${snapshotUrls.length} 页视图`}</div>
                     <div className="flex-1 min-h-0 flex items-center justify-center overflow-auto w-full">
                       {snapshotImageFailed ? (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-center">
+                        <div className="theme-empty-accent rounded-xl p-4 text-center">
                           <div className="text-[13px] font-semibold text-amber-700">预览图片加载失败</div>
                           <div className="mt-1 break-all text-[10px] text-amber-600">{snapshotUrls[snapshotPage]}</div>
                         </div>
@@ -610,11 +623,11 @@ export function HistoryPage() {
                     {/* Controls */}
                     <div className="flex items-center gap-2 mt-3 shrink-0 flex-wrap justify-center">
                       <button className="btn btn-secondary !text-[11px] !py-1 !px-2.5" disabled={snapshotPage <= 0 || has3D} onClick={() => { setSnapshotImageFailed(false); setSnapshotPage(p => p - 1) }}>&larr; 上一页</button>
-                      <span className="text-[12px] text-slate-500 min-w-[48px] text-center">{has3D ? '3D 模型' : `${snapshotPage + 1} / ${snapshotUrls.length}`}</span>
+                      <span className="text-[12px] min-w-[48px] text-center" style={{ color: 'var(--text-secondary)' }}>{has3D ? '3D 模型' : `${snapshotPage + 1} / ${snapshotUrls.length}`}</span>
                       <button className="btn btn-secondary !text-[11px] !py-1 !px-2.5" disabled={snapshotPage >= snapshotUrls.length - 1 || has3D} onClick={() => { setSnapshotImageFailed(false); setSnapshotPage(p => p + 1) }}>下一页 &rarr;</button>
-                      <span className="w-px h-4 bg-slate-200 mx-1" />
+                      <span className="w-px h-4 mx-1" style={{ background: 'var(--border)' }} />
                       <button className="btn btn-secondary !text-[11px] !py-1 !px-2" disabled={snapshotZoom <= 0.6 || has3D} onClick={() => setSnapshotZoom(z => Math.max(0.6, z - 0.2))}>缩小</button>
-                      <span className="text-[11px] text-slate-500 w-12 text-center">{has3D ? '拖拽旋转' : `${Math.round(snapshotZoom * 100)}%`}</span>
+                      <span className="text-[11px] w-12 text-center" style={{ color: 'var(--text-secondary)' }}>{has3D ? '拖拽旋转' : `${Math.round(snapshotZoom * 100)}%`}</span>
                       <button className="btn btn-secondary !text-[11px] !py-1 !px-2" disabled={snapshotZoom >= 2.4 || has3D} onClick={() => setSnapshotZoom(z => Math.min(2.4, z + 0.2))}>放大</button>
                       <button className="btn btn-ghost !text-[11px] !py-1 !px-2" disabled={has3D} onClick={() => setSnapshotZoom(1)}>重置</button>
                     </div>
@@ -623,11 +636,11 @@ export function HistoryPage() {
               </div>
 
               {/* Right: Details */}
-              <div className="w-full md:w-[320px] shrink-0 overflow-auto p-4 flex flex-col gap-4 border-t md:border-t-0 md:border-l border-slate-200">
+              <div className="w-full md:w-[320px] shrink-0 overflow-auto p-4 flex flex-col gap-4 border-t md:border-t-0 md:border-l" style={{ borderColor: 'var(--modal-subtle-border)' }}>
                 {/* Feature review */}
                 <div>
                   <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">特征审阅</div>
-                  <div className="text-[12px] text-slate-600 leading-relaxed whitespace-pre-wrap max-h-[200px] overflow-auto rounded-xl bg-slate-50 border border-slate-200 p-3">
+                  <div className="text-[12px] leading-relaxed whitespace-pre-wrap max-h-[200px] overflow-auto rounded-xl p-3 theme-preview-frame" style={{ color: 'var(--text-secondary)' }}>
                     {snapshot.review_text || snapshot.feature_report_text || '暂无特征数据'}
                   </div>
                 </div>
@@ -636,9 +649,9 @@ export function HistoryPage() {
                 <div>
                   <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">工艺规程</div>
                   {normalizedProcessRows.length === 0 ? (
-                    <div className="text-[12px] text-slate-500">暂无工艺数据</div>
+                    <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>暂无工艺数据</div>
                   ) : (
-                    <div className="rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="theme-surface-panel rounded-xl border overflow-hidden">
                       <table className="data-table">
                         <thead>
                           <tr>
@@ -650,20 +663,14 @@ export function HistoryPage() {
                         <tbody>
                           {normalizedProcessRows.map((row, i) => (
                             <tr key={i}>
-                              <td className="font-mono text-blue-600 text-[11px] font-bold">{row.code || `#${i + 1}`}</td>
+                              <td className="theme-code-accent font-mono text-[11px] font-bold">{row.code || `#${i + 1}`}</td>
                               <td>
                                 {row.trade ? (
                                   <span className={[
                                     'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border',
-                                    row.trade === '料' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' :
-                                    row.trade === '车' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                    row.trade === '铣' || row.trade === '数铣' ? 'bg-cyan-50 text-cyan-600 border-cyan-200' :
-                                    row.trade === '钳' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                                    row.trade === '检' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                    row.trade === '热处理' ? 'bg-red-50 text-red-600 border-red-200' :
-                                    'bg-slate-50 text-slate-600 border-slate-200'
+                                    getTradeBadgeClass(row.trade)
                                   ].join(' ')}>{row.trade}</span>
-                                ) : <span className="text-[10px] text-slate-400">—</span>}
+                                ) : <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>—</span>}
                               </td>
                               <td className="text-[11px]">{row.content}</td>
                             </tr>

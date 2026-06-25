@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { batchUpload, connectSSE, finalizeAnnotation, getAnnotations, getAssetUrl, getResult, getStatus, submitReview, uploadDrawing, uploadFile, getLibraryScopes } from '../api/client'
 import type { TaskResult } from '../types'
+import { useAuth } from '../contexts/AuthContext'
 import { WorkflowHUD } from '../components/generate/WorkflowHUD'
 import { UploadPanel } from '../components/generate/UploadPanel'
 import { ReviewPanel } from '../components/generate/ReviewPanel'
@@ -15,6 +16,7 @@ type ActiveTab = 'review' | 'annotation' | 'process'
 type WorkflowStage = 'idle' | 'analysis' | 'annotation' | 'review' | 'process' | 'completed'
 
 export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (msg: string) => void; onSuccess?: (msg: string) => void; onBusyChange?: (busy: boolean) => void }) {
+  const { user } = useAuth()
   const [taskId, setTaskId] = useState<string | null>(null)
   const [status, setStatus] = useState<string>('idle')
   const [progress, setProgress] = useState(0)
@@ -134,6 +136,11 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
   const [featureCache, setFeatureCache] = useState(false)
   const [showRetrievalModal, setShowRetrievalModal] = useState(false)
   const [libraryScopes, setLibraryScopes] = useState<{ library_key: string; library_name: string; scope_type: string }[]>([])
+  const retrievalHint = user?.role === 'super_admin'
+    ? '当前可切换平台基线检索。'
+    : user?.role === 'enterprise_admin'
+      ? '优先关注企业复用影响与入库去向。'
+      : '优先关注结果、建议与下一步动作。'
 
   // Load library scopes
   useEffect(() => {
@@ -628,14 +635,14 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       data-workflow-stage={workflowStageRef.current}
     >
       {/* ── Toolbar ── */}
-      <div className="shrink-0 flex items-center gap-2 px-2 py-1.5 border-b border-slate-200 bg-white">
+      <div className="theme-surface-panel shrink-0 flex items-center gap-2 px-2 py-1.5 border-b">
         <button
           className="btn btn-secondary !text-[11px] !py-1.5 !px-2.5"
           onClick={() => setShowRetrievalModal(true)}
           disabled={busy}
         >
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-action)' }} />
             检索库：{retrievalName}
           </span>
         </button>
@@ -652,6 +659,10 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
             特征缓存：{featureCache ? '开' : '关'}
           </span>
         </button>
+        <div className="min-w-0">
+          <p className="truncate text-[11px] font-medium" style={{ color: 'var(--text-primary)' }}>{retrievalHint}</p>
+          <p className="truncate text-[10px]" style={{ color: 'var(--text-muted)' }}>当前检索范围：{retrievalName}</p>
+        </div>
         <div className="flex-1" />
         <button
           className="btn btn-ghost !text-[11px] !py-1.5 !px-2.5"
@@ -671,7 +682,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       </div>
 
       {/* ── Tab bar: [上传 | 特征审阅 | 工艺规程] ... [导出] [重置] ── */}
-      <div ref={tabBarRef} className="shrink-0 flex items-center gap-0 border-b border-slate-200 bg-white px-1">
+      <div ref={tabBarRef} className="theme-surface-panel shrink-0 flex items-center gap-0 border-b px-1">
         <div className="flex items-center gap-0">
           {([
             ...(showAnnotationTab ? [{ id: 'annotation' as ActiveTab, label: 'YOLO审阅' }] : []),
@@ -684,8 +695,8 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
               className={`
                 px-4 py-2.5 text-[12px] font-semibold transition-all duration-200 border-b-2
                 ${activeTab === tab.id
-                  ? 'text-orange-600 border-orange-500'
-                  : 'text-slate-400 border-transparent hover:text-slate-600'}
+                  ? 'theme-tab-active'
+                  : 'theme-tab-idle border-transparent'}
               `}
             >
               {tab.label}
@@ -694,7 +705,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
         </div>
 
         {hasTask && (
-          <span className="text-[11px] text-slate-400 ml-2 max-w-[140px] truncate">{fileName}</span>
+          <span className="text-[11px] ml-2 max-w-[140px] truncate" style={{ color: 'var(--text-muted)' }}>{fileName}</span>
         )}
 
         <div className="flex-1" />
@@ -739,15 +750,15 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
                 <div className={activeTab === 'annotation' ? 'flex-1 min-h-0 flex flex-col' : 'hidden'}>
                   {/* ── Annotation Pending Card ── */}
                   <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
-                    <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center">
-                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.5">
+                    <div className="theme-empty-accent w-14 h-14 rounded-2xl flex items-center justify-center">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent-action)" strokeWidth="1.5">
                         <rect x="3" y="3" width="18" height="18" rx="2" />
                         <path d="M9 9l6 6m0-6l-6 6" />
                       </svg>
                     </div>
                     <div>
-                      <h3 className="text-[14px] font-bold text-slate-700 mb-1">等待标注确认</h3>
-                      <p className="text-[12px] text-slate-400">YOLO 已预标注以下特征，请审阅或补充</p>
+                      <h3 className="text-[14px] font-bold mb-1" style={{ color: 'var(--text-primary)' }}>等待标注确认</h3>
+                      <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>YOLO 已预标注以下特征，请审阅或补充</p>
                     </div>
 
                     {/* Summary chips */}
@@ -775,7 +786,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
                       </button>
                     </div>
                     {!annotateVisited && (
-                      <p className="text-[10px] text-slate-300">可先审阅预标注；也可跳过，直接使用当前 YOLO 预标注继续。</p>
+                      <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>可先审阅预标注；也可跳过，直接使用当前 YOLO 预标注继续。</p>
                     )}
                   </div>
                 </div>
@@ -839,11 +850,12 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       {annotateOpen && taskId && (
         <div ref={annotationOverlayRef} className="fixed inset-0 z-[2000] flex flex-col bg-white">
           {/* Top ribbon */}
-          <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-200">
-            <span className="text-[13px] font-bold text-slate-700">标注工具</span>
+          <div className="theme-surface-panel-subtle shrink-0 flex items-center justify-between px-4 py-2 border-b">
+            <span className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>标注工具</span>
             <div className="flex items-center gap-2">
               <button
-                className="btn btn-ghost !text-[11px] !py-1.5 !px-3 text-slate-500 hover:text-flame-600"
+                className="btn btn-ghost !text-[11px] !py-1.5 !px-3"
+                style={{ color: 'var(--text-secondary)' }}
                 onClick={async () => {
                   try {
                     await annotationRef.current?.saveNow()
@@ -855,7 +867,8 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
                 保存修改
               </button>
               <button
-                className="btn btn-ghost !text-[11px] !py-1.5 !px-3 text-slate-500 hover:text-slate-700"
+                className="btn btn-ghost !text-[11px] !py-1.5 !px-3"
+                style={{ color: 'var(--text-secondary)' }}
                 onClick={handleCloseAnnotate}
               >
                 退出标注
@@ -884,13 +897,14 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       {showRetrievalModal && (
         <div className="fixed inset-0 z-[9000] flex items-center justify-center" onClick={() => setShowRetrievalModal(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-          <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-[420px] w-[90vw] p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-[16px] font-bold text-slate-800 mb-1">选择检索知识库</h3>
-            <p className="text-[12px] text-slate-400 mb-4">工艺生成时用于 RAG 检索的知识库，默认使用公共工艺库。</p>
+          <div className="theme-surface-panel relative rounded-2xl shadow-2xl border max-w-[420px] w-[90vw] p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-[16px] font-bold mb-1" style={{ color: 'var(--text-primary)' }}>选择检索知识库</h3>
+            <p className="text-[12px] mb-4" style={{ color: 'var(--text-muted)' }}>工艺生成时用于 RAG 检索的知识库，默认使用公共工艺库。</p>
             <div className="mb-4">
-              <div className="text-[12px] text-slate-500 mb-1.5">当前检索库：<span className="font-semibold text-slate-700">{retrievalName}｜{retrievalKey}</span></div>
+              <div className="text-[12px] mb-1.5" style={{ color: 'var(--text-secondary)' }}>当前检索库：<span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{retrievalName}｜{retrievalKey}</span></div>
               <select
-                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-2 focus:ring-flame-glow transition-all"
+                className="w-full rounded-xl px-3.5 py-2.5 text-[13px] focus:outline-none transition-all"
+                style={{ border: '1px solid var(--border)', background: 'var(--surface-panel)', color: 'var(--text-primary)' }}
                 value={retrievalKey}
                 onChange={e => {
                   const key = e.target.value
