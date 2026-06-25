@@ -76,11 +76,10 @@ Copy-Item .env.example .env
 
 ## 可选能力安装
 
-YOLO 预标注：
+YOLO 预标注由独立 GPU 推理服务提供。后端通过 `YOLO_SERVICE_URL` 调用 GPU 服务。
 
-```bash
-uv sync --locked --extra yolo
-```
+- 本地 `best.onnx` / `best.pt` 仅作为 legacy fallback，不是默认路径
+- `uv sync --extra yolo` 仅 GPU 服务端需要；后端不需要安装 ultralytics/torch
 
 Windows Creo 自动化（仅 Windows）：
 
@@ -112,13 +111,13 @@ npm run preview
 | 能力 | 说明 |
 |------|------|
 | PyMuPDF | PDF 转图片（核心依赖，uv sync 自动安装） |
-| YOLO (ONNX) | 推荐路径，将模型放入 `db_data/` |
+| YOLO (GPU 服务) | 通过 `YOLO_SERVICE_URL` 调用独立 GPU 推理服务 |
 | Poppler | PDF 兼容回退（PyMuPDF 不可用时） |
 | FreeCAD | PRT/STEP 几何分析 |
 | Creo | Windows 专属 Creo 自动化 |
 | OnShape | PRT 在线转换 |
 
-真实模型文件放在 `db_data/` 中，不提交 Git。缺少 YOLO 自动降级为人工标注。缺少 PyMuPDF 和 Poppler 会阻断 PDF 上传，但不影响图片上传。Creo 不适用于 macOS。可选能力安装方式：`uv sync --extra yolo`。
+真实模型文件放在 `db_data/` 中，不提交 Git。缺少 YOLO 自动降级为人工标注。缺少 PyMuPDF 和 Poppler 会阻断 PDF 上传，但不影响图片上传。Creo 不适用于 macOS。GPU 服务连接配置：`YOLO_SERVICE_URL` 和 `YOLO_SERVICE_TOKEN`。
 
 详细说明：
 

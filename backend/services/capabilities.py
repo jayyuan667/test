@@ -48,11 +48,43 @@ def inspect_pdf_capability() -> dict:
 
 
 def inspect_yolo_capability() -> dict:
+    """Check YOLO availability — remote GPU service first, local models as fallback."""
+    from backend.config import YOLO_SERVICE_URL, YOLO_SERVICE_TOKEN
+
+    # 1. Try remote GPU service (skip if token not configured — would 401)
+    if not YOLO_SERVICE_TOKEN:
+        # Token missing → /detect would fail; don't report available
+        pass
+    else:
+        try:
+            from backend.pipeline.yolo_service_client import YOLOServiceClient
+
+            client = YOLOServiceClient(YOLO_SERVICE_URL, YOLO_SERVICE_TOKEN)
+            info = client.health()
+            if info.get("ok") and info.get("models_loaded", 0) >= 7:
+                return {
+                    "available": True,
+                    "provider": "gpu_service",
+                    "reason": "",
+                    "service_url": YOLO_SERVICE_URL,
+                    "models_loaded": 7,
+                    "gpu_available": info.get("gpu_available", True),
+                    "device": info.get("device", ""),
+                }
+            else:
+                return {
+                    "available": False,
+                    "provider": "gpu_service",
+                    "reason": f"GPU 服务模型未就绪 (loaded={info.get('models_loaded', 0)})",
+                }
+        except Exception:
+            pass
+
+    # 2. Fallback: local model files (legacy) — preserve manifest check
     onnx = Path(YOLO_ONNX_PATH)
     pt = Path(YOLO_WEIGHT_PATH)
-
-    # Check optional manifest
     manifest_path = Path(__file__).resolve().parents[2] / "db_data" / "model-manifest.json"
+
     if manifest_path.is_file():
         try:
             from backend.services.model_manifest import load_model_manifest, verify_model_file
@@ -69,6 +101,7 @@ def inspect_yolo_capability() -> dict:
         return {"available": True, "provider": "onnx", "reason": ""}
     if pt.is_file() and _module_available("ultralytics") and _module_available("torch"):
         return {"available": True, "provider": "ultralytics", "reason": ""}
+
     missing = []
     if not onnx.is_file() and not pt.is_file():
         missing.append("模型文件不存在")
@@ -76,7 +109,11 @@ def inspect_yolo_capability() -> dict:
         missing.append("onnxruntime未安装")
     elif pt.is_file():
         missing.append("ultralytics或torch未安装，请执行 uv sync --extra yolo")
-    return {"available": False, "provider": None, "reason": "；".join(missing)}
+    return {
+        "available": False,
+        "provider": None,
+        "reason": "GPU 服务不可用；" + ("；".join(missing) if missing else "本地模型亦不可用"),
+    }
 
 
 def inspect_vision_api_capability() -> dict:

@@ -3,6 +3,25 @@ from pathlib import Path
 from backend.services import capabilities
 
 
+def test_yolo_remote_unreachable_local_onnx_works(monkeypatch, tmp_path):
+    """Remote down but local ONNX model exists → available via onnx."""
+    from backend.pipeline.yolo_service_client import YOLOServiceClient
+
+    def mock_health_fail(self):
+        raise ConnectionError("timeout")
+
+    monkeypatch.setattr(YOLOServiceClient, "health", mock_health_fail)
+    onnx = tmp_path / "best.onnx"
+    onnx.write_bytes(b"model")
+    monkeypatch.setattr(capabilities, "YOLO_ONNX_PATH", str(onnx))
+    monkeypatch.setattr(capabilities, "YOLO_WEIGHT_PATH", str(tmp_path / "best.pt"))
+    monkeypatch.setattr(capabilities, "_module_available", lambda name: name == "onnxruntime")
+
+    result = capabilities.inspect_yolo_capability()
+    assert result["available"] is True
+    assert result["provider"] == "onnx"
+
+
 def test_pdf_prefers_pymupdf(monkeypatch):
     monkeypatch.setattr(capabilities, "_module_available", lambda name: name == "fitz")
     monkeypatch.setattr(capabilities.shutil, "which", lambda name: f"/bin/{name}")
@@ -27,27 +46,57 @@ def test_pdf_reports_actionable_failure(monkeypatch):
     assert "uv sync" in result["reason"]
 
 
-def test_yolo_prefers_onnx_without_importing_ultralytics(monkeypatch, tmp_path):
-    onnx = tmp_path / "best.onnx"
-    onnx.write_bytes(b"model")
-    monkeypatch.setattr(capabilities, "YOLO_ONNX_PATH", str(onnx))
-    monkeypatch.setattr(capabilities, "YOLO_WEIGHT_PATH", str(tmp_path / "best.pt"))
-    monkeypatch.setattr(
-        capabilities,
-        "_module_available",
-        lambda name: name == "onnxruntime",
-    )
+def test_yolo_remote_health_ok(monkeypatch):
+    """When GPU service health returns ok, inspect reports available."""
+    from backend.pipeline.yolo_service_client import YOLOServiceClient
+    import backend.config
+
+    def mock_health(self):
+        return {"ok": True, "models_loaded": 7, "gpu_available": True, "device": "cuda:0"}
+
+    monkeypatch.setattr(YOLOServiceClient, "health", mock_health)
+    monkeypatch.setattr(backend.config, "YOLO_SERVICE_TOKEN", "test-token")
     result = capabilities.inspect_yolo_capability()
     assert result["available"] is True
-    assert result["provider"] == "onnx"
+    assert result["provider"] == "gpu_service"
+    assert result["models_loaded"] == 7
 
 
-def test_yolo_missing_models_is_non_blocking(monkeypatch, tmp_path):
+def test_yolo_remote_health_fail_falls_back(monkeypatch, tmp_path):
+    """When GPU service is unreachable, falls back to local model check."""
+    from backend.pipeline.yolo_service_client import YOLOServiceClient
+    import backend.config
+
+    def mock_health_fail(self):
+        raise ConnectionError("timeout")
+
+    monkeypatch.setattr(YOLOServiceClient, "health", mock_health_fail)
+    monkeypatch.setattr(backend.config, "YOLO_SERVICE_TOKEN", "test-token")
     monkeypatch.setattr(capabilities, "YOLO_ONNX_PATH", str(tmp_path / "best.onnx"))
     monkeypatch.setattr(capabilities, "YOLO_WEIGHT_PATH", str(tmp_path / "best.pt"))
+
+    result = capabilities.inspect_yolo_capability()
+    # When no local models exist either, should be unavailable
+    assert result["available"] is False
+    assert "GPU 服务不可用" in result["reason"]
+
+
+def test_yolo_remote_models_not_ready(monkeypatch):
+    """When health returns but models_loaded < 7, report unavailable."""
+    from backend.pipeline.yolo_service_client import YOLOServiceClient
+    import backend.config
+
+    def mock_health_partial(self):
+        return {"ok": True, "models_loaded": 3, "gpu_available": True, "device": "cuda:0"}
+
+    monkeypatch.setattr(YOLOServiceClient, "health", mock_health_partial)
+    monkeypatch.setattr(backend.config, "YOLO_SERVICE_TOKEN", "test-token")
+    monkeypatch.setattr(capabilities, "YOLO_ONNX_PATH", "/nonexistent")
+    monkeypatch.setattr(capabilities, "YOLO_WEIGHT_PATH", "/nonexistent")
+
     result = capabilities.inspect_yolo_capability()
     assert result["available"] is False
-    assert "模型文件不存在" in result["reason"]
+    assert "模型未就绪" in result["reason"]
 
 
 def test_creo_is_not_applicable_outside_windows(monkeypatch):

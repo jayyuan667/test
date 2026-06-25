@@ -39,5 +39,5 @@ def test_docs_use_only_the_uv_install_contract():
 
 def test_docs_explain_optional_yolo_and_capabilities():
     combined = "\n".join(_read(path) for path in ("README.md", "INSTALL.md", "START.md"))
-    assert "uv sync --extra yolo" in combined
+    assert "YOLO_SERVICE_URL" in combined
     assert "/api/system/capabilities" in combined

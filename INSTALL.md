@@ -62,11 +62,9 @@ npm --prefix frontend-react ci
 
 ## 可选能力安装
 
-YOLO 预标注（安装 PyTorch 和 Ultralytics）：
+YOLO 预标注由独立 GPU 推理服务提供。后端通过 `YOLO_SERVICE_URL` 调用 GPU 服务，无需在本地安装 ultralytics/torch。
 
-```bash
-uv sync --locked --extra yolo
-```
+- `uv sync --extra yolo` 仅 GPU 服务端需要；后端不需要安装 ultralytics/torch
 
 Windows Creo 自动化（仅 Windows）：
 
@@ -92,6 +90,10 @@ EMBEDDING_MODEL="doubao-embedding-vision-251215"
 LLM_API_KEY="..."
 LLM_BASE_URL="https://api.deepseek.com/v1"
 LLM_MODEL="deepseek-chat"
+
+# YOLO GPU 服务（可选，缺省时降级为本地模型）
+YOLO_SERVICE_URL="http://127.0.0.1:8000"
+YOLO_SERVICE_TOKEN="your-token-here"
 ```
 
 如果不使用某项能力，可保留占位值，但调用该能力时会失败或降级。
@@ -109,12 +111,14 @@ VITE_BACKEND_URL=http://127.0.0.1:5190
 
 ## YOLO 模型
 
-ONNX 模型为推荐路径。将模型文件放入 `db_data/`：
+系统通过独立 GPU 推理服务提供 YOLO 预标注。后端默认通过 `YOLO_SERVICE_URL` 调用 GPU 服务。
 
-- `best.onnx` — ONNX 格式模型（优先加载）
-- `best.pt` — PyTorch 格式模型（回退）
+本地模型文件（`best.onnx` / `best.pt` 放入 `db_data/`）仅作为 legacy fallback：
 
-可创建 `db_data/model-manifest.json`（参考 `model-manifest.example.json`）来校验模型完整性。缺失模型时系统自动降级为人工标注。
+- `best.onnx` — ONNX 格式模型（fallback 优先）
+- `best.pt` — PyTorch 格式模型（fallback 回退）
+
+可创建 `db_data/model-manifest.json`（参考 `model-manifest.example.json`）来校验本地模型完整性。GPU 服务和本地模型均不可用时系统自动降级为人工标注。
 
 ## Poppler（兼容回退）
 
