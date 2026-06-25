@@ -364,74 +364,68 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
 
 
 def _run_yolo_prelabel(task_id: str, png_paths: list, output_dir: str) -> dict:
-    """Run YOLO on every PNG page and write labelme JSON pre-annotations.
+    """Run YOLO via GPU service on each page, write labelme JSON, emit per-page SSE.
 
-    Returns aggregate detection counts {chamfer, threaded_hole, circle_hole}.
-    Degrades gracefully if the weight file is missing / model fails to load:
-    writes empty-shapes JSON so the frontend can still load the page; the
-    user just does all annotation manually.
+    When GPU service is unavailable, writes empty LabelMe JSONs so manual
+    annotation fallback works without frontend changes.
+
+    Returns aggregate detection counts {class_name: count}.
     """
+    import logging
+    from ..config import YOLO_SERVICE_URL, YOLO_SERVICE_TOKEN, YOLO_SERVICE_TIMEOUT
+    from ..pipeline.yolo_service_client import YOLOServiceClient
     from ..pipeline.yolo_to_labelme import write_labelme
+    from ..pipeline.yolo_labels import YOLO_CLASSES
+
+    logger = logging.getLogger(__name__)
     ann_dir = os.path.join(output_dir, "annotations")
-    summary = {"threaded_hole": 0, "circle_hole": 0, "chamfer": 0}
+    summary: dict[str, int] = {}
 
-    detector = None
+    client = None
     try:
-        from ..pipeline.yolo_detector import get_yolo_detector
-        detector = get_yolo_detector()
+        client = YOLOServiceClient(YOLO_SERVICE_URL, YOLO_SERVICE_TOKEN, YOLO_SERVICE_TIMEOUT)
+        client.health()  # fast check
     except Exception as e:
-        logger.warning("[%s] YOLO 不可用: %s", task_id, e)
-        emit_log(task_id, event_data, event_locks, 2,
-                 f"YOLO 不可用 ({e})，请全手动标注")
-        for i, p in enumerate(png_paths, 1):
-            stem = os.path.splitext(os.path.basename(p))[0]
-            try:
-                write_labelme(p, [], os.path.join(ann_dir, f"{stem}_page_{i}.json"))
-            except Exception as we:
-                logger.warning("[%s] write empty labelme failed for page %d: %s", task_id, i, we)
-        return summary
-
-    # class_id -> cls_name 映射
-    cls_names = detector.class_names or {0: "threaded_hole", 1: "circle_hole"}
+        logger.warning("[%s] YOLO GPU 服务不可用: %s", task_id, e)
 
     total = len(png_paths)
-    for i, p in enumerate(png_paths, 1):
-        try:
-            # 使用 imdecode 支持中文路径
-            import numpy as np
-            with open(p, 'rb') as f:
-                img_data = np.frombuffer(f.read(), np.uint8)
-            img = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
-            if img is None:
-                raise ValueError(f"无法读取图像: {p}")
-            dets = detector.detect(img)
-        except Exception as e:
-            logger.warning("[%s] YOLO 第 %d 页推理失败: %s", task_id, i, e)
-            dets = []
-        page_count = {"threaded_hole": 0, "circle_hole": 0, "chamfer": 0}
-        det_dicts = []
+    for i, png_path in enumerate(png_paths, 1):
+        dets: list[dict] = []
+
+        if client is not None:
+            try:
+                result = client.detect(png_path)
+                dets = result.get("detections", [])
+                # GPU service returns key "class"; write_labelme expects "cls_name"
+                for d in dets:
+                    d["cls_name"] = d.pop("class")
+            except Exception as e:
+                logger.warning("[%s] 第 %d 页 YOLO 推理失败: %s", task_id, i, e)
+                # Fall through — write empty LabelMe for this page
+                dets = []
+
+        # Per-class count dict (match old yolo_progress format)
+        page_count = {cls: 0 for cls in YOLO_CLASSES}
         for d in dets:
-            cls_name = cls_names.get(d.class_id, f"class_{d.class_id}")
-            page_count[cls_name] = page_count.get(cls_name, 0) + 1
+            cls_name = d["cls_name"]
+            if cls_name in page_count:
+                page_count[cls_name] += 1
             summary[cls_name] = summary.get(cls_name, 0) + 1
-            det_dicts.append({
-                "cls_name": cls_name,
-                "conf": d.confidence,
-                "x1": d.x1, "y1": d.y1,
-                "x2": d.x2, "y2": d.y2,
-            })
-        stem = os.path.splitext(os.path.basename(p))[0]
-        try:
-            write_labelme(p, det_dicts, os.path.join(ann_dir, f"{stem}_page_{i}.json"))
-        except Exception as we:
-            logger.warning("[%s] write labelme failed for page %d: %s", task_id, i, we)
+
+        stem = os.path.splitext(os.path.basename(png_path))[0]
+        json_path = os.path.join(ann_dir, f"{stem}_page_{i}.json")
+        write_labelme(png_path, dets, json_path)
+
         emit_custom(task_id, event_data, event_locks, "yolo_progress",
                     {"page": i, "total": total, "detections": page_count})
 
+    # Emit step completion with summary for frontend/logger
+    summary_lines = [f"{cls}: {summary.get(cls, 0)}" for cls in YOLO_CLASSES if summary.get(cls, 0)]
+    summary_text = "YOLO 检测完成：" + ("；".join(summary_lines) if summary_lines else "未检测到特征")
     emit_step_complete(
-        task_id, event_data, event_locks, 2, "YOLO 检测",
-        f"{summary['chamfer']}倒角 / {summary['threaded_hole']}螺纹孔 / {summary['circle_hole']}圆孔",
+        task_id, event_data, event_locks, 2, "YOLO 检测", summary_text
     )
+
     return summary
 
 
