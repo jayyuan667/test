@@ -47,7 +47,7 @@ from ..task_store import insert_task, update_task_status, save_result, get_prt_c
 from ._response import fail, ERR_FILE_MISSING, ERR_FILE_TYPE, ERR_CONFIG, ERR_CAPABILITY
 from ..auth_utils import login_required, require_quota
 from ..services.capabilities import inspect_pdf_capability
-from ._utils import PRT_FILE_RE, extract_prefix_from_filename
+from ._utils import PRT_FILE_RE, extract_prefix_from_filename, get_enterprise_scope
 from ..services.observability import time_block
 
 upload_bp = Blueprint("upload", __name__)
@@ -353,11 +353,13 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
     clear_pending_review(task_id, output_dir)
 
     emit_complete(task_id, event_data, event_locks, "处理完成！")
+    _history_ent_id = task.get("enterprise_id")
     add_history_entry(
         task_id=task_id,
         pdf_name=file_name,
         progress=100,
         created_at=task.get("created_at", ""),
+        enterprise_id=_history_ent_id,
     )
 
 
@@ -653,6 +655,7 @@ def upload():
 
     # ── PRT 文件缓存：同文件重传直接跳到审阅步骤 ──
     prefix_hint = _extract_prefix_from_filename(file.filename) or os.path.splitext(os.path.basename(file.filename))[0].strip() or None
+    _ent_id, _ = get_enterprise_scope()
     _prt_hash = hashlib.sha256()
     with open(filepath, "rb") as _f:
         while True:
@@ -714,12 +717,14 @@ def upload():
             "keep_after_complete": True,
             "source_name": file.filename,
             "library_key": request.form.get("library_key") or request.args.get("library_key") or "public",
+            "enterprise_id": _ent_id,
             "_from_cache": True,
             **({"gltf_path": _dst_glb} if os.path.isfile(_dst_glb) else {}),
         }
         insert_task(task_id=task_id, pdf_name=file.filename, prt_name=file.filename,
                      output_dir=output_dir, prefix_hint=prefix_hint,
-                     library_key=tasks[task_id]["library_key"], source_kind="prt")
+                     library_key=tasks[task_id]["library_key"], source_kind="prt",
+                     enterprise_id=_ent_id)
         update_task_status(task_id, "awaiting_review", 50)
         if task_id not in event_data:
             event_data[task_id] = []
@@ -795,8 +800,9 @@ def upload():
         "keep_after_complete": True,
         "source_name": file.filename,
         "library_key": request.form.get("library_key") or request.args.get("library_key") or "public",
+        "enterprise_id": _ent_id,
     }
-    insert_task(task_id=task_id, pdf_name=file.filename, prt_name=file.filename, output_dir=output_dir, prefix_hint=prefix_hint, library_key=tasks[task_id]["library_key"], source_kind="prt")
+    insert_task(task_id=task_id, pdf_name=file.filename, prt_name=file.filename, output_dir=output_dir, prefix_hint=prefix_hint, library_key=tasks[task_id]["library_key"], source_kind="prt", enterprise_id=_ent_id)
     if task_id not in event_data:
         event_data[task_id] = []
     if task_id not in event_locks:
@@ -1196,6 +1202,7 @@ def upload_drawing():
     is_dxf = filename.lower().endswith(".dxf")
     is_dwg = filename.lower().endswith(".dwg")
 
+    _ent_id_drawing, _ = get_enterprise_scope()
     tasks[task_id] = {
         "task_id": task_id,
         "pdf_name": filename,
@@ -1215,6 +1222,7 @@ def upload_drawing():
         "vision_failures": [],
         "keep_after_complete": True,
         "library_key": request.form.get("library_key") or request.args.get("library_key") or "public",
+        "enterprise_id": _ent_id_drawing,
     }
     insert_task(
         task_id=task_id,
@@ -1224,6 +1232,7 @@ def upload_drawing():
         prefix_hint=prefix_hint,
         library_key=tasks[task_id]["library_key"],
         source_kind="drawing",
+        enterprise_id=_ent_id_drawing,
     )
     if task_id not in event_data:
         event_data[task_id] = []

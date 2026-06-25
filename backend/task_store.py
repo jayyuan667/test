@@ -90,12 +90,13 @@ def init_db():
 
 def insert_task(task_id: str, pdf_name: str = "", prt_name: str = "",
                 output_dir: str = "", prefix_hint: str = "",
-                library_key: str = "public", source_kind: str = "prt"):
+                library_key: str = "public", source_kind: str = "prt",
+                enterprise_id: int | None = None):
     now = datetime.now().isoformat()
     with _conn() as c:
         c.execute(
-            "INSERT OR REPLACE INTO tasks (task_id, pdf_name, prt_name, status, progress, created_at, updated_at, output_dir, prefix_hint, library_key, source_kind) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (task_id, pdf_name, prt_name, "pending", 0, now, now, output_dir, prefix_hint, library_key, source_kind),
+            "INSERT OR REPLACE INTO tasks (task_id, pdf_name, prt_name, status, progress, created_at, updated_at, output_dir, prefix_hint, library_key, source_kind, enterprise_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (task_id, pdf_name, prt_name, "pending", 0, now, now, output_dir, prefix_hint, library_key, source_kind, enterprise_id),
         )
 
 
@@ -141,7 +142,7 @@ def save_result(task_id: str, result: Dict):
 def get_task(task_id: str) -> Optional[Dict]:
     with _conn() as c:
         row = c.execute(
-            "SELECT task_id, pdf_name, prt_name, status, progress, created_at, updated_at, output_dir, prefix_hint, error, library_key, source_kind FROM tasks WHERE task_id=?",
+            "SELECT task_id, pdf_name, prt_name, status, progress, created_at, updated_at, output_dir, prefix_hint, error, library_key, source_kind, enterprise_id FROM tasks WHERE task_id=?",
             (task_id,),
         ).fetchone()
     if not row:
@@ -151,6 +152,7 @@ def get_task(task_id: str) -> Optional[Dict]:
         "status": row[3], "progress": row[4], "created_at": row[5],
         "updated_at": row[6], "output_dir": row[7], "prefix_hint": row[8],
         "error": row[9], "library_key": row[10], "source_kind": row[11],
+        "enterprise_id": row[12],
     }
 
 
@@ -198,15 +200,15 @@ def list_tasks(limit: int = 50, offset: int = 0, status_filter: str = "") -> Lis
     with _conn() as c:
         if status_filter:
             rows = c.execute(
-                "SELECT task_id, pdf_name, prt_name, status, progress, created_at, updated_at, error, library_key, source_kind FROM tasks WHERE status=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT task_id, pdf_name, prt_name, status, progress, created_at, updated_at, error, library_key, source_kind, enterprise_id FROM tasks WHERE status=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 (status_filter, limit, offset),
             ).fetchall()
         else:
             rows = c.execute(
-                "SELECT task_id, pdf_name, prt_name, status, progress, created_at, updated_at, error, library_key, source_kind FROM tasks ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT task_id, pdf_name, prt_name, status, progress, created_at, updated_at, error, library_key, source_kind, enterprise_id FROM tasks ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             ).fetchall()
-    return [{"task_id": r[0], "pdf_name": r[1], "prt_name": r[2], "status": r[3], "progress": r[4], "created_at": r[5], "updated_at": r[6], "error": r[7], "library_key": r[8], "source_kind": r[9]} for r in rows]
+    return [{"task_id": r[0], "pdf_name": r[1], "prt_name": r[2], "status": r[3], "progress": r[4], "created_at": r[5], "updated_at": r[6], "error": r[7], "library_key": r[8], "source_kind": r[9], "enterprise_id": r[10]} for r in rows]
 
 
 def count_tasks(status_filter: str = "") -> int:
@@ -253,6 +255,7 @@ def build_task_dict(task_id: str) -> dict | None:
         "error": row.get("error", ""),
         "library_key": row.get("library_key", "public"),
         "source_kind": row.get("source_kind", "prt"),
+        "enterprise_id": row.get("enterprise_id"),
         "result": result or {},
     }
     if result:

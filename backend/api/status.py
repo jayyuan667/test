@@ -3,6 +3,8 @@
 
 from flask import Blueprint, jsonify
 
+from ._utils import get_enterprise_scope
+
 status_bp = Blueprint("status", __name__)
 
 tasks = {}
@@ -19,6 +21,14 @@ def get_status(task_id):
     if task_id not in tasks:
         return jsonify({"error": "Task not found"}), 404
     task = tasks[task_id]
+
+    # ── Enterprise isolation check ──
+    ent_id, is_super = get_enterprise_scope()
+    if not is_super and ent_id is not None:
+        task_ent = task.get("enterprise_id")
+        if task_ent is not None and task_ent != ent_id:
+            return jsonify({"error": "Task not found"}), 404
+
     return jsonify(
         {
             "task_id": task_id,

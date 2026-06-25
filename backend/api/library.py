@@ -34,6 +34,7 @@ from ..library_scope import (
     list_scopes,
     resolve_scope,
 )
+from ..auth_utils import login_required
 from ._utils import PRT_FILE_RE
 
 
@@ -381,7 +382,7 @@ def _fetch_existing_record(prefix: str, library_key: str = ""):
         SELECT id, prefix, vector, content, context, product_type, process_summary,
                key_features, materials, created_at, tech_requirement, real,
                source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls,
-               feature_report_text, feature_report_path
+               feature_report_text, feature_report_path, enterprise_id
         FROM {vector_table}
         WHERE UPPER(prefix) = ?
         """,
@@ -413,6 +414,7 @@ def _fetch_existing_record(prefix: str, library_key: str = ""):
         preview_image_urls,
         feature_report_text,
         feature_report_path,
+        enterprise_id,
     ) = row
 
     try:
@@ -442,6 +444,7 @@ def _fetch_existing_record(prefix: str, library_key: str = ""):
         "feature_report_text": feature_report_text or "",
         "feature_report_path": feature_report_path or "",
         "feature_report_json": feature_report_json,
+        "enterprise_id": enterprise_id,
     }
 
 
@@ -456,7 +459,7 @@ def _fetch_record_by_id(record_id: int, library_key: str = ""):
         SELECT id, prefix, content, context, product_type, process_summary,
                    key_features, materials, created_at, tech_requirement, real,
                    source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls,
-                   feature_report_text, feature_report_path
+                   feature_report_text, feature_report_path, enterprise_id
             FROM {vector_table}
             WHERE id = ?
             """,
@@ -488,6 +491,7 @@ def _fetch_record_by_id(record_id: int, library_key: str = ""):
         preview_image_urls,
         feature_report_text,
         feature_report_path,
+        enterprise_id,
     ) = row
 
     try:
@@ -518,6 +522,7 @@ def _fetch_record_by_id(record_id: int, library_key: str = ""):
         "feature_report_text": feature_report_text or "",
         "feature_report_path": feature_report_path or "",
         "feature_report_json": feature_report_json,
+        "enterprise_id": enterprise_id,
     }
 
 
@@ -530,6 +535,21 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
 
     where = ["COALESCE(real, 1) = 1"]
     params = []
+
+    # ── Enterprise isolation ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    _ent_sql = ""
+    _ent_params_pt = []
+    if not _is_super and _ent_id is not None:
+        where.append("(enterprise_id = ? OR enterprise_id IS NULL)")
+        params.append(_ent_id)
+        _ent_sql = "AND (enterprise_id = ? OR enterprise_id IS NULL)"
+        _ent_params_pt = [_ent_id]
+    elif not _is_super and _ent_id is None:
+        where.append("enterprise_id IS NULL")
+        _ent_sql = "AND enterprise_id IS NULL"
+
     if query:
         where.append("(UPPER(prefix) LIKE ? OR UPPER(context) LIKE ? OR UPPER(process_summary) LIKE ? OR UPPER(content) LIKE ? OR UPPER(feature_report_text) LIKE ?)")
         keyword = f"%{query.strip().upper()}%"
@@ -560,7 +580,8 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
         rows = cursor.fetchall()
 
         cursor.execute(
-            f"SELECT DISTINCT product_type FROM {vector_table} WHERE COALESCE(real, 1) = 1 AND product_type IS NOT NULL AND TRIM(product_type) != '' ORDER BY product_type"
+            f"SELECT DISTINCT product_type FROM {vector_table} WHERE COALESCE(real, 1) = 1 AND product_type IS NOT NULL AND TRIM(product_type) != '' {_ent_sql} ORDER BY product_type",
+            _ent_params_pt,
         )
         product_types = [row[0] for row in cursor.fetchall() if row and row[0]]
     finally:
@@ -1121,11 +1142,20 @@ def library_status():
 
 
 @library_bp.route("/library/scopes", methods=["GET"])
+@login_required
 def library_scopes():
-    return jsonify(_json_safe({"items": list_scopes(), **browse_unlock_status()}))
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    scopes = list_scopes()
+    if not _is_super:
+        scopes = [s for s in scopes
+                  if s.get("scope_type") == "public"
+                  or s.get("enterprise_id") == _ent_id]
+    return jsonify(_json_safe({"items": scopes, **browse_unlock_status()}))
 
 
 @library_bp.route("/library/records", methods=["GET"])
+@login_required
 def list_library_records():
     page = request.args.get("page", 1)
     page_size = request.args.get("page_size", 20)
@@ -1136,16 +1166,34 @@ def list_library_records():
 
 
 @library_bp.route("/library/records/<int:record_id>", methods=["GET"])
+@login_required
 def get_library_record(record_id):
     record = _fetch_record_by_id(record_id, library_key=request.args.get("library_key", ""))
     if not record:
         return jsonify({"error": "Record not found"}), 404
+    # ── Enterprise isolation check ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    if not _is_super and record:
+        _rec_ent = record.get("enterprise_id")
+        if _rec_ent is not None and _rec_ent != _ent_id:
+            return jsonify({"error": "Record not found"}), 404
     return jsonify(_json_safe(record))
 
 
 @library_bp.route("/library/records/<int:record_id>", methods=["PUT"])
+@login_required
 def update_library_record(record_id):
     payload = request.get_json(silent=True) or {}
+    # ── Enterprise isolation check ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    if not _is_super:
+        _existing = _fetch_record_by_id(record_id, library_key=payload.get("library_key") or request.args.get("library_key", ""))
+        if _existing:
+            _rec_ent = _existing.get("enterprise_id")
+            if _rec_ent is not None and _rec_ent != _ent_id:
+                return jsonify({"error": "Record not found"}), 404
     record = _update_record(record_id, payload, library_key=payload.get("library_key") or request.args.get("library_key", ""))
     if not record:
         return jsonify({"error": "Record not found"}), 404
@@ -1153,8 +1201,18 @@ def update_library_record(record_id):
 
 
 @library_bp.route("/library/records/<int:record_id>", methods=["DELETE"])
+@login_required
 def delete_library_record(record_id):
     library_key = request.args.get("library_key", "")
+    # ── Enterprise isolation check ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    if not _is_super:
+        _existing = _fetch_record_by_id(record_id, library_key=library_key)
+        if _existing:
+            _rec_ent = _existing.get("enterprise_id")
+            if _rec_ent is not None and _rec_ent != _ent_id:
+                return jsonify({"error": "Record not found"}), 404
     record = _delete_record(record_id, library_key=library_key)
     if not record:
         return jsonify({"error": "Record not found"}), 404
@@ -1162,7 +1220,18 @@ def delete_library_record(record_id):
 
 
 @library_bp.route("/library/scopes/<string:library_key>", methods=["DELETE"])
+@login_required
 def clear_library_scope(library_key):
+    # ── Enterprise isolation check ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    if not _is_super:
+        from ..library_scope import resolve_scope
+        _scope = resolve_scope(library_key)
+        if _scope:
+            _scope_ent = _scope.get("enterprise_id")
+            if _scope_ent is not None and _scope_ent != _ent_id:
+                return jsonify({"error": "Scope not found"}), 404
     scope, error = _clear_scope_records(library_key)
     if error:
         return jsonify({"error": error}), 403
@@ -1170,6 +1239,7 @@ def clear_library_scope(library_key):
 
 
 @library_bp.route("/library/commit", methods=["POST"])
+@login_required
 def commit_library_record():
     payload = request.get_json(silent=True) or {}
     draft = payload.get("draft")
@@ -1179,6 +1249,12 @@ def commit_library_record():
 
     if not draft or not draft.get("prefix"):
         return jsonify({"error": "draft prefix required"}), 400
+
+    # ── Enterprise isolation: write enterprise_id on create ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    if _ent_id is not None:
+        draft["enterprise_id"] = _ent_id
 
     existing = _fetch_existing_record(draft["prefix"], library_key=library_key)
     if existing and action == "keep":

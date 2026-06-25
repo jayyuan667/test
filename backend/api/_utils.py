@@ -24,3 +24,50 @@ def extract_prefix_from_filename(filename: str) -> str | None:
     stem = os.path.splitext(os.path.basename(filename or ""))[0].strip()
     m = _DRAWING_PREFIX_RE.search(stem)
     return m.group(1).upper() if m else None
+
+
+def get_enterprise_scope():
+    """
+    Return (enterprise_id, is_super_admin) for the current request.
+
+    Rules:
+      - super_admin       -> (None, True)    no filtering
+      - enterprise_admin  -> (user.enterprise_id, False)
+      - user (assigned)   -> (user.enterprise_id, False)
+      - user (unassigned) -> (None, False)   only public data
+    """
+    from flask import g
+
+    user = g.current_user if hasattr(g, 'current_user') else None
+    if not user:
+        return None, False
+
+    role = user.get('role', 'user')
+    if role == 'super_admin':
+        return None, True
+
+    enterprise_id = user.get('enterprise_id')
+    if enterprise_id is None:
+        return None, False
+
+    return int(enterprise_id), False
+
+
+def require_enterprise_access():
+    """
+    Check that the current user's enterprise_id matches the target.
+    Returns (True, None) if access granted, (False, error_response) if denied.
+
+    Usage:
+        allowed, error = require_enterprise_access()
+        if not allowed:
+            return error
+    """
+    from flask import jsonify
+
+    ent_id, is_super = get_enterprise_scope()
+    if is_super:
+        return True, None
+    if ent_id is None:
+        return False, (jsonify({"error": "未分配企业，无权访问"}), 403)
+    return True, None

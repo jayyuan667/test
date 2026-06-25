@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, send_from_directory
 
 from ..config import OUTPUT_FOLDER, KB_PREVIEW_FOLDER
 from ._response import fail, ERR_TASK_NOT_FOUND
+from ._utils import get_enterprise_scope
 
 
 def _pending_review_file(task_id: str):
@@ -90,6 +91,12 @@ def get_result(task_id):
     # 1. Check in-memory cache
     if task_id in tasks:
         task = tasks[task_id]
+        # ── Enterprise isolation check ──
+        ent_id, is_super = get_enterprise_scope()
+        if not is_super and ent_id is not None:
+            task_ent = task.get("enterprise_id")
+            if task_ent is not None and task_ent != ent_id:
+                return jsonify({"error": "Task not found"}), 404
         if task.get("status") != "completed":
             return jsonify(
                 _enrich_result_payload(task_id, {
@@ -114,6 +121,12 @@ def get_result(task_id):
         from backend.task_store import build_task_dict
     db_task = build_task_dict(task_id)
     if db_task:
+        # ── Enterprise isolation check (SQLite path) ──
+        ent_id, is_super = get_enterprise_scope()
+        if not is_super and ent_id is not None:
+            task_ent = db_task.get("enterprise_id")
+            if task_ent is not None and task_ent != ent_id:
+                return jsonify({"error": "Task not found"}), 404
         return jsonify(_enrich_result_payload(task_id, db_task.get("result", {}), db_task))
 
     # 3. Fall back to file-based result.json

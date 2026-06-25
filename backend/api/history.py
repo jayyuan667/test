@@ -6,14 +6,22 @@ import shutil
 from flask import Blueprint, jsonify, request
 
 from ..history import get_history, delete_history_entry
+from ..auth_utils import login_required
 from ..config import OUTPUT_FOLDER
+from ._utils import get_enterprise_scope
 
 history_bp = Blueprint("history", __name__)
 
 
 @history_bp.route("/history", methods=["GET"])
+@login_required
 def list_history():
-    history = get_history()
+    ent_id, is_super = get_enterprise_scope()
+    if is_super:
+        filter_id = request.args.get("enterprise_id", type=int)
+        history = get_history(enterprise_id=filter_id)
+    else:
+        history = get_history(enterprise_id=ent_id)
     return jsonify({"history": history})
 
 

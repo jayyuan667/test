@@ -38,6 +38,7 @@ def add_history_entry(
     created_at: str,
     completed_at: Optional[str] = None,
     file_count: Optional[int] = None,
+    enterprise_id: Optional[int] = None,
 ) -> None:
     """Add a new entry to the history file."""
     history_entry = {
@@ -49,6 +50,8 @@ def add_history_entry(
     }
     if file_count is not None:
         history_entry["file_count"] = file_count
+    if enterprise_id is not None:
+        history_entry["enterprise_id"] = enterprise_id
 
     global_history = load_history_from_file()
     global_history = [item for item in global_history if item.get("task_id") != task_id]
@@ -70,9 +73,13 @@ def delete_history_entry(task_id: str) -> bool:
     return True
 
 
-def get_history(limit: Optional[int] = None) -> List[Dict[str, Any]]:
+def get_history(limit: Optional[int] = None, enterprise_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """Get history records, most recent first."""
     history = load_history_from_file()
+    if enterprise_id is not None:
+        history = [h for h in history
+                   if h.get("enterprise_id") == enterprise_id
+                   or h.get("enterprise_id") is None]
     if limit is None:
         return history
     return history[:max(0, int(limit))]

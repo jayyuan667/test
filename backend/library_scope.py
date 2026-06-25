@@ -233,7 +233,7 @@ def copy_public_baseline(target_vector_table: str, target_feature_table: str):
         conn.close()
 
 
-def ensure_scope(library_key: str, library_name: str, scope_type: str = "private", seed_public: bool = False, last_batch_id: str = ""):
+def ensure_scope(library_key: str, library_name: str, scope_type: str = "private", seed_public: bool = False, last_batch_id: str = "", enterprise_id: int | None = None):
     ensure_scope_registry()
     normalized_key = sanitize_identifier(library_key)
     vector_table = f"vectors_{normalized_key}"
@@ -249,8 +249,8 @@ def ensure_scope(library_key: str, library_name: str, scope_type: str = "private
         cursor.execute(
             """
             INSERT OR REPLACE INTO kb_library_scopes
-            (library_key, library_name, scope_type, vector_table, feature_table, seed_source, last_batch_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (library_key, library_name, scope_type, vector_table, feature_table, seed_source, last_batch_id, enterprise_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 normalized_key,
@@ -260,6 +260,7 @@ def ensure_scope(library_key: str, library_name: str, scope_type: str = "private
                 feature_table,
                 "public" if seed_public else "empty",
                 last_batch_id or "",
+                enterprise_id,
             ),
         )
         conn.commit()

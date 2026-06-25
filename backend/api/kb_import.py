@@ -156,8 +156,8 @@ def _write_batch_summary(report: Dict):
         """
         INSERT OR REPLACE INTO kb_import_batches
         (batch_id, zip_name, conflict_mode, total_files, pdf_count, xlsx_count,
-         matched_pairs, imported_count, skipped_count, error_count, finished_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         matched_pairs, imported_count, skipped_count, error_count, finished_at, enterprise_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             report.get("batch_id"),
@@ -171,6 +171,7 @@ def _write_batch_summary(report: Dict):
             report.get("summary", {}).get("skipped_count", 0),
             report.get("summary", {}).get("error_count", 0),
             datetime.now().isoformat(),
+            report.get("enterprise_id"),
         ),
     )
     conn.commit()
@@ -782,6 +783,7 @@ def import_zip_knowledge(
     library_mode: str = "private_seed_public",
     library_name: str = "",
     library_key: str = "",
+    enterprise_id: int | None = None,
 ) -> Dict:
     batch_id = datetime.now().strftime("kb_%Y%m%d_%H%M%S_%f")
     extract_dir = os.path.join(OUTPUT_FOLDER, "kb_imports", batch_id, "extract")
@@ -813,6 +815,8 @@ def import_zip_knowledge(
         "created_at": datetime.now().isoformat(),
     }
 
+    report["enterprise_id"] = enterprise_id
+
     normalized_mode = library_mode if library_mode in {"private_seed_public", "private_empty", "public"} else "private_seed_public"
     if normalized_mode == "public":
         target_scope = resolve_scope(PUBLIC_LIBRARY_KEY)
@@ -830,6 +834,7 @@ def import_zip_knowledge(
             scope_type="private",
             seed_public=normalized_mode == "private_seed_public",
             last_batch_id=batch_id,
+            enterprise_id=enterprise_id,
         )
     report["target_library"] = target_scope
 
@@ -1014,6 +1019,7 @@ def import_folder_knowledge(
     library_mode: str = "private_seed_public",
     library_name: str = "",
     library_key: str = "",
+    enterprise_id: int | None = None,
 ) -> Dict:
     """从图纸文件夹和工艺文件夹批量入库。
 
@@ -1051,6 +1057,8 @@ def import_folder_knowledge(
         "created_at": datetime.now().isoformat(),
     }
 
+    report["enterprise_id"] = enterprise_id
+
     # ── 解析库 scope ──────────────────────────────────────────────────────────
     normalized_mode = library_mode if library_mode in {"private_seed_public", "private_empty", "public"} else "private_seed_public"
     if normalized_mode == "public":
@@ -1067,6 +1075,7 @@ def import_folder_knowledge(
             scope_type="private",
             seed_public=normalized_mode == "private_seed_public",
             last_batch_id=batch_id,
+            enterprise_id=enterprise_id,
         )
     report["target_library"] = target_scope
 
@@ -1203,6 +1212,9 @@ def import_folder_route():
     if not craft_dir or not os.path.isdir(craft_dir):
         return jsonify({"error": f"craft_dir 不存在或不是目录: {craft_dir}"}), 400
 
+    from ._utils import get_enterprise_scope
+    _ent_id, _ = get_enterprise_scope()
+
     try:
         report = import_folder_knowledge(
             drawing_dir=drawing_dir,
@@ -1211,6 +1223,7 @@ def import_folder_route():
             library_mode=library_mode,
             library_name=library_name,
             library_key=library_key,
+            enterprise_id=_ent_id,
         )
         return jsonify(report)
     except Exception as exc:
@@ -1254,6 +1267,9 @@ def import_zip_route():
         os.unlink(zip_path)
         return jsonify({"error": "无效的 ZIP 文件"}), 400
 
+    from ._utils import get_enterprise_scope
+    _ent_id, _ = get_enterprise_scope()
+
     try:
         report = import_zip_knowledge(
             zip_path,
@@ -1262,6 +1278,7 @@ def import_zip_route():
             library_mode=library_mode,
             library_name=library_name,
             library_key=library_key,
+            enterprise_id=_ent_id,
         )
         return jsonify(report)
     except Exception as exc:
