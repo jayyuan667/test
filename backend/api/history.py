@@ -18,8 +18,15 @@ history_bp = Blueprint("history", __name__)
 def list_history():
     ent_id, is_super = get_enterprise_scope()
     if is_super:
+        scope = request.args.get("scope", "")
         filter_id = request.args.get("enterprise_id", type=int)
-        history = get_history(enterprise_id=filter_id)
+        if scope == "all":
+            history = get_history()
+        elif filter_id is not None:
+            history = get_history(enterprise_id=filter_id)
+        else:
+            # Default: return empty unless explicitly requested
+            history = []
     else:
         history = get_history(enterprise_id=ent_id)
     return jsonify({"history": history})

@@ -53,6 +53,45 @@ def migrate(db_path, tables):
         conn.close()
 
 
+def report_unresolved(base):
+    """Report records that couldn't have enterprise_id inferred."""
+    unresolved = []
+
+    # Check tasks with NULL enterprise_id
+    task_db = os.path.join(base, "task_store.db")
+    if os.path.exists(task_db):
+        conn = sqlite3.connect(task_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT task_id, pdf_name, library_key FROM tasks WHERE enterprise_id IS NULL")
+        for row in cursor.fetchall():
+            unresolved.append(("tasks", row[0], row[2] or "", "cannot infer enterprise_id"))
+        conn.close()
+
+    # Check vector tables with NULL enterprise_id
+    try:
+        from backend.vector_map_rag import DB_PATH
+        if os.path.exists(DB_PATH):
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'vectors_%'")
+            for (table,) in cursor.fetchall():
+                cursor.execute(f"SELECT id, prefix FROM {table} WHERE enterprise_id IS NULL")
+                for row in cursor.fetchall():
+                    unresolved.append((table, row[0], "", "cannot infer enterprise_id"))
+            conn.close()
+    except Exception:
+        pass
+
+    if unresolved:
+        print(f"\n=== UNRESOLVED RECORDS ({len(unresolved)}) ===")
+        print("These records have NULL enterprise_id and are invisible to enterprise users.")
+        print("table, primary_key, library_key, reason")
+        for rec in unresolved:
+            print(f"{rec[0]}, {rec[1]}, {rec[2]}, {rec[3]}")
+
+    return unresolved
+
+
 def main():
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -80,6 +119,9 @@ def main():
             conn.close()
 
     print("Migration complete.")
+
+    # Report unresolved records (NULL enterprise_id that could not be backfilled)
+    report_unresolved(base)
 
 
 if __name__ == "__main__":

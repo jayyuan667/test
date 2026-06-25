@@ -25,7 +25,7 @@
 隔离边界：
   - 企业间：强隔离（API 层自动注入 enterprise_id，不可跳过）
   - 平台公共库（scope_type=public）：全局可读，不可写
-  - 个人工艺库（scope_type=private）：企业内 user_id 过滤
+  - 企业私有库（scope_type=private）：企业级隔离，一期不承诺同企业用户间隔离
   - super_admin：可跨企业查看，但需显式传参（不可无意识跨企业）
 ```
 
