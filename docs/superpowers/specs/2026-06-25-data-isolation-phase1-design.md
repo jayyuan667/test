@@ -1,8 +1,8 @@
 # 数据隔离一期：企业级租户隔离（Discriminator Column 方案）
 
-> **目标**：在不动数据库架构的前提下，通过业务表加 `enterprise_id` 列 + API 层强制过滤，实现企业间数据不可互见的硬隔离。
-> **范围**：仅后端 + 测试，不动前端。
-> **原则**：轻量、可交付、为二期文件级隔离打基础。
+> **目标**：在不动数据库架构的前提下，通过业务表加 `enterprise_id` 列 + API 层强制过滤 + 前端默认行为修正，实现企业间数据不可互见的硬隔离。
+> **范围**：后端 API 强制过滤 + 前端默认 scope 修正 + 全量测试。
+> **原则**：轻量、可交付、为二期文件级隔离打基础。数据泄漏风险最高的默认行为先堵。
 
 ---
 
@@ -128,7 +128,84 @@ def get_enterprise_scope():
 
 ---
 
-## 4. 未分配企业用户的行为
+## 4. 前端默认行为修正（防泄漏第一道防线）
+
+当前代码存在三个导致用户默认进入公共库的入口，必须修正。
+
+### 4.1 知识库浏览页（DbPage.tsx）——默认 scope 改为个人库
+
+**问题**：`loadScopes()` 拿到 scopes 列表后，后端排序把 `public` 排在最前（`ORDER BY CASE WHEN library_key = 'public' THEN 0 ELSE 1 END`），导致 `data.items[0]` 永远是公共库。
+
+```tsx
+// 当前代码（DbPage.tsx 约 126 行）
+if (data.items?.length && !filterScope) {
+  setFilterScope(data.items[0].library_key)  // ← 永远是 'public'
+}
+```
+
+```tsx
+// 修正后：优先选择当前企业/个人的 private scope
+const preferredScope = data.items?.find(
+  s => s.scope_type !== 'public'            // 优先 private
+) ?? data.items?.[0]                        // 没有 private 才用 public
+if (preferredScope && !filterScope) {
+  setFilterScope(preferredScope.library_key)
+}
+```
+
+**空状态 fallback 修正**（DbPage.tsx 约 911 行）：
+
+```tsx
+// 当前：activeScope?.library_name || '公共工艺库'
+// 修正后：不再硬编码公共库
+activeScope?.library_name || '工艺库'
+```
+
+### 4.2 ZIP 入库页（ZipPage.tsx）——新建库默认不从公共库复制
+
+**问题**：`seedPublic` 默认 `true`，新建个人库时自动从公共库拉全部数据。
+
+```tsx
+// 当前代码（ZipPage.tsx 约 30 行）
+const [seedPublic, setSeedPublic] = useState(true)  // ← 默认复制公共库
+```
+
+```tsx
+// 修正后：默认不复制公共库
+const [seedPublic, setSeedPublic] = useState(false)
+```
+
+**影响**：用户新建个人工艺库时，默认是空库。如需从公共基线初始化，需**显式勾选**"从公共工艺库导入基线数据"。
+
+### 4.3 入库目标默认值修正
+
+**问题**：`selectedScope` 默认 `'__new__'` 配合 `seedPublic=true` 会把公共库数据灌入新建的个人库。
+
+**修正**：`seedPublic=false` 后这个组合风险消除。额外确保 `newLibName` 默认文案不暗示公共库：
+
+```tsx
+// 当前
+const [newLibName, setNewLibName] = useState('我的工艺库')  // ✅ 没有问题
+// 但 visibleScopes 中 enterprise_admin/user 不应看到 public scope
+// ——这个已在角色架构 Task 4 中实现，确认不被覆盖即可
+```
+
+### 4.4 公共库可见性确认（回归检查）
+
+回顾角色架构 Task 4（`cfdf430`）已有的 `visibleScopes` 过滤：
+
+```tsx
+const visibleScopes = scopes.filter(scope => {
+  if (user?.role === 'super_admin') return true
+  return scope.scope_type !== 'public'
+})
+```
+
+**确认**：非 super_admin 用户在 ZipPage 看不到 `public` scope，这个逻辑不变。
+
+---
+
+## 5. 未分配企业用户的行为
 
 ```
 user.enterprise_id = NULL（未分配企业）:
@@ -142,7 +219,7 @@ user.enterprise_id = NULL（未分配企业）:
 
 ---
 
-## 5. 部署方案
+## 6. 部署方案
 
 ### 5.1 迁移策略
 
@@ -205,7 +282,7 @@ cp vectors.db.bak-* vectors.db
 
 ---
 
-## 6. 测试计划
+## 7. 测试计划
 
 ### 6.1 后端单元/集成测试（pytest）
 
@@ -291,7 +368,7 @@ cd frontend-react && npx playwright test tests/auth-ui.spec.ts tests/db-preview.
 
 ---
 
-## 7. 文件结构
+## 8. 文件结构
 
 ```
 后端改动：
@@ -311,17 +388,19 @@ cd frontend-react && npx playwright test tests/auth-ui.spec.ts tests/db-preview.
   backend/task_store.py            ← 修改：tasks 表加列
   backend/test_data_isolation.py   ← 新增：隔离测试
 
-前端改动（仅测试）：
-  frontend-react/tests/data-isolation.spec.ts  ← 新增
+前端改动（默认行为修正）：
+  frontend-react/src/pages/DbPage.tsx           ← 修改：默认 scope 改为 private
+  frontend-react/src/pages/ZipPage.tsx          ← 修改：seedPublic 默认 false
+  frontend-react/tests/data-isolation.spec.ts   ← 新增：隔离 E2E 测试
 
 不动：
   auth.db / auth_store.py          ← 已有 enterprise_id
-  frontend-react/src/**             ← 不修改任何前端页面
+  frontend-react/src/** 其他页面    ← 不修改
 ```
 
 ---
 
-## 8. 风险与缓解
+## 9. 风险与缓解
 
 | 风险 | 缓解 |
 |---|---|
@@ -332,7 +411,7 @@ cd frontend-react && npx playwright test tests/auth-ui.spec.ts tests/db-preview.
 
 ---
 
-## 9. 二期规划（本次不做）
+## 10. 二期规划（本次不做）
 
 ```
 当前一期（Discriminator Column）→ 二期（Per-Tenant DB File）
@@ -351,13 +430,17 @@ cd frontend-react && npx playwright test tests/auth-ui.spec.ts tests/db-preview.
 
 ---
 
-## 10. 验收标准
+## 11. 验收标准
 
 - [ ] 企业 A 的 `enterprise_admin` 调用任何 API 都看不到企业 B 的数据
 - [ ] 企业 A 的 `user`（已分配）调用任何 API 都看不到企业 B 的数据
 - [ ] 未分配企业的用户只能看到 `scope_type='public'` 的记录
 - [ ] `super_admin` 可以跨企业查看（传参限定或不传参看全部）
 - [ ] 上传/ZIP 导入自动写入正确的 `enterprise_id`
+- [ ] **DbPage 打开时默认选中用户的 private scope，不默认展示公共库**
+- [ ] **DbPage 空状态不再展示 "公共工艺库" 文案**
+- [ ] **ZipPage 新建个人库默认不从公共库复制数据（seedPublic=false）**
+- [ ] **非 super_admin 用户在 ZipPage 不可见 public scope（已有逻辑，回归确认）**
 - [ ] 现有 35 条 Playwright + 39 条 pytest 全部保持通过
 - [ ] 新增隔离测试全部通过
 - [ ] 迁移脚本在空库和有数据库上都能幂等执行
