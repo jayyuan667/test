@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { getEnterprises, createEnterprise, updateEnterprise, createAdminGrant, getAdminUsers } from '../../api/client'
+import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
 import type { Enterprise, AdminUser } from '../../types/auth'
 
 export function EnterpriseTab() {
+  const { user } = useAuth()
   const { show } = useToast()
   const [enterprises, setEnterprises] = useState<Enterprise[]>([])
   const [loading, setLoading] = useState(true)
@@ -16,6 +18,10 @@ export function EnterpriseTab() {
     durationDays: number
     unassignedUsers: AdminUser[]
   } | null>(null)
+
+  if (user?.role !== 'super_admin') {
+    return null
+  }
 
   const fetchEnterprises = async () => {
     try {
@@ -104,7 +110,7 @@ export function EnterpriseTab() {
           value={newName}
           onChange={e => setNewName(e.target.value)}
           placeholder="输入企业名称"
-          className="block w-72 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition"
+          className="theme-form-field block w-72 rounded-lg px-3 py-2 text-sm transition"
           onKeyDown={e => { if (e.key === 'Enter') handleCreate() }}
         />
         <button
@@ -118,31 +124,31 @@ export function EnterpriseTab() {
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="text-left px-4 py-3 font-medium">企业名称</th>
-              <th className="text-left px-4 py-3 font-medium">用户数</th>
-              <th className="text-left px-4 py-3 font-medium">状态</th>
-              <th className="text-left px-4 py-3 font-medium">创建时间</th>
-              <th className="text-left px-4 py-3 font-medium">操作</th>
+              <th>企业名称</th>
+              <th>用户数</th>
+              <th>状态</th>
+              <th>创建时间</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="text-center py-8 text-slate-500">加载中...</td>
+                <td colSpan={5} className="text-center py-8" style={{ color: 'var(--text-secondary)' }}>加载中...</td>
               </tr>
             ) : enterprises.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center py-8 text-slate-500">暂无企业</td>
+                <td colSpan={5} className="text-center py-8" style={{ color: 'var(--text-secondary)' }}>暂无企业</td>
               </tr>
             ) : (
               enterprises.map(ent => (
-                <tr key={ent.id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="px-4 py-3">{ent.name}</td>
-                  <td className="px-4 py-3">{ent.user_count ?? '-'}</td>
-                  <td className="px-4 py-3">
+                <tr key={ent.id}>
+                  <td>{ent.name}</td>
+                  <td>{ent.user_count ?? '-'}</td>
+                  <td>
                     <span
                       className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         ent.is_active
@@ -153,19 +159,19 @@ export function EnterpriseTab() {
                       {ent.is_active ? '正常' : '已停用'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">
+                  <td style={{ color: 'var(--text-secondary)' }}>
                     {new Date(ent.created_at).toLocaleDateString('zh-CN')}
                   </td>
-                  <td className="px-4 py-3 space-x-2">
+                  <td className="space-x-2">
                     <button
                       onClick={() => handleToggleActive(ent)}
-                      className="text-orange-600 hover:text-orange-800 text-xs font-medium"
+                      className="theme-link-action text-xs font-medium"
                     >
                       {ent.is_active ? '停用' : '启用'}
                     </button>
                     <button
                       onClick={() => openRenewModal(ent)}
-                      className="text-orange-600 hover:text-orange-800 text-xs font-medium"
+                      className="theme-link-action text-xs font-medium"
                     >
                       续期管理员
                     </button>
@@ -179,14 +185,14 @@ export function EnterpriseTab() {
 
       {/* Renew Modal */}
       {renewModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center" onClick={() => setRenewModal(null)}>
-          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl mx-4" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-slate-800 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'var(--modal-overlay)' }} onClick={() => setRenewModal(null)}>
+          <div className="theme-modal-shell rounded-lg border p-6 w-full max-w-sm shadow-xl mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
               续期管理员 - {renewModal.enterprise.name}
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">选择用户</label>
+                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>选择用户</label>
                 <select
                   value={renewModal.userId ?? ''}
                   onChange={e =>
@@ -194,7 +200,7 @@ export function EnterpriseTab() {
                       prev ? { ...prev, userId: e.target.value ? Number(e.target.value) : null } : null
                     )
                   }
-                  className="block w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition"
+                  className="theme-form-field block w-full rounded-lg px-3 py-2 text-sm transition"
                 >
                   <option value="">-- 选择用户 --</option>
                   {renewModal.unassignedUsers.map(u => (
@@ -204,11 +210,11 @@ export function EnterpriseTab() {
                   ))}
                 </select>
                 {renewModal.unassignedUsers.length === 0 && (
-                  <p className="text-xs text-slate-400 mt-1">暂无可分配的用户</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>暂无可分配的用户</p>
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">续期天数</label>
+                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>续期天数</label>
                 <input
                   type="number"
                   value={renewModal.durationDays}
@@ -217,14 +223,15 @@ export function EnterpriseTab() {
                       prev ? { ...prev, durationDays: Number(e.target.value) } : null
                     )
                   }
-                  className="block w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition"
+                  className="theme-form-field block w-full rounded-lg px-3 py-2 text-sm transition"
                   min={1}
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   onClick={() => setRenewModal(null)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
+                  className="px-4 py-2 text-sm font-medium transition-colors"
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   取消
                 </button>

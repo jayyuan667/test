@@ -24,6 +24,8 @@ export function UsersTab() {
   const [editEnterprise, setEditEnterprise] = useState<number | null>(null)
 
   const isSuperAdmin = currentUser?.role === 'super_admin'
+  const filterLabel = isSuperAdmin ? '企业筛选' : '成员列表'
+  const canEditEnterprise = isSuperAdmin
 
   const fetchData = async () => {
     try {
@@ -57,10 +59,11 @@ export function UsersTab() {
 
   const saveEditing = async (userId: number) => {
     try {
-      await updateAdminUser(userId, {
+      const updates = {
         quota_total: editQuota,
-        enterprise_id: editEnterprise,
-      })
+        ...(canEditEnterprise ? { enterprise_id: editEnterprise } : {}),
+      }
+      await updateAdminUser(userId, updates)
       show('用户信息更新成功', 'success')
       setEditingId(null)
       await fetchData()
@@ -81,16 +84,15 @@ export function UsersTab() {
 
   return (
     <div className="space-y-4">
-      {/* Enterprise filter for super_admin */}
-      {isSuperAdmin && (
-        <div className="flex items-center gap-3">
-          <label className="text-sm text-slate-600 font-medium">企业筛选：</label>
+      <div className="flex items-center gap-3">
+        <label className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{filterLabel}</label>
+        {isSuperAdmin && (
           <select
             value={filterEnt ?? ''}
             onChange={e =>
               setFilterEnt(e.target.value ? Number(e.target.value) : undefined)
             }
-            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition"
+            className="theme-form-field rounded-lg px-3 py-2 text-sm transition"
           >
             <option value="">全部企业</option>
             {enterprises.map(ent => (
@@ -99,47 +101,47 @@ export function UsersTab() {
               </option>
             ))}
           </select>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="text-left px-4 py-3 font-medium">ID</th>
-              <th className="text-left px-4 py-3 font-medium">用户名</th>
-              <th className="text-left px-4 py-3 font-medium">角色</th>
-              <th className="text-left px-4 py-3 font-medium">企业</th>
-              <th className="text-left px-4 py-3 font-medium">配额</th>
-              <th className="text-left px-4 py-3 font-medium">状态</th>
-              <th className="text-left px-4 py-3 font-medium">操作</th>
+              <th>ID</th>
+              <th>用户名</th>
+              <th>角色</th>
+              <th>企业</th>
+              <th>配额</th>
+              <th>状态</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="text-center py-8 text-slate-500">加载中...</td>
+                <td colSpan={7} className="text-center py-8" style={{ color: 'var(--text-secondary)' }}>加载中...</td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-8 text-slate-500">暂无用户</td>
+                <td colSpan={7} className="text-center py-8" style={{ color: 'var(--text-secondary)' }}>暂无用户</td>
               </tr>
             ) : (
               users.map(u => {
                 const isEditing = editingId === u.id
                 const isSuperAdminUser = u.role === 'super_admin'
                 return (
-                  <tr key={u.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="px-4 py-3">{u.id}</td>
-                    <td className="px-4 py-3">{u.username}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
+                  <tr key={u.id}>
+                    <td>{u.id}</td>
+                    <td>{u.username}</td>
+                    <td>
+                      <span className="theme-surface-chip inline-block px-2.5 py-0.5 rounded-full text-xs font-medium border">
                         {ROLE_LABELS[u.role] || u.role}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      {isEditing && isSuperAdmin ? (
+                    <td>
+                      {isEditing && canEditEnterprise ? (
                         <select
                           value={editEnterprise ?? ''}
                           onChange={e =>
@@ -147,7 +149,7 @@ export function UsersTab() {
                               e.target.value ? Number(e.target.value) : null,
                             )
                           }
-                          className="border border-slate-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none"
+                          className="theme-form-field rounded px-2 py-1 text-xs"
                         >
                           <option value="">无</option>
                           {enterprises.map(ent => (
@@ -160,13 +162,13 @@ export function UsersTab() {
                         u.enterprise_name || '-'
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       {isEditing ? (
                         <input
                           type="number"
                           value={editQuota}
                           onChange={e => setEditQuota(Number(e.target.value))}
-                          className="w-24 border border-slate-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none"
+                          className="theme-form-field w-24 rounded px-2 py-1 text-xs"
                           min={0}
                         />
                       ) : (
@@ -175,7 +177,7 @@ export function UsersTab() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <span
                         className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           u.is_active
@@ -186,20 +188,21 @@ export function UsersTab() {
                         {u.is_active ? '正常' : '已停用'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 space-x-2">
+                    <td className="space-x-2">
                       {isSuperAdminUser ? (
-                        <span className="text-xs text-slate-400">不可操作</span>
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>不可操作</span>
                       ) : isEditing ? (
                         <>
                           <button
                             onClick={() => saveEditing(u.id)}
-                            className="text-orange-600 hover:text-orange-800 text-xs font-medium"
+                            className="theme-link-action text-xs font-medium"
                           >
                             保存
                           </button>
                           <button
                             onClick={cancelEditing}
-                            className="text-slate-500 hover:text-slate-700 text-xs font-medium"
+                            className="text-xs font-medium"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             取消
                           </button>
@@ -208,13 +211,13 @@ export function UsersTab() {
                         <>
                           <button
                             onClick={() => startEditing(u)}
-                            className="text-orange-600 hover:text-orange-800 text-xs font-medium"
+                            className="theme-link-action text-xs font-medium"
                           >
                             修改配额
                           </button>
                           <button
                             onClick={() => handleToggleActive(u)}
-                            className="text-orange-600 hover:text-orange-800 text-xs font-medium"
+                            className="theme-link-action text-xs font-medium"
                           >
                             {u.is_active ? '停用' : '启用'}
                           </button>
