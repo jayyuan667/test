@@ -124,7 +124,10 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
           setReady(true) // Show the page but in browse-only mode
         }
         if (data.items?.length && !filterScope) {
-          setFilterScope(data.items[0].library_key)
+          const preferred = data.items.find(
+            (s: LibraryScope) => s.scope_type !== 'public'
+          ) ?? data.items[0]
+          setFilterScope(preferred.library_key)
         }
       } catch {
         setReady(false)
@@ -908,7 +911,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
             {viewMode === 'detail' && (
               <div className="flex gap-2 flex-wrap mb-3 shrink-0">
                 <span className="chip">{selectedRecord.prefix}</span>
-                <span className="chip">{activeScope?.library_name || '公共工艺库'}</span>
+                <span className="chip">{activeScope?.library_name || '工艺库'}</span>
                 <span className="chip">{selectedRecord.product_type || '未分类'}</span>
                 {(() => { const st = getRecordStatus(selectedRecord); return <span className={`chip border ${st.cls}`}>{st.label}</span> })()}
               </div>
