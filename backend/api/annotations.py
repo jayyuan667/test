@@ -11,8 +11,12 @@ from flask import Blueprint, jsonify, request, send_file
 
 try:
     from ..config import OUTPUT_FOLDER
+    from ..auth_utils import login_required
+    from ._utils import assert_task_access
 except ImportError:
     from backend.config import OUTPUT_FOLDER
+    from backend.auth_utils import login_required
+    from backend.api._utils import assert_task_access
 
 annotations_bp = Blueprint("annotations", __name__)
 
@@ -25,12 +29,16 @@ def _ann_dir(task_id: str) -> str:
 
 
 @annotations_bp.route("/annotations/<task_id>", methods=["GET"])
+@login_required
 def get_annotations(task_id):
     """Return all saved annotation JSON files for a task, keyed by page number.
 
     Defensive: if multiple JSONs map to the same page (legacy filename variants),
     pick the most recently modified one — that's the user's latest save.
     """
+    allowed, error = assert_task_access(task_id)
+    if not allowed:
+        return error
     ann_dir = _ann_dir(task_id)
     if not os.path.isdir(ann_dir):
         return jsonify({"task_id": task_id, "pages": {}})
@@ -65,7 +73,11 @@ def get_annotations(task_id):
 
 
 @annotations_bp.route("/annotations/<task_id>/save", methods=["POST"])
+@login_required
 def save_annotations(task_id):
+    allowed, error = assert_task_access(task_id)
+    if not allowed:
+        return error
     """Save annotations for one page as labelme JSON + YOLO TXT.
 
     Body: {page, shapes, imageWidth, imageHeight, imagePath}
@@ -161,7 +173,11 @@ def _save_annotations_impl(task_id):
 
 
 @annotations_bp.route("/annotations/<task_id>/export", methods=["GET"])
+@login_required
 def export_annotations(task_id):
+    allowed, error = assert_task_access(task_id)
+    if not allowed:
+        return error
     """Return annotation files + source images for a task as a ZIP download."""
     ann_dir  = _ann_dir(task_id)
     task_dir = os.path.join(OUTPUT_FOLDER, task_id)
@@ -200,7 +216,11 @@ def export_annotations(task_id):
 
 
 @annotations_bp.route("/annotations/<task_id>/finalize", methods=["POST"])
+@login_required
 def finalize_annotations(task_id):
+    allowed, error = assert_task_access(task_id)
+    if not allowed:
+        return error
     """User confirmed manual annotation; resume the pipeline.
 
     Two cases:
