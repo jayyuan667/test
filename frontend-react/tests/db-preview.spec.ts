@@ -223,7 +223,11 @@ test('enterprise admin does not see platform governance copy in db page', async 
 test('public scope keeps record detail actions read-only for super admin', async ({ page }) => {
   await openDbPage(page)
 
-  await page.getByText('D125A-181200A003').click()
+  // Switch to public scope first — the default prefers non-public scope
+  await page.locator('select').first().selectOption('public')
+  await page.waitForTimeout(500)
+
+  await page.getByText('D125A-181200A003').first().click()
 
   await expect(page.getByRole('button', { name: '编辑记录' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '删除', exact: true })).toHaveCount(0)
