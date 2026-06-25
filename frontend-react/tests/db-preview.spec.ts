@@ -1,5 +1,46 @@
 import { test, expect } from '@playwright/test'
 
+const SUPER_ADMIN_USER = {
+  id: 1,
+  username: 'admin',
+  role: 'super_admin',
+  enterprise_id: null,
+  enterprise_name: null,
+  is_active: true,
+  created_at: '2026-06-20T00:00:00',
+}
+
+const ENTERPRISE_ADMIN_USER = {
+  id: 2,
+  username: 'factory-admin',
+  role: 'enterprise_admin',
+  enterprise_id: 9,
+  enterprise_name: '演示企业',
+  is_active: true,
+  created_at: '2026-06-20T00:00:00',
+}
+
+async function mockAuthenticatedUser(
+  page: import('@playwright/test').Page,
+  user: typeof SUPER_ADMIN_USER | typeof ENTERPRISE_ADMIN_USER = SUPER_ADMIN_USER,
+) {
+  await page.route('**/api/auth/me', async route => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        data: { user },
+      }),
+    })
+  })
+}
+
+async function openDbPage(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await expect(page.getByText('工艺生成')).toBeVisible({ timeout: 10000 })
+  await page.getByRole('button', { name: /知识库浏览/ }).click()
+}
+
 test.beforeEach(async ({ page }) => {
   // Unlock DbPage database browse before navigation, otherwise it renders the
   // "数据库未解锁" lock screen and never shows the record list.
@@ -7,11 +48,16 @@ test.beforeEach(async ({ page }) => {
     sessionStorage.setItem('zip_unlocked', 'true')
   })
 
+  await mockAuthenticatedUser(page)
+
   await page.route('**/api/library/scopes', async route => {
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        items: [{ library_key: 'public', library_name: '公共工艺库', scope_type: 'public', record_count: 2 }],
+        items: [
+          { library_key: 'public', library_name: '公共工艺库', scope_type: 'public', record_count: 2 },
+          { library_key: 'private', library_name: '我的工艺库', scope_type: 'private', record_count: 1 },
+        ],
         can_browse_db: true,
         active_scope: 'public',
       }),
@@ -117,8 +163,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('database list shows thumbnail and opens snapshot modal', async ({ page }) => {
-  await page.goto('/')
-  await page.getByRole('button', { name: /知识库浏览/ }).click()
+  await openDbPage(page)
 
   const thumbnail = page.locator('button[aria-label="查看 D125A-181200A003 图纸快照"]')
   await expect(thumbnail).toBeVisible()
@@ -131,10 +176,30 @@ test('database list shows thumbnail and opens snapshot modal', async ({ page }) 
 })
 
 test('database list shows placeholder when preview images are missing', async ({ page }) => {
-  await page.goto('/')
-  await page.getByRole('button', { name: /知识库浏览/ }).click()
+  await openDbPage(page)
 
   const placeholder = page.locator('button[aria-label="NO-PREVIEW 暂无图纸快照"]')
   await expect(placeholder).toBeVisible()
   await expect(placeholder.locator('text=暂无预览')).toBeVisible()
+  await expect(placeholder).toHaveCSS('border-top-color', 'rgb(255, 209, 168)')
+})
+
+test('super admin can distinguish platform library from personal library', async ({ page }) => {
+  await openDbPage(page)
+
+  const scopeSelect = page.locator('select').first()
+
+  await expect(page.getByText('查看平台与个人工艺记录。')).toBeVisible()
+  await expect(scopeSelect).toContainText('平台工艺库')
+  await expect(scopeSelect).toContainText('个人工艺库')
+})
+
+test('enterprise admin does not see platform governance copy in db page', async ({ page }) => {
+  await mockAuthenticatedUser(page, ENTERPRISE_ADMIN_USER)
+
+  await openDbPage(page)
+
+  await expect(page.getByText('查看企业复用相关记录与个人工艺库。')).toBeVisible()
+  await expect(page.getByText('查看平台与个人工艺记录。')).toHaveCount(0)
+  await expect(page.getByText('跨企业治理')).toHaveCount(0)
 })

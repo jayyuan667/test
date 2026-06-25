@@ -10,6 +10,8 @@ import {
 } from '../api/client'
 import type { LibraryRecord, LibraryRecordsResponse, LibraryScope } from '../api/client'
 import type { PageId } from '../types'
+import { useAuth } from '../contexts/AuthContext'
+import { isUnassignedUser } from '../types/auth'
 import gsap from 'gsap'
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion'
 import { normalizeAssetUrls, normalizeProcessRows, normalizeStringArray } from '../utils/processRows'
@@ -20,14 +22,14 @@ function LockShell({ onNavigate }: { onNavigate: (id: PageId) => void }) {
   return (
     <div className="flex items-center justify-center h-full">
       <div className="card-solid max-w-md text-center p-8">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-100 flex items-center justify-center">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-400">
+        <div className="theme-empty-accent w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--surface-empty-accent-stroke)' }}>
             <rect x="3" y="11" width="18" height="11" rx="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
         </div>
-        <h3 className="text-[15px] font-bold text-slate-700 mb-2">数据库未解锁</h3>
-        <p className="text-[12px] text-slate-500 mb-5">请先完成知识库导入操作后再浏览数据库</p>
+        <h3 className="text-[15px] font-bold mb-2" style={{ color: 'var(--text-primary)' }}>数据库未解锁</h3>
+        <p className="text-[12px] mb-5" style={{ color: 'var(--text-secondary)' }}>请先完成知识库导入操作后再浏览数据库</p>
         <div className="flex items-center justify-center gap-3">
           <button className="btn btn-primary !text-[12px]" onClick={() => onNavigate('zip')}>前往导入</button>
           <button className="btn btn-secondary !text-[12px]" onClick={() => {
@@ -40,7 +42,31 @@ function LockShell({ onNavigate }: { onNavigate: (id: PageId) => void }) {
   )
 }
 
+function UnassignedUserShell({ onNavigate }: { onNavigate: (id: PageId) => void }) {
+  return (
+    <div className="flex items-center justify-center h-full">
+      <div className="card-solid max-w-md text-center p-8">
+        <div className="theme-empty-accent w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--surface-empty-accent-stroke)' }}>
+            <path d="M12 3v18" />
+            <path d="M3 12h18" />
+            <circle cx="12" cy="12" r="9" />
+          </svg>
+        </div>
+        <h3 className="text-[15px] font-bold mb-2" style={{ color: 'var(--text-primary)' }}>暂未开放知识库浏览</h3>
+        <p className="text-[12px] mb-5" style={{ color: 'var(--text-secondary)' }}>当前账号尚未分配企业，仅可查看个人资料与授权状态。</p>
+        <button className="btn btn-primary !text-[12px]" onClick={() => onNavigate('profile')}>前往个人中心</button>
+      </div>
+    </div>
+  )
+}
+
+function getScopeUiLabel(scope: Pick<LibraryScope, 'scope_type'> | { scope_type: string } | null | undefined) {
+  return scope?.scope_type === 'public' ? '平台工艺库' : '个人工艺库'
+}
+
 export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
+  const { user } = useAuth()
   const [ready, setReady] = useState<boolean | null>(null)
   const [browseOnly, setBrowseOnly] = useState(false)
   const [scopes, setScopes] = useState<LibraryScope[]>([])
@@ -395,7 +421,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
         <button
           type="button"
           aria-label={`${record.prefix || '记录'} 暂无图纸快照`}
-          className="w-20 h-20 shrink-0 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-300 flex flex-col items-center justify-center cursor-default"
+          className="theme-empty-accent w-20 h-20 shrink-0 rounded-xl border border-dashed text-orange-300 flex flex-col items-center justify-center cursor-default"
           onClick={e => e.stopPropagation()}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -411,7 +437,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
       <button
         type="button"
         aria-label={`查看 ${record.prefix || '记录'} 图纸快照`}
-        className="w-20 h-20 shrink-0 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden group/thumb"
+        className="theme-preview-frame w-20 h-20 shrink-0 rounded-xl border overflow-hidden group/thumb"
         onClick={e => {
           e.stopPropagation()
           handleSelectRecord(record)
@@ -448,7 +474,14 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
     setEditDraft({})
   }
 
-  const isPublicLib = activeScope?.scope_type === 'public'
+  const selectedScope = scopes.find(scope => scope.library_key === filterScope) ?? activeScope
+  const currentScopeLabel = getScopeUiLabel(selectedScope)
+  const allowDeleteScope = selectedScope?.scope_type !== 'public' && user?.role !== 'user'
+  const bannerCopy = user?.role === 'super_admin'
+    ? '查看平台与个人工艺记录。'
+    : user?.role === 'enterprise_admin'
+      ? '查看企业复用相关记录与个人工艺库。'
+      : '查询、复用与回看我的工艺记录。'
 
   // Feature report pages (from feature_report_json)
   const featurePages = useMemo(() => {
@@ -465,6 +498,14 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
     return { label: '可用', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
   }
 
+  const getTradeBadgeClass = (trade?: string) => {
+    if (!trade) return 'bg-stone-50 text-stone-600 border-stone-200'
+    if (trade === '检') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    if (trade === '热处理') return 'bg-red-50 text-red-700 border-red-200'
+    if (trade === '钳') return 'bg-amber-50 text-amber-700 border-amber-200'
+    return 'bg-stone-50 text-stone-700 border-stone-200'
+  }
+
   const getSourceLabel = (r: LibraryRecord) => {
     if (r.source_type === 'zip_import' || r.source_type === 'import') return '工艺入库'
     if (r.source_type === 'manual' || r.source_type === 'text') return '手工修订'
@@ -475,7 +516,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
   const highlightText = (text: string, q: string) => {
     if (!q.trim() || !text) return text
     const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
-    return text.replace(regex, '<mark class="bg-yellow-200/70 rounded px-0.5">$1</mark>')
+    return text.replace(regex, '<mark class="bg-orange-100/80 rounded px-0.5 text-orange-900">$1</mark>')
   }
 
   // Editable sources for filter
@@ -496,21 +537,25 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
     return () => clearInterval(interval)
   }, [zipUnlocked])
 
+  if (isUnassignedUser(user)) {
+    return <UnassignedUserShell onNavigate={onNavigate} />
+  }
+
   if (!zipUnlocked) {
     return <LockShell onNavigate={onNavigate} />
   }
 
   // Stat card data
   const statCards = [
-    { label: '库内条目', value: total, color: 'from-blue-500 to-blue-600', bgColor: 'bg-gradient-to-br from-blue-50 to-blue-100',
-      iconSvg: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg> },
+    { label: '库内条目', value: total, color: 'from-stone-500 to-stone-700', bgColor: 'theme-surface-panel-subtle',
+      iconSvg: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg> },
     { label: '当前页', value: records.length, color: 'from-emerald-500 to-emerald-600', bgColor: 'bg-gradient-to-br from-emerald-50 to-emerald-100',
       iconSvg: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg> },
-    { label: '编辑状态', value: viewMode === 'edit' ? '编辑中' : browseOnly ? '只读' : '启用', color: browseOnly ? 'from-slate-500 to-slate-600' : 'from-flame-500 to-flame-600', bgColor: browseOnly ? 'bg-gradient-to-br from-slate-50 to-slate-100' : 'bg-gradient-to-br from-flame-50 to-orange-100',
+    { label: '编辑状态', value: viewMode === 'edit' ? '编辑中' : browseOnly ? '只读' : '启用', color: browseOnly ? 'from-stone-500 to-stone-700' : 'from-flame-500 to-flame-600', bgColor: browseOnly ? 'theme-surface-panel-subtle' : 'bg-gradient-to-br from-flame-50 to-orange-100',
       iconSvg: viewMode === 'edit'
         ? <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-flame-500"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
         : browseOnly
-        ? <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+        ? <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
         : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-flame-500"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></svg> },
   ]
 
@@ -520,23 +565,23 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
       <div ref={lockStateRef} className="flex flex-col items-center justify-center h-full">
         <div className="card-solid max-w-[520px] text-center relative overflow-hidden">
           {/* Decorative background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-slate-50 opacity-50" />
+          <div className="absolute inset-0 theme-surface-panel-muted opacity-70" />
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-flame-50/30 to-transparent rounded-bl-full" />
 
           <div className="relative z-10">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mx-auto mb-4 shadow-sm">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-500">
+            <div className="theme-empty-accent w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--surface-empty-accent-stroke)' }}>
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
             </div>
-            <h2 className="text-[20px] font-extrabold text-slate-800 mb-2">请先完成知识入库</h2>
-            <p className="text-[13px] text-slate-500 mb-6 leading-relaxed max-w-[380px] mx-auto">
-              数据库浏览页默认受"当前会话先入库"规则保护。你可以先浏览公共库或自己的历史库。
+            <h2 className="text-[20px] font-extrabold mb-2" style={{ color: 'var(--text-primary)' }}>请先完成知识入库</h2>
+            <p className="text-[13px] mb-6 leading-relaxed max-w-[380px] mx-auto" style={{ color: 'var(--text-secondary)' }}>
+              数据库浏览页默认受"当前会话先入库"规则保护。你可以先浏览平台工艺库或个人工艺记录。
             </p>
             <div className="flex gap-3 justify-center flex-wrap">
               <button className="btn btn-primary !px-6 !py-3">前往工艺入库</button>
-              <button className="btn btn-secondary !px-5 !py-3" onClick={() => { setReady(true); setBrowseOnly(true); setFilterScope('public') }}>查看公共数据库</button>
-              <button className="btn btn-secondary !px-5 !py-3" onClick={() => { setReady(true); setBrowseOnly(true) }}>查看我的数据库</button>
+              <button className="btn btn-secondary !px-5 !py-3" onClick={() => { setReady(true); setBrowseOnly(true); setFilterScope('public') }}>查看平台工艺库</button>
+              <button className="btn btn-secondary !px-5 !py-3" onClick={() => { setReady(true); setBrowseOnly(true) }}>查看个人工艺库</button>
             </div>
           </div>
         </div>
@@ -548,13 +593,13 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
     <div className="flex flex-col gap-3 h-full min-h-0">
       {/* Browse-only banner */}
       {browseOnly && (
-        <div ref={bannerRef} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-600"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
+        <div ref={bannerRef} className="theme-info-note flex items-center gap-3 px-4 py-3 rounded-xl shrink-0">
+          <div className="theme-empty-accent w-8 h-8 rounded-lg flex items-center justify-center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--accent-action-strong)' }}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
           </div>
           <div className="flex-1 min-w-0">
-            <span className="text-[13px] font-bold text-blue-700">只读浏览模式</span>
-            <span className="text-[12px] text-blue-600 ml-2">你可以先查看公共库和自己之前的数据库记录；编辑、删除与保存会在完成入库后解锁。</span>
+            <span className="text-[13px] font-bold">只读浏览模式</span>
+            <span className="text-[12px] ml-2">你可以先查看公共库和自己之前的数据库记录；编辑、删除与保存会在完成入库后解锁。</span>
           </div>
           <button className="btn btn-secondary !text-[11px] !py-1.5 shrink-0">前往工艺入库</button>
         </div>
@@ -580,9 +625,9 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
             </span>
           </button>
           <button
-            className="btn btn-ghost !text-[12px] !text-red-500"
-            disabled={isPublicLib}
-            title={isPublicLib ? '公共库只读' : ''}
+            className="btn btn-ghost theme-link-danger !text-[12px]"
+            disabled={!allowDeleteScope}
+            title={selectedScope?.scope_type === 'public' ? '平台工艺库只读' : user?.role === 'user' ? '仅管理员可删除个人工艺库' : ''}
             onClick={() => {
               const s = scopes.find(s => s.library_key === filterScope)
               if (s && s.scope_type !== 'public') setDeleteLibraryConfirm(s)
@@ -593,21 +638,21 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
-            <label className="text-[11px] font-semibold text-slate-500">当前库</label>
+            <label className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>当前库</label>
             <select
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] text-slate-700 focus:outline-none focus:border-flame-400 transition-all"
+              className="theme-form-field rounded-lg px-2.5 py-1.5 text-[12px] transition-all"
               value={filterScope}
               onChange={e => { setFilterScope(e.target.value); setPage(1) }}
             >
               {scopes.map(s => (
-                <option key={s.library_key} value={s.library_key}>{s.library_name}（{s.scope_type === 'public' ? '公共' : '私有'}）</option>
+                <option key={s.library_key} value={s.library_key}>{getScopeUiLabel(s)}</option>
               ))}
             </select>
           </div>
           <div className="flex items-center gap-1.5">
-            <label className="text-[11px] font-semibold text-slate-500">页大小</label>
+            <label className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>页大小</label>
             <select
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] text-slate-700 focus:outline-none focus:border-flame-400 transition-all"
+              className="theme-form-field rounded-lg px-2.5 py-1.5 text-[12px] transition-all"
               value={pageSize}
               onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
             >
@@ -616,23 +661,30 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
               <option value={5}>5</option>
             </select>
           </div>
-          <span className="chip">{activeScope?.library_name || '公共工艺库'} · {total} 条记录</span>
+          <span className="chip">{currentScopeLabel} · {total} 条记录</span>
+        </div>
+      </div>
+
+      <div className="card-solid !p-4 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="chip">{currentScopeLabel}</span>
+          <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{bannerCopy}</span>
         </div>
       </div>
 
       {/* Filter disclosure panel (mobile) */}
       {filterOpen && (
         <div className="lg:hidden relative shrink-0">
-          <div className="absolute inset-x-0 top-0 z-50 bg-white rounded-xl border border-slate-200 shadow-lg p-4 flex flex-col gap-3">
+          <div className="theme-modal-shell absolute inset-x-0 top-0 z-50 rounded-xl border shadow-lg p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <div className="text-[12px] font-bold text-slate-500">筛选条件</div>
+              <div className="text-[12px] font-bold" style={{ color: 'var(--text-secondary)' }}>筛选条件</div>
               <button className="btn btn-ghost !p-1 !text-[14px]" onClick={() => setFilterOpen(false)}>&times;</button>
             </div>
             <div className="flex flex-col gap-1">
-              <label htmlFor="mobile-filter-query" className="text-[11px] font-semibold text-slate-500">模型编号/关键词</label>
+              <label htmlFor="mobile-filter-query" className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>模型编号/关键词</label>
               <input
                 id="mobile-filter-query"
-                className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[12px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-1 focus:ring-flame-glow transition-all"
+                className="theme-form-field rounded-lg px-2.5 py-2 text-[12px] transition-all"
                 placeholder="搜索模型编号、工艺内容、摘要"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
@@ -640,10 +692,10 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label htmlFor="mobile-filter-product" className="text-[11px] font-semibold text-slate-500">产品类型</label>
+              <label htmlFor="mobile-filter-product" className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>产品类型</label>
               <select
                 id="mobile-filter-product"
-                className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[12px] text-slate-700 focus:outline-none focus:border-flame-400 transition-all"
+                className="theme-form-field rounded-lg px-2.5 py-2 text-[12px] transition-all"
                 value={filterProductType}
                 onChange={e => setFilterProductType(e.target.value)}
               >
@@ -672,7 +724,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                 {stat.label}
               </span>
             </div>
-            <div className="text-[24px] font-extrabold text-slate-800 leading-none">
+            <div className="text-[24px] font-extrabold leading-none" style={{ color: 'var(--text-primary)' }}>
               {stat.value}
             </div>
           </div>
@@ -684,14 +736,14 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
         {/* Left: Filter panel */}
         <div ref={filterRef} className="hidden lg:flex w-[220px] shrink-0 card-solid flex-col gap-3 overflow-auto">
           <div>
-            <div className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">筛选条件</div>
-            <div className="text-[10px] text-slate-500 mt-0.5">支持模型编号、来源、状态和产品类型筛选。</div>
+            <div className="text-[12px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>筛选条件</div>
+            <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>支持模型编号、来源、状态和产品类型筛选。</div>
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="desktop-filter-query" className="text-[11px] font-semibold text-slate-500">模型编号/关键词</label>
+            <label htmlFor="desktop-filter-query" className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>模型编号/关键词</label>
             <input
               id="desktop-filter-query"
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[12px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-1 focus:ring-flame-glow transition-all"
+              className="theme-form-field rounded-lg px-2.5 py-2 text-[12px] transition-all"
               placeholder="搜索模型编号、工艺内容、摘要"
               value={query}
               onChange={e => setQuery(e.target.value)}
@@ -699,10 +751,10 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="desktop-filter-product" className="text-[11px] font-semibold text-slate-500">产品类型</label>
+            <label htmlFor="desktop-filter-product" className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>产品类型</label>
             <select
               id="desktop-filter-product"
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[12px] text-slate-700 focus:outline-none focus:border-flame-400 transition-all"
+              className="theme-form-field rounded-lg px-2.5 py-2 text-[12px] transition-all"
               value={filterProductType}
               onChange={e => setFilterProductType(e.target.value)}
             >
@@ -711,10 +763,10 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="desktop-filter-source" className="text-[11px] font-semibold text-slate-500">来源</label>
+            <label htmlFor="desktop-filter-source" className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>来源</label>
             <select
               id="desktop-filter-source"
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[12px] text-slate-700 focus:outline-none focus:border-flame-400 transition-all"
+              className="theme-form-field rounded-lg px-2.5 py-2 text-[12px] transition-all"
               value={filterSource}
               onChange={e => setFilterSource(e.target.value)}
             >
@@ -723,10 +775,10 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="desktop-filter-status" className="text-[11px] font-semibold text-slate-500">记录状态</label>
+            <label htmlFor="desktop-filter-status" className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>记录状态</label>
             <select
               id="desktop-filter-status"
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[12px] text-slate-700 focus:outline-none focus:border-flame-400 transition-all"
+              className="theme-form-field rounded-lg px-2.5 py-2 text-[12px] transition-all"
               value={filterStatus}
               onChange={e => setFilterStatus(e.target.value)}
             >
@@ -744,12 +796,12 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
         {/* Middle: Record list */}
         <div ref={recordListRef} className={`${viewMode !== 'list' ? 'w-[35%]' : 'flex-1'} card-solid min-h-0 overflow-auto flex flex-col transition-all duration-300`}>
           <div className="flex items-center justify-between mb-2 shrink-0">
-            <div className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">记录列表</div>
-            <div className="text-[11px] text-slate-500">{records.length} / {total} · 当前显示 {activeScope?.library_name || '公共工艺库'} 的 {records.length} 条记录</div>
+            <div className="text-[12px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>记录列表</div>
+            <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{records.length} / {total} · 当前显示 {currentScopeLabel} 的 {records.length} 条记录</div>
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-slate-400 text-[13px]">
+            <div className="flex items-center justify-center py-16 text-[13px]" style={{ color: 'var(--text-muted)' }}>
               <div className="flex items-center gap-3">
                 <svg className="animate-spin h-5 w-5 text-flame-500" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -759,14 +811,14 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
               </div>
             </div>
           ) : records.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-3">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-400">
+            <div className="flex flex-col items-center justify-center py-16" style={{ color: 'var(--text-muted)' }}>
+              <div className="theme-empty-accent w-16 h-16 rounded-full flex items-center justify-center mb-3">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--surface-empty-accent-stroke)' }}>
                   <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
                 </svg>
               </div>
-              <div className="text-[14px] font-bold text-slate-500 mb-1">暂无记录</div>
-              <div className="text-[11px] text-slate-400">调整筛选条件或先完成工艺入库。</div>
+              <div className="text-[14px] font-bold mb-1" style={{ color: 'var(--text-secondary)' }}>暂无记录</div>
+              <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>调整筛选条件或先完成工艺入库。</div>
             </div>
           ) : (
             <div className="flex-1 min-h-0 overflow-auto flex flex-col gap-2">
@@ -783,7 +835,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                       rounded-xl border p-3.5 cursor-pointer transition-all duration-200
                       ${isActive
                         ? 'border-flame-400 bg-flame-soft shadow-sm'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'}
+                        : 'border-[color:var(--border)] bg-[var(--surface-panel)] hover:border-[color:var(--border-strong)] hover:shadow-sm'}
                     `}
                     onMouseEnter={() => handleRecordCardHover(index, true)}
                     onMouseLeave={() => handleRecordCardHover(index, false)}
@@ -793,12 +845,12 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between mb-1.5">
                           <div className="min-w-0 flex items-center gap-2">
-                            <div className="text-[14px] font-bold text-slate-800 truncate" dangerouslySetInnerHTML={{ __html: highlightText(r.prefix || '未命名', query) }} />
+                            <div className="text-[14px] font-bold truncate" style={{ color: 'var(--text-primary)' }} dangerouslySetInnerHTML={{ __html: highlightText(r.prefix || '未命名', query) }} />
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${st.cls}`}>{st.label}</span>
                           </div>
                           <span className="chip shrink-0 ml-2 !text-[10px]">{r.process_count || 0} 工序</span>
                         </div>
-                        <div className="text-[11px] text-slate-500 mb-1.5">
+                        <div className="text-[11px] mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                           <span dangerouslySetInnerHTML={{ __html: highlightText(r.product_type || '未分类', query) }} />
                           {' · '}
                           <span>{src}</span>
@@ -806,11 +858,11 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                           <span>工序 {r.process_count || 0} 条</span>
                         </div>
                         {r.process_summary && (
-                          <div className="text-[12px] text-slate-500 line-clamp-2 leading-relaxed mb-1.5" dangerouslySetInnerHTML={{ __html: highlightText(r.process_summary, query) }} />
+                          <div className="text-[12px] line-clamp-2 leading-relaxed mb-1.5" style={{ color: 'var(--text-secondary)' }} dangerouslySetInnerHTML={{ __html: highlightText(r.process_summary, query) }} />
                         )}
                         <div className="flex gap-1.5 flex-wrap">
                           {r.trades?.slice(0, 3).map(t => (
-                            <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{t}</span>
+                            <span key={t} className="theme-surface-chip text-[10px] px-2 py-0.5 rounded-full border">{t}</span>
                           ))}
                         </div>
                       </div>
@@ -830,10 +882,10 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
               <div>
                 <button className="btn btn-ghost !text-[11px] !py-1 !px-2 mb-1" onClick={backToList}>&larr; 返回列表</button>
                 <div className="flex items-center gap-2">
-                  <div className="text-[16px] font-extrabold text-slate-800">{selectedRecord.prefix}</div>
+                  <div className="text-[16px] font-extrabold" style={{ color: 'var(--text-primary)' }}>{selectedRecord.prefix}</div>
                   {(() => { const st = getRecordStatus(selectedRecord); return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${st.cls}`}>{st.label}</span> })()}
                 </div>
-                <div className="text-[11px] text-slate-500 mt-0.5">
+                <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                   来源：{getSourceLabel(selectedRecord)} · 最近更新：{selectedRecord.created_at ? new Date(selectedRecord.created_at).toLocaleDateString() : '-'}
                   {selectedRecord.preview_total_pages > 0 && ` · ${selectedRecord.preview_total_pages} 张图片`}
                 </div>
@@ -842,7 +894,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                 {viewMode === 'detail' && !browseOnly && (
                   <>
                     <button className="btn btn-secondary !text-[12px] !py-2" onClick={handleEdit}>编辑记录</button>
-                    <button className="btn btn-ghost !text-[12px] !py-2 !text-red-500" onClick={() => setDeleteRecordConfirm(selectedRecord)}>删除</button>
+                    <button className="btn btn-ghost theme-link-danger !text-[12px] !py-2" onClick={() => setDeleteRecordConfirm(selectedRecord)}>删除</button>
                   </>
                 )}
                 {viewMode === 'detail' && browseOnly && (
@@ -867,20 +919,20 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                 <div className="flex flex-col gap-4">
                   {/* Info grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 p-3">
-                      <div className="text-[11px] font-bold text-slate-500 mb-1">产品类型</div>
-                      <div className="text-[13px] text-slate-700">{selectedRecord.product_type || '-'}</div>
+                    <div className="theme-surface-panel-muted rounded-xl border p-3" style={{ borderColor: 'var(--border)' }}>
+                      <div className="text-[11px] font-bold mb-1" style={{ color: 'var(--text-secondary)' }}>产品类型</div>
+                      <div className="text-[13px]" style={{ color: 'var(--text-primary)' }}>{selectedRecord.product_type || '-'}</div>
                     </div>
-                    <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 p-3">
-                      <div className="text-[11px] font-bold text-slate-500 mb-1">技术要求</div>
-                      <div className="text-[13px] text-slate-700">{selectedRecord.tech_requirement || '-'}</div>
+                    <div className="theme-surface-panel-muted rounded-xl border p-3" style={{ borderColor: 'var(--border)' }}>
+                      <div className="text-[11px] font-bold mb-1" style={{ color: 'var(--text-secondary)' }}>技术要求</div>
+                      <div className="text-[13px]" style={{ color: 'var(--text-primary)' }}>{selectedRecord.tech_requirement || '-'}</div>
                     </div>
                   </div>
 
                   {selectedRecord.process_summary && (
-                    <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 p-3">
-                      <div className="text-[11px] font-bold text-slate-500 mb-1">工艺摘要</div>
-                      <div className="text-[13px] text-slate-700 leading-relaxed">{selectedRecord.process_summary}</div>
+                    <div className="theme-surface-panel-muted rounded-xl border p-3" style={{ borderColor: 'var(--border)' }}>
+                      <div className="text-[11px] font-bold mb-1" style={{ color: 'var(--text-secondary)' }}>工艺摘要</div>
+                      <div className="text-[13px] leading-relaxed" style={{ color: 'var(--text-primary)' }}>{selectedRecord.process_summary}</div>
                     </div>
                   )}
 
@@ -888,29 +940,21 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                   <div>
                     <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">工艺规程</div>
                     {selectedRecord.process_list?.length ? (
-                      <div className="rounded-xl border border-slate-200 overflow-hidden">
+                      <div className="theme-surface-panel rounded-xl border overflow-hidden">
                         <table className="data-table">
                           <thead><tr><th style={{ width: 60 }}>工序号</th><th style={{ width: 56 }}>工种</th><th>工序内容</th></tr></thead>
                           <tbody>
                             {normalizeProcessRows(selectedRecord.process_list).map((row, i) => {
                               return (
                                 <tr key={i}>
-                                  <td className="font-mono text-[12px] font-bold text-blue-600">{row.code || `#${i + 1}`}</td>
+                                  <td className="theme-code-accent font-mono text-[12px] font-bold">{row.code || `#${i + 1}`}</td>
                                   <td>
                                     {row.trade ? (
                                       <span className={[
                                         'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border',
-                                        row.trade === '料' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' :
-                                        row.trade === '车' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                        row.trade === '铣' || row.trade === '数铣' ? 'bg-cyan-50 text-cyan-600 border-cyan-200' :
-                                        row.trade === '钻' ? 'bg-teal-50 text-teal-600 border-teal-200' :
-                                        row.trade === '钳' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                                        row.trade === '检' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                        row.trade === '热处理' ? 'bg-red-50 text-red-600 border-red-200' :
-                                        row.trade === '镀覆' || row.trade === '表处' ? 'bg-purple-50 text-purple-600 border-purple-200' :
-                                        'bg-slate-50 text-slate-600 border-slate-200'
+                                        getTradeBadgeClass(row.trade)
                                       ].join(' ')}>{row.trade}</span>
-                                    ) : <span className="text-[10px] text-slate-400">—</span>}
+                                    ) : <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>—</span>}
                                   </td>
                                   <td className="text-[12px]">{row.content}</td>
                                 </tr>
@@ -919,14 +963,14 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                           </tbody>
                         </table>
                       </div>
-                    ) : <div className="text-[12px] text-slate-500">暂无工艺数据</div>}
+                    ) : <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>暂无工艺数据</div>}
                   </div>
 
                   {/* Feature report */}
                   {selectedRecord.feature_report_text && (
                     <div>
                       <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">特征提取</div>
-                      <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 p-3 text-[12px] text-slate-600 leading-relaxed whitespace-pre-wrap max-h-[200px] overflow-auto">
+                    <div className="theme-surface-panel-muted rounded-xl border p-3 text-[12px] leading-relaxed whitespace-pre-wrap max-h-[200px] overflow-auto" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
                         {selectedRecord.feature_report_text}
                       </div>
                     </div>
@@ -940,21 +984,21 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
               ) : (
                 /* Edit mode */
                 <div className="flex flex-col gap-4">
-                  <div className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-1">编辑记录 <span className="font-normal text-slate-500 normal-case tracking-normal ml-1">保存后自动同步到数据库</span></div>
+                  <div className="text-[12px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-secondary)' }}>编辑记录 <span className="font-normal normal-case tracking-normal ml-1">保存后自动同步到数据库</span></div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1">
-                      <label className="text-[11px] font-semibold text-slate-500">产品类型</label>
+                      <label className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>产品类型</label>
                       <input
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-1 focus:ring-flame-glow transition-all"
+                        className="theme-form-field rounded-lg px-3 py-2 text-[13px] transition-all"
                         value={editDraft.product_type || ''}
                         onChange={e => setEditDraft(d => ({ ...d, product_type: e.target.value }))}
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-[11px] font-semibold text-slate-500">图号</label>
+                      <label className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>图号</label>
                       <input
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-1 focus:ring-flame-glow transition-all"
+                        className="theme-form-field rounded-lg px-3 py-2 text-[13px] transition-all"
                         value={editDraft.prefix || ''}
                         onChange={e => setEditDraft(d => ({ ...d, prefix: e.target.value }))}
                       />
@@ -962,9 +1006,9 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-semibold text-slate-500">技术要求</label>
+                    <label className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>技术要求</label>
                     <textarea
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-1 focus:ring-flame-glow transition-all resize-none"
+                      className="theme-form-field rounded-lg px-3 py-2.5 text-[13px] transition-all resize-none"
                       rows={2}
                       placeholder="例：调质处理 HB 240-280；未注倒角 C1"
                       value={editDraft.tech_requirement || ''}
@@ -973,9 +1017,9 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-semibold text-slate-500">工艺摘要</label>
+                    <label className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>工艺摘要</label>
                     <textarea
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-700 focus:outline-none focus:border-flame-400 focus:ring-1 focus:ring-flame-glow transition-all resize-none"
+                      className="theme-form-field rounded-lg px-3 py-2.5 text-[13px] transition-all resize-none"
                       rows={2}
                       placeholder="例：0010 备料 | 0020 车 | 0030 铣 | 0040 钳 | 0050 检"
                       value={editDraft.process_summary || ''}
@@ -986,7 +1030,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                   {/* Editable process table */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-[11px] font-semibold text-slate-500">工艺规程表</label>
+                      <label className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>工艺规程表</label>
                       <button
                         className="btn btn-ghost !text-[10px] !py-1 !px-2 text-flame-600"
                         onClick={() => {
@@ -998,7 +1042,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                       </button>
                     </div>
                     {editProcessRows.length > 0 ? (
-                      <div className="rounded-xl border border-slate-200 overflow-hidden">
+                      <div className="theme-surface-panel rounded-xl border overflow-hidden">
                         <table className="data-table">
                           <thead><tr><th style={{ width: 56 }}>工序号</th><th style={{ width: 52 }}>工种</th><th>工序内容</th><th style={{ width: 32 }}></th></tr></thead>
                           <tbody>
@@ -1006,7 +1050,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                               <tr key={i} className="group">
                                 <td>
                                   <input
-                                    className="w-full bg-transparent text-[11px] font-mono font-bold text-blue-600 border-0 outline-none focus:ring-1 focus:ring-flame-400 rounded px-1 py-0.5"
+                                    className="theme-code-accent w-full border-0 outline-none focus:ring-1 focus:ring-flame-400 rounded px-1 py-0.5 text-[11px] font-mono font-bold"
                                     placeholder="0010"
                                     value={row.code}
                                     onChange={e => {
@@ -1042,7 +1086,8 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                                 </td>
                                 <td>
                                   <button
-                                    className="text-[14px] text-slate-300 hover:text-red-500 transition-colors leading-none"
+                                    className="text-[14px] transition-colors leading-none"
+                                    style={{ color: 'var(--text-muted)' }}
                                     onClick={() => setEditProcessRows(prev => prev.filter((_, idx) => idx !== i))}
                                     title="删除此行"
                                   >×</button>
@@ -1053,7 +1098,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                         </table>
                       </div>
                     ) : (
-                      <div className="text-[11px] text-slate-400 py-3 text-center border border-dashed border-slate-200 rounded-xl">暂无工序，点击"+ 添加工序"</div>
+                      <div className="text-[11px] py-3 text-center border border-dashed rounded-xl" style={{ color: 'var(--text-muted)', borderColor: 'var(--border)' }}>暂无工序，点击"+ 添加工序"</div>
                     )}
                   </div>
 
@@ -1061,28 +1106,28 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                   {featurePages.length > 0 && (
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-semibold text-slate-500">特征提取（按页编辑）</label>
+                        <label className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>特征提取（按页编辑）</label>
                         <div className="flex items-center gap-1.5">
                           <button className="btn btn-ghost !text-[10px] !py-1 !px-2" disabled={editFeaturePage <= 0} onClick={() => setEditFeaturePage(p => p - 1)}>&larr;</button>
-                          <span className="text-[11px] text-slate-500 min-w-[56px] text-center">第 {editFeaturePage + 1} / {featurePages.length} 页</span>
+                          <span className="text-[11px] min-w-[56px] text-center" style={{ color: 'var(--text-secondary)' }}>第 {editFeaturePage + 1} / {featurePages.length} 页</span>
                           <button className="btn btn-ghost !text-[10px] !py-1 !px-2" disabled={editFeaturePage >= featurePages.length - 1} onClick={() => setEditFeaturePage(p => p + 1)}>&rarr;</button>
                         </div>
                       </div>
                       {featurePages[editFeaturePage] && (
-                        <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 p-3">
-                          <div className="text-[11px] text-slate-500 mb-2">第 {String((featurePages[editFeaturePage] as Record<string, unknown>)._page_number || editFeaturePage + 1)} 页</div>
+                        <div className="theme-surface-panel-muted rounded-xl border p-3" style={{ borderColor: 'var(--border)' }}>
+                          <div className="text-[11px] mb-2" style={{ color: 'var(--text-secondary)' }}>第 {String((featurePages[editFeaturePage] as Record<string, unknown>)._page_number || editFeaturePage + 1)} 页</div>
                           {(() => {
                             const fp = featurePages[editFeaturePage] as Record<string, unknown>
                             const fields = fp.fields || fp.key_features
                             if (fields && typeof fields === 'object') {
                               return Object.entries(fields as Record<string, unknown>).map(([k, v]) => (
-                                <div key={k} className="flex gap-2 text-[12px] py-1 border-b border-slate-100 last:border-0">
-                                  <span className="font-semibold text-slate-600 shrink-0 w-[100px]">{k}</span>
-                                  <span className="text-slate-700">{String(v)}</span>
+                                <div key={k} className="flex gap-2 text-[12px] py-1 border-b last:border-0" style={{ borderColor: 'var(--border-subtle)' }}>
+                                  <span className="font-semibold shrink-0 w-[100px]" style={{ color: 'var(--text-secondary)' }}>{k}</span>
+                                  <span style={{ color: 'var(--text-primary)' }}>{String(v)}</span>
                                 </div>
                               ))
                             }
-                            return <div className="text-[12px] text-slate-500">{String(fp.description || fp.text || '无结构化数据')}</div>
+                            return <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{String(fp.description || fp.text || '无结构化数据')}</div>
                           })()}
                         </div>
                       )}
@@ -1102,7 +1147,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
 
       {/* Pagination */}
       {records.length > 0 && (
-        <div className="flex items-center justify-between shrink-0 text-[12px] text-slate-500">
+        <div className="flex items-center justify-between shrink-0 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
           <span>第 {page} / {totalPages} 页</span>
           <div className="flex gap-2">
             <button className="btn btn-secondary !text-[11px] !py-1.5 !px-3" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>上一页</button>
@@ -1114,11 +1159,11 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
       {/* Delete Record Confirmation Modal */}
       {deleteRecordConfirm && (
         <div className="modal-overlay fixed inset-0 z-[2000] flex items-center justify-center" onClick={() => setDeleteRecordConfirm(null)}>
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-          <div className="modal-content relative bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-[420px] w-[90vw] p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-[16px] font-bold text-slate-800 mb-2">确认删除记录</h3>
-            <p className="text-[13px] text-slate-500 mb-3 leading-relaxed">删除会影响数据库浏览与后续检索结果。此操作不可恢复。</p>
-            <div className="rounded-xl bg-gradient-to-br from-red-50 to-red-100 border border-red-200 px-3 py-2 mb-4 text-[12px] text-red-700">
+          <div className="absolute inset-0 backdrop-blur-sm" style={{ background: 'var(--modal-overlay)' }} />
+          <div className="theme-modal-shell modal-content relative rounded-2xl shadow-2xl border max-w-[420px] w-[90vw] p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-[16px] font-bold mb-2" style={{ color: 'var(--text-primary)' }}>确认删除记录</h3>
+            <p className="text-[13px] mb-3 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>删除会影响数据库浏览与后续检索结果。此操作不可恢复。</p>
+            <div className="theme-danger-note rounded-xl px-3 py-2 mb-4 text-[12px]">
               {deleteRecordConfirm.prefix}｜{deleteRecordConfirm.product_type || '未分类'}｜{getSourceLabel(deleteRecordConfirm)}
             </div>
             <div className="flex gap-2 justify-end">
@@ -1132,12 +1177,12 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
       {/* Delete Library Confirmation Modal */}
       {deleteLibraryConfirm && (
         <div className="modal-overlay fixed inset-0 z-[2000] flex items-center justify-center" onClick={() => setDeleteLibraryConfirm(null)}>
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-          <div className="modal-content relative bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-[420px] w-[90vw] p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-[16px] font-bold text-slate-800 mb-2">确认删除当前数据库</h3>
-            <p className="text-[13px] text-slate-500 mb-3 leading-relaxed">这会清空当前选中的用户库/当前表，保留公共库不受影响。删除后该库里的记录将无法浏览，除非重新导入。</p>
-            <div className="rounded-xl bg-gradient-to-br from-red-50 to-red-100 border border-red-200 px-3 py-2 mb-4 text-[12px] text-red-700">
-              {deleteLibraryConfirm.library_name}｜{deleteLibraryConfirm.library_key}
+          <div className="absolute inset-0 backdrop-blur-sm" style={{ background: 'var(--modal-overlay)' }} />
+          <div className="theme-modal-shell modal-content relative rounded-2xl shadow-2xl border max-w-[420px] w-[90vw] p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-[16px] font-bold mb-2" style={{ color: 'var(--text-primary)' }}>确认删除当前数据库</h3>
+            <p className="text-[13px] mb-3 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>这会清空当前选中的个人工艺库，平台工艺库不受影响。删除后该库里的记录将无法浏览，除非重新导入。</p>
+            <div className="theme-danger-note rounded-xl px-3 py-2 mb-4 text-[12px]">
+              {getScopeUiLabel(deleteLibraryConfirm)}｜{deleteLibraryConfirm.library_key}
             </div>
             <div className="flex gap-2 justify-end">
               <button className="btn btn-ghost" onClick={() => setDeleteLibraryConfirm(null)}>取消</button>
@@ -1150,22 +1195,22 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
       {/* Snapshot Preview Modal */}
       {snapshotPreview && (
         <div className="modal-overlay fixed inset-0 z-[2000] flex items-center justify-center" onClick={() => setSnapshotPreview(null)}>
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="absolute inset-0 backdrop-blur-sm" style={{ background: 'var(--modal-overlay)' }} />
           <div
-            className="modal-content relative bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-[900px] w-[90vw] max-h-[85vh] overflow-hidden flex flex-col"
+            className="theme-modal-shell modal-content relative rounded-2xl shadow-2xl border max-w-[900px] w-[90vw] max-h-[85vh] overflow-hidden flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 shrink-0">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b shrink-0" style={{ borderColor: 'var(--modal-subtle-border)' }}>
               <div>
-                <div className="text-[15px] font-bold text-slate-800">库记录快照</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">{selectedRecord?.prefix || ''} · 来源 · {snapshotPreview.urls.length} 张图片</div>
+                <div className="text-[15px] font-bold" style={{ color: 'var(--text-primary)' }}>库记录快照</div>
+                <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{selectedRecord?.prefix || ''} · 来源 · {snapshotPreview.urls.length} 张图片</div>
               </div>
-              <button onClick={() => setSnapshotPreview(null)} className="btn btn-ghost !p-1.5 !text-[18px] text-slate-400 hover:text-slate-700">&times;</button>
+              <button onClick={() => setSnapshotPreview(null)} className="btn btn-ghost !p-1.5 !text-[18px]" style={{ color: 'var(--text-muted)' }}>&times;</button>
             </div>
             <div className="flex-1 min-h-0 flex">
               {/* Left: Image */}
-              <div className="flex-1 min-w-0 border-r border-slate-200 flex flex-col items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-slate-100">
-                <div className="text-[11px] text-slate-400 mb-2 shrink-0">{selectedRecord?.prefix || ''} · {selectedRecord ? getSourceLabel(selectedRecord) : ''}</div>
+              <div className="theme-preview-frame flex-1 min-w-0 border-r border flex flex-col items-center justify-center p-4">
+                <div className="text-[11px] mb-2 shrink-0" style={{ color: 'var(--text-muted)' }}>{selectedRecord?.prefix || ''} · {selectedRecord ? getSourceLabel(selectedRecord) : ''}</div>
                 <div className="flex-1 min-h-0 flex items-center justify-center overflow-auto w-full">
                   <img
                     src={snapshotPreview.urls[snapshotPreview.page]}
@@ -1178,11 +1223,11 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                 {/* Controls */}
                 <div className="flex items-center gap-2 mt-3 shrink-0 flex-wrap justify-center">
                   <button className="btn btn-secondary !text-[11px] !py-1 !px-2.5" disabled={snapshotPreview.page <= 0} onClick={() => setSnapshotPreview(p => p ? { ...p, page: p.page - 1 } : null)}>&larr; 上一张</button>
-                  <span className="text-[12px] text-slate-500 min-w-[48px] text-center">{snapshotPreview.page + 1} / {snapshotPreview.urls.length}</span>
+                  <span className="text-[12px] min-w-[48px] text-center" style={{ color: 'var(--text-secondary)' }}>{snapshotPreview.page + 1} / {snapshotPreview.urls.length}</span>
                   <button className="btn btn-secondary !text-[11px] !py-1 !px-2.5" disabled={snapshotPreview.page >= snapshotPreview.urls.length - 1} onClick={() => setSnapshotPreview(p => p ? { ...p, page: p.page + 1 } : null)}>下一张 &rarr;</button>
-                  <span className="w-px h-4 bg-slate-200 mx-1" />
+                  <span className="w-px h-4 mx-1" style={{ background: 'var(--border)' }} />
                   <button className="btn btn-secondary !text-[11px] !py-1 !px-2" disabled={snapshotPreview.zoom <= 0.6} onClick={() => setSnapshotPreview(p => p ? { ...p, zoom: Math.max(0.6, p.zoom - 0.2) } : null)}>缩小</button>
-                  <span className="text-[11px] text-slate-500 w-12 text-center">{Math.round(snapshotPreview.zoom * 100)}%</span>
+                  <span className="text-[11px] w-12 text-center" style={{ color: 'var(--text-secondary)' }}>{Math.round(snapshotPreview.zoom * 100)}%</span>
                   <button className="btn btn-secondary !text-[11px] !py-1 !px-2" disabled={snapshotPreview.zoom >= 2.4} onClick={() => setSnapshotPreview(p => p ? { ...p, zoom: Math.min(2.4, p.zoom + 0.2) } : null)}>放大</button>
                   <button className="btn btn-ghost !text-[11px] !py-1 !px-2" onClick={() => setSnapshotPreview(p => p ? { ...p, zoom: 1 } : null)}>重置</button>
                 </div>
@@ -1191,34 +1236,28 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
               <div className="w-[300px] shrink-0 overflow-auto p-4 flex flex-col gap-4">
                 <div>
                   <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">特征提取</div>
-                  <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 p-3 text-[12px] text-slate-600 leading-relaxed whitespace-pre-wrap max-h-[180px] overflow-auto">
+                  <div className="theme-surface-panel-muted rounded-xl border p-3 text-[12px] leading-relaxed whitespace-pre-wrap max-h-[180px] overflow-auto" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
                     {selectedRecord?.feature_report_text || '暂无特征数据'}
                   </div>
                 </div>
                 <div>
                   <div className="text-[11px] font-bold text-flame-600 uppercase tracking-wider mb-2">工艺规程</div>
                   {selectedRecord?.process_list?.length ? (
-                    <div className="rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="theme-surface-panel rounded-xl border overflow-hidden">
                       <table className="data-table">
                         <thead><tr><th style={{ width: 48 }}>工序号</th><th style={{ width: 44 }}>工种</th><th>工序内容</th></tr></thead>
                         <tbody>
                           {normalizeProcessRows(selectedRecord.process_list).map((row, i) => {
                             return (
                               <tr key={i}>
-                                <td className="font-mono text-[10px] font-bold text-blue-600">{row.code || `#${i + 1}`}</td>
+                                <td className="theme-code-accent font-mono text-[10px] font-bold">{row.code || `#${i + 1}`}</td>
                                 <td>
                                   {row.trade ? (
                                     <span className={[
                                       'inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold border',
-                                      row.trade === '料' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' :
-                                      row.trade === '车' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                      row.trade === '铣' || row.trade === '数铣' ? 'bg-cyan-50 text-cyan-600 border-cyan-200' :
-                                      row.trade === '钳' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                                      row.trade === '检' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                      row.trade === '热处理' ? 'bg-red-50 text-red-600 border-red-200' :
-                                      'bg-slate-50 text-slate-600 border-slate-200'
+                                      getTradeBadgeClass(row.trade)
                                     ].join(' ')}>{row.trade}</span>
-                                  ) : <span className="text-[9px] text-slate-400">—</span>}
+                                  ) : <span className="text-[9px]" style={{ color: 'var(--text-muted)' }}>—</span>}
                                 </td>
                                 <td className="text-[10px] leading-relaxed">{row.content}</td>
                               </tr>
@@ -1227,7 +1266,7 @@ export function DbPage({ onNavigate }: { onNavigate: (id: PageId) => void }) {
                         </tbody>
                       </table>
                     </div>
-                  ) : <div className="text-[12px] text-slate-500">暂无工艺数据</div>}
+                  ) : <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>暂无工艺数据</div>}
                 </div>
               </div>
             </div>
