@@ -82,6 +82,7 @@ def init_db():
             c.execute("UPDATE tasks SET source_name = COALESCE(prt_name, pdf_name, task_id) WHERE source_name = '' OR source_name IS NULL")
 
         # Migration: add enterprise_id column (data isolation)
+        columns = {r[1] for r in c.execute("PRAGMA table_info(tasks)")}
         if "enterprise_id" not in columns:
             c.execute("ALTER TABLE tasks ADD COLUMN enterprise_id INTEGER")
             c.execute("CREATE INDEX IF NOT EXISTS idx_tasks_enterprise ON tasks(enterprise_id)")

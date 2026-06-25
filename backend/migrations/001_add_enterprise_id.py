@@ -43,7 +43,7 @@ def migrate(db_path, tables):
     try:
         for table in tables:
             added = _add_column_if_missing(conn, table)
-            indexed = _add_index_if_missing(conn, table, "enterprise_id")
+            indexed = _add_index_if_missing(conn, table, "enterprise_id", index_name=f"idx_{table}_enterprise")
             if added:
                 print(f"  [{db_path}] {table}: added enterprise_id column")
             else:
