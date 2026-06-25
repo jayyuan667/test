@@ -5,9 +5,12 @@ import { register } from '../api/client'
 
 interface RegisterPageProps {
   onNavigate: (page: 'login') => void
+  onOpenAuth: () => void
+  onReturnHome: () => void
+  phase: 'home' | 'auth'
 }
 
-export function RegisterPage({ onNavigate }: RegisterPageProps) {
+export function RegisterPage({ onNavigate, onOpenAuth, onReturnHome, phase }: RegisterPageProps) {
   const { show } = useToast()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -56,6 +59,9 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
   return (
     <AuthShell
       mode="register"
+      phase={phase}
+      onOpenAuth={onOpenAuth}
+      onReturnHome={onReturnHome}
       title="创建账号"
       subtitle="注册后可申请企业授权并继续工艺入库与生成流程。"
       footer={(

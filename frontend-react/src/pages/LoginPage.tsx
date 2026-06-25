@@ -5,9 +5,12 @@ import { useToast } from '../hooks/useToast'
 
 interface LoginPageProps {
   onNavigate: (page: 'register') => void
+  onOpenAuth: () => void
+  onReturnHome: () => void
+  phase: 'home' | 'auth'
 }
 
-export function LoginPage({ onNavigate }: LoginPageProps) {
+export function LoginPage({ onNavigate, onOpenAuth, onReturnHome, phase }: LoginPageProps) {
   const { login } = useAuth()
   const { show } = useToast()
   const [username, setUsername] = useState('')
@@ -44,6 +47,9 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
   return (
     <AuthShell
       mode="login"
+      phase={phase}
+      onOpenAuth={onOpenAuth}
+      onReturnHome={onReturnHome}
       title="欢迎登录"
       subtitle="进入图纸检视台，继续你的工艺流程。"
       footer={(

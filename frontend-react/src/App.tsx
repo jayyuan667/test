@@ -7,11 +7,10 @@ import { GeneratePage } from './pages/GeneratePage'
 import { ZipPage } from './pages/ZipPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { DbPage } from './pages/DbPage'
-import { LoginPage } from './pages/LoginPage'
-import { RegisterPage } from './pages/RegisterPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { AdminPage } from './pages/admin/AdminPage'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { AuthEntryScene } from './components/auth/AuthEntryScene'
 import gsap from 'gsap'
 import { usePrefersReducedMotion } from './hooks/usePrefersReducedMotion'
 
@@ -30,7 +29,6 @@ export default function App() {
 
 function AppShell() {
   const { isAuthenticated, isLoading } = useAuth()
-  const [authPage, setAuthPage] = useState<'login' | 'register'>('login')
   const { toasts } = useToast()
 
   if (isLoading) {
@@ -44,8 +42,7 @@ function AppShell() {
   if (!isAuthenticated) {
     return (
       <>
-        {authPage === 'login' && <LoginPage onNavigate={setAuthPage} />}
-        {authPage === 'register' && <RegisterPage onNavigate={setAuthPage} />}
+        <AuthEntryScene />
         <ToastStack toasts={toasts} />
       </>
     )

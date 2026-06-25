@@ -4,6 +4,7 @@ const ADMIN = { username: 'admin', password: 'admin123' }
 
 async function loginAs(page: any, username: string, password: string) {
   await page.goto('/')
+  await page.getByRole('button', { name: '进入系统' }).click()
   await page.getByLabel('用户名').fill(username)
   await page.locator('#password').fill(password)
   await page.getByRole('button', { name: '登录' }).click()
@@ -12,15 +13,14 @@ async function loginAs(page: any, username: string, password: string) {
 test.describe('auth pages', () => {
   test('login page renders', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByText('二维工艺系统').first()).toBeVisible()
-    await expect(page.getByLabel('用户名')).toBeVisible()
-    await expect(page.locator('#password')).toBeVisible()
-    await expect(page.getByRole('button', { name: '登录' })).toBeVisible()
-    await expect(page.getByText('立即注册')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'DiMo' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '进入系统' })).toBeVisible()
+    await expect(page.getByLabel('用户名')).not.toBeVisible()
   })
 
   test('register page renders', async ({ page }) => {
     await page.goto('/')
+    await page.getByRole('button', { name: '进入系统' }).click()
     await page.getByText('立即注册').click()
     await expect(page.getByText('创建账号')).toBeVisible()
     await expect(page.locator('#reg-confirm-password')).toBeVisible()
@@ -29,6 +29,7 @@ test.describe('auth pages', () => {
 
   test('login rejects bad credentials', async ({ page }) => {
     await page.goto('/')
+    await page.getByRole('button', { name: '进入系统' }).click()
     await page.getByLabel('用户名').fill('no_such_user_xyz')
     await page.locator('#password').fill('badpass')
     await page.getByRole('button', { name: '登录' }).click()
@@ -45,6 +46,7 @@ test.describe('auth pages', () => {
   test('register new account redirects to login', async ({ page }) => {
     const testUser = `e2e_${Date.now()}`
     await page.goto('/')
+    await page.getByRole('button', { name: '进入系统' }).click()
     await page.getByText('立即注册').click()
     await page.getByLabel('用户名').fill(testUser)
     await page.locator('#reg-password').fill('test123456')
@@ -83,14 +85,14 @@ test.describe('authenticated flows', () => {
 
   test('logout returns to login', async ({ page }) => {
     await page.getByText('退出登录').click()
-    await expect(page.locator('#password')).toBeVisible({ timeout: 8000 })
+    await expect(page.getByRole('button', { name: '进入系统' })).toBeVisible({ timeout: 8000 })
   })
 })
 
 test.describe('unauthenticated', () => {
   test('shows login page not main app', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByLabel('用户名')).toBeVisible()
+    await expect(page.getByRole('button', { name: '进入系统' })).toBeVisible()
     await expect(page.getByText('工艺生成')).not.toBeVisible()
   })
 })
