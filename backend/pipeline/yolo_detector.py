@@ -126,7 +126,10 @@ class YOLODetector:
         self.iou = iou
         self.img_size = img_size
         self.device = device
-        self.class_names = class_names or {0: "threaded_hole", 1: "circle_hole"}
+        if class_names is None:
+            from backend.pipeline.yolo_labels import ID_TO_LABEL
+            class_names = dict(ID_TO_LABEL)  # {0: "code_hole", 1: "through_hole", ...}
+        self.class_names = class_names
 
         self._backend: Optional[str] = None  # "ultralytics" | "onnx" | None
         self._ul_model = None   # ultralytics YOLO model

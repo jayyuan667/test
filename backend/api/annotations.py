@@ -17,7 +17,7 @@ except ImportError:
 annotations_bp = Blueprint("annotations", __name__)
 
 # Class ID mapping matches augmented_v2/data.yaml order
-LABEL_TO_ID = {"threaded_hole": 0, "circle_hole": 1, "chamfer": 2}
+from backend.pipeline.yolo_labels import LABEL_TO_ID
 
 
 def _ann_dir(task_id: str) -> str:

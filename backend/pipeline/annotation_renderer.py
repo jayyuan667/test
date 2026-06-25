@@ -8,21 +8,9 @@ not used for text-extraction prompt (text extraction does not need bbox info).
 import json
 import os
 from collections import defaultdict
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
-LABEL_TO_ZH = {
-    "chamfer":       "倒角",
-    "threaded_hole": "螺纹孔",
-    "circle_hole":   "圆孔",
-}
-
-# RGB colors matching the frontend SVG palette
-LABEL_TO_RGB: Dict[str, Tuple[int, int, int]] = {
-    "chamfer":       (245, 158, 11),   # #f59e0b orange
-    "threaded_hole": (99,  102, 241),  # #6366f1 indigo
-    "circle_hole":   (16,  185, 129),  # #10b981 green
-}
-LABEL_DASHED = {"threaded_hole"}      # threaded_hole rendered as dashed stroke
+from backend.pipeline.yolo_labels import LABEL_TO_ZH, LABEL_TO_RGB, LABEL_DASHED  # noqa: F401
 
 
 def _page_block(page_num: int, shapes: List[dict]) -> str:
@@ -112,7 +100,7 @@ def draw_boxes_on_image(image_path: str, shapes: List[dict], out_path: str,
                         stroke_width: int = 4) -> None:
     """Render bounding boxes onto a copy of the image (annotated PNG).
 
-    - Solid border for chamfer / circle_hole, dashed for threaded_hole
+    - Solid border for most classes; dashed for threaded_hole (see LABEL_DASHED)
     - Semi-transparent fill (RGBA composite)
     - No text labels drawn (occlusion-free — VLM and viewer rely on color)
     """
