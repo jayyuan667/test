@@ -113,7 +113,7 @@ class TestEnterpriseIsolation:
         pass  # Placeholder — 需要实际数据时补全
 
     def test_super_admin_can_see_all_enterprises(self, client):
-        """super_admin 可以跨企业查看"""
+        """super_admin 可以跨企业查看（需传 ?scope=all）"""
         data = _create_test_data()
         _login_as(client, "admin", "admin123")
 
@@ -124,7 +124,8 @@ class TestEnterpriseIsolation:
         add_history_entry("task_b_1", "b.pdf", 100, "2025-01-01",
                           enterprise_id=data["ent_b"]["id"])
 
-        resp = client.get("/api/history")
+        # super_admin 必须传 ?scope=all 才能看到全平台数据
+        resp = client.get("/api/history?scope=all")
         assert resp.status_code == 200
         history = resp.get_json().get("history", [])
 

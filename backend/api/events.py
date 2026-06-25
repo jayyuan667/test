@@ -9,6 +9,8 @@ from flask import Blueprint, Response, stream_with_context
 import threading
 
 from ..config import OUTPUT_FOLDER
+from ..auth_utils import login_required
+from ._utils import assert_task_access
 
 events_bp = Blueprint("events", __name__)
 logger = logging.getLogger(__name__)
@@ -42,7 +44,11 @@ def _sse_response(generator):
 
 
 @events_bp.route("/events/<task_id>", methods=["GET"])
+@login_required
 def stream_events(task_id):
+    ok, err = assert_task_access(task_id)
+    if not ok:
+        return err
     if task_id in tasks and tasks[task_id].get("status") in ["completed", "error"]:
         task = tasks[task_id]
 

@@ -8,7 +8,7 @@ from flask import Blueprint, jsonify, send_from_directory
 from ..auth_utils import login_required
 from ..config import OUTPUT_FOLDER, KB_PREVIEW_FOLDER
 from ._response import fail, ERR_TASK_NOT_FOUND
-from ._utils import get_enterprise_scope
+from ._utils import get_enterprise_scope, assert_task_access
 
 
 def _pending_review_file(task_id: str):
@@ -182,6 +182,9 @@ def get_result(task_id):
 @result_bp.route("/result/<task_id>/asset/<path:filename>", methods=["GET"])
 @login_required
 def get_result_asset(task_id, filename):
+    ok, err = assert_task_access(task_id)
+    if not ok:
+        return err
     result_dir = _result_dir(task_id)
     file_path = os.path.join(result_dir, filename)
     if not os.path.isfile(file_path):

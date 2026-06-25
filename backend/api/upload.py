@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Upload endpoint for single PRT files."""
 
 import os
@@ -47,7 +47,7 @@ from ..task_store import insert_task, update_task_status, save_result, get_prt_c
 from ._response import fail, ERR_FILE_MISSING, ERR_FILE_TYPE, ERR_CONFIG, ERR_CAPABILITY
 from ..auth_utils import login_required, require_quota
 from ..services.capabilities import inspect_pdf_capability
-from ._utils import PRT_FILE_RE, extract_prefix_from_filename, get_enterprise_scope
+from ._utils import PRT_FILE_RE, extract_prefix_from_filename, get_enterprise_scope, assert_task_access
 from ..services.observability import time_block
 
 upload_bp = Blueprint("upload", __name__)
@@ -1016,7 +1016,11 @@ def upload():
 
 
 @upload_bp.route("/review/<task_id>", methods=["POST"])
+@login_required
 def review_visual_features(task_id):
+    ok, err = assert_task_access(task_id)
+    if not ok:
+        return err
     task = tasks.get(task_id)
     if not task:
         task = restore_task_from_pending(task_id, tasks, event_data, event_locks)
@@ -1080,8 +1084,12 @@ def review_visual_features(task_id):
 
 
 @upload_bp.route("/rerun/<task_id>", methods=["POST"])
+@login_required
 def rerun_task(task_id):
     """Dedicated rerun endpoint - uses stored review_text, no status restriction."""
+    ok, err = assert_task_access(task_id)
+    if not ok:
+        return err
     task = tasks.get(task_id)
     if not task:
         return jsonify({"error": "Task not found"}), 404
@@ -1101,7 +1109,11 @@ def rerun_task(task_id):
 
 
 @upload_bp.route("/process/<task_id>", methods=["POST"])
+@login_required
 def update_process_flow(task_id):
+    ok, err = assert_task_access(task_id)
+    if not ok:
+        return err
     task = tasks.get(task_id)
     if not task:
         return jsonify({"error": "Task not found"}), 404
@@ -1133,7 +1145,11 @@ def update_process_flow(task_id):
 
 
 @upload_bp.route("/cancel/<task_id>", methods=["POST"])
+@login_required
 def cancel_task_route(task_id):
+    ok, err = assert_task_access(task_id)
+    if not ok:
+        return err
     task = tasks.get(task_id)
     if not task:
         return jsonify({"error": "Task not found"}), 404

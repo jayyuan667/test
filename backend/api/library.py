@@ -541,14 +541,35 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
     _ent_id, _is_super = _get_ent_scope()
     _ent_sql = ""
     _ent_params_pt = []
-    if not _is_super and _ent_id is not None:
-        where.append("(enterprise_id = ? OR enterprise_id IS NULL)")
-        params.append(_ent_id)
-        _ent_sql = "AND (enterprise_id = ? OR enterprise_id IS NULL)"
-        _ent_params_pt = [_ent_id]
-    elif not _is_super and _ent_id is None:
-        where.append("enterprise_id IS NULL")
-        _ent_sql = "AND enterprise_id IS NULL"
+    if _is_super:
+        # Super admin: require explicit scope=all to see everything
+        _scope_param = request.args.get("scope", "")
+        _filter_ent = request.args.get("enterprise_id", type=int)
+        if _scope_param == "all":
+            pass  # no enterprise_id filter
+        elif _filter_ent is not None:
+            where.append("enterprise_id = ?")
+            params.append(_filter_ent)
+            _ent_sql = "AND enterprise_id = ?"
+            _ent_params_pt = [_filter_ent]
+        else:
+            # Default: return nothing unless explicitly requested
+            where.append("1 = 0")
+            _ent_sql = "AND 1 = 0"
+    else:
+        _scope_type_key = (scope or {}).get("scope_type", "")
+        if _scope_type_key == "public":
+            # Public scope: all records visible, no enterprise_id filter
+            pass
+        elif _ent_id is not None:
+            where.append("enterprise_id = ?")
+            params.append(_ent_id)
+            _ent_sql = "AND enterprise_id = ?"
+            _ent_params_pt = [_ent_id]
+        else:
+            # Unassigned user, non-public scope: no data
+            where.append("1 = 0")
+            _ent_sql = "AND 1 = 0"
 
     if query:
         where.append("(UPPER(prefix) LIKE ? OR UPPER(context) LIKE ? OR UPPER(process_summary) LIKE ? OR UPPER(content) LIKE ? OR UPPER(feature_report_text) LIKE ?)")
@@ -1149,9 +1170,12 @@ def library_scopes():
     _ent_id, _is_super = _get_ent_scope()
     scopes = list_scopes()
     if not _is_super:
-        scopes = [s for s in scopes
-                  if s.get("scope_type") == "public"
-                  or s.get("enterprise_id") == _ent_id]
+        if _ent_id is not None:
+            scopes = [s for s in scopes
+                      if s.get("scope_type") == "public"
+                      or s.get("enterprise_id") == _ent_id]
+        else:
+            scopes = [s for s in scopes if s.get("scope_type") == "public"]
     return jsonify(_json_safe({"items": scopes, **browse_unlock_status()}))
 
 

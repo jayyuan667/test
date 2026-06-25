@@ -51,3 +51,61 @@ def get_enterprise_scope():
         return None, False
 
     return int(enterprise_id), False
+
+
+def assert_task_access(task_id):
+    """
+    Verify the current user can access the given task.
+
+    Returns (True, None) if access is granted.
+    Returns (False, (error_response, status_code)) if denied.
+
+    Rules:
+      - super_admin: always allowed.
+      - enterprise_admin / user: task.enterprise_id must match user.enterprise_id.
+      - unassigned user: denied for business tasks.
+      - task not found: 404.
+    """
+    from flask import jsonify
+
+    ent_id, is_super = get_enterprise_scope()
+    if is_super:
+        return True, None
+
+    task = None
+    task_ent = None
+
+    # Try in-memory tasks dict
+    try:
+        from .status import tasks as _status_tasks
+        task = _status_tasks.get(task_id)
+        if task:
+            task_ent = task.get("enterprise_id")
+    except Exception:
+        pass
+
+    # Try SQLite task_store
+    if task is None:
+        try:
+            from ..task_store import get_task
+            task_row = get_task(task_id)
+            if task_row:
+                task = task_row
+                task_ent = task_row.get("enterprise_id")
+        except Exception:
+            pass
+
+    if task is None:
+        return False, (jsonify({"error": "Task not found"}), 404)
+
+    if ent_id is None:
+        return False, (jsonify({"error": "未分配企业，无权访问"}), 403)
+
+    if task_ent is not None and task_ent != ent_id:
+        return False, (jsonify({"error": "Task not found"}), 404)
+
+    if task_ent is None:
+        # Task exists but has no enterprise_id (orphan/ancient)
+        return False, (jsonify({"error": "Task not found"}), 404)
+
+    return True, None

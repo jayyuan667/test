@@ -78,8 +78,7 @@ def get_history(limit: Optional[int] = None, enterprise_id: Optional[int] = None
     history = load_history_from_file()
     if enterprise_id is not None:
         history = [h for h in history
-                   if h.get("enterprise_id") == enterprise_id
-                   or h.get("enterprise_id") is None]
+                   if h.get("enterprise_id") == enterprise_id]
     if limit is None:
         return history
     return history[:max(0, int(limit))]

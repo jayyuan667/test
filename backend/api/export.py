@@ -9,6 +9,8 @@ from typing import List, Dict, Any, Tuple
 from flask import Blueprint, jsonify, request, send_file
 
 from ..config import OUTPUT_FOLDER
+from ..auth_utils import login_required
+from ._utils import assert_task_access
 
 export_bp = Blueprint("export", __name__)
 
@@ -468,7 +470,12 @@ def _pdf_response(task_id: str, result_data: Dict[str, Any]):
 
 
 @export_bp.route("/export/<task_id>", methods=["GET", "POST"])
+@login_required
 def export_result(task_id):
+    ok, err = assert_task_access(task_id)
+    if not ok:
+        return err
+
     try:
         result_data = _load_result_data(task_id)
     except Exception as e:
