@@ -243,6 +243,43 @@
 - 浏览与入库最容易混淆“业务”和“治理”
 - 生成与历史应尽量保持稳定
 
+## Final Constraints (2026-06-25 Rollout)
+
+以下约束在实施中已确认并锁定，后续变更需通过新的设计文档：
+
+### User Classification
+
+- `user` 继续区分**未分配企业**（enterprise_id = null）与**已分配企业**（enterprise_id != null）
+- 未分配企业 users 不得获得业务能力入口（工艺生成、工艺入库、历史记录、知识库浏览均不可见）
+
+### Scope Mapping
+
+- 当前范围映射：**个人 = private library**，**平台 = public library**
+- 企业范围（enterprise scope）仍为**前端表达层**，不新增后端 scope 契约
+- 企业范围仅通过界面引导文案体现（如 ZIP 入库页的 `#zip-target-library` 提示），不生成独立的后端 `library_scope` 枚举值
+
+### Route Model
+
+- 前端路由模型保持 **useState 驱动**，不引入 react-router
+- PageId 枚举值在 `types/index.ts` 中管理
+
+### Auth Model
+
+- 现有认证模型（AuthContext + JWT HttpOnly Cookie）不做结构性变更
+- 角色信息通过 `/api/auth/me` 返回的 `user.role` 字段传递
+
+### Copy Constraints
+
+- `enterprise_admin` 页面/组件中禁止出现"平台""全部企业""跨企业治理"等词语
+- `super_admin` 页面/组件中明确使用平台治理语言（"平台管理""平台配额概览""企业管理"）
+- `user` 页面中不出现治理语言
+
+### Motion Budget
+
+- 管理页：静 80%，动 20%
+- AI/生成页：静 65%，动 35%
+- 动效仅服务三件事：页面切换反馈、操作反馈、关键节点聚焦
+
 ## Success Criteria
 
 完成后应满足：

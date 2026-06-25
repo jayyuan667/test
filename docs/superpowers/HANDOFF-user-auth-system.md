@@ -90,8 +90,42 @@ npm run dev                       # 端口 3200，自动代理 /api → 5190
 
 5. **无单元测试**：后端 auth_store/auth_service 有基本的 Python 验证脚本，但缺少正式的 pytest 测试；前端无测试。
 
+## 角色架构落地约束（2026-06-25 回归收尾）
+
+基于 `docs/superpowers/specs/2026-06-25-role-architecture-design.md` 的完整实施，以下为最终约束：
+
+### 用户分类
+
+- `user` 继续区分**未分配企业**与**已分配企业**两类
+- 未分配企业用户不得获得业务能力（不显示工艺生成、工艺入库、历史记录、知识库浏览入口）
+
+### 范围映射（scope mapping）
+
+- 当前范围映射：**个人 = private library**，**平台 = public library**
+- 企业范围（enterprise scope）仍为**前端表达层**，不新增后端 scope 契约
+- 企业范围仅通过界面引导文案体现，不生成独立的 library_scope 枚举值
+
+### 路由模型
+
+- 前端路由模型保持 **useState 驱动**，不引入 react-router
+- 现有认证模型（AuthContext + JWT HttpOnly Cookie）不做任何结构性变更
+
+### 文案约束
+
+- `enterprise_admin` 页面/组件中不出现"平台""全部企业""跨企业治理"等词
+- `super_admin` 页面/组件中使用平台治理语言（"平台管理""平台配额概览""企业管理"）
+- `user` 页面中不出现治理语言
+
+### 动效约束
+
+- 管理页：静 80%，动 20%
+- AI/生成页：静 65%，动 35%
+- 动效仅服务于页面切换反馈、操作反馈、关键节点聚焦
+
 ## 参考文档
 
 - 设计文档：`docs/superpowers/specs/2026-06-24-user-auth-system-design.md`
+- 角色架构设计：`docs/superpowers/specs/2026-06-25-role-architecture-design.md`
 - 实现计划：`docs/superpowers/plans/2026-06-24-user-auth-system-plan.md`
+- 角色架构实施计划：`docs/superpowers/plans/2026-06-25-role-architecture-implementation-plan.md`
 - 进度记录：`.superpowers/sdd/progress.md`

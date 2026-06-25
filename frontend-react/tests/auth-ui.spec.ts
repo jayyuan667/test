@@ -287,7 +287,7 @@ test.describe('authenticated shell guards', () => {
 
     await expect(page.getByRole('heading', { name: '修改密码' })).toBeVisible()
     await expect(page.getByText('个人中心')).toBeVisible()
-    await expect(page.getByText('未分配企业')).toBeVisible()
+    await expect(page.getByText('未分配企业', { exact: true })).toBeVisible()
     await expect(page.getByText('工艺生成')).not.toBeVisible()
     await expect(page.getByText('工艺入库')).not.toBeVisible()
     await expect(page.getByText('历史记录')).not.toBeVisible()
