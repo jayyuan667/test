@@ -18,6 +18,7 @@ export function UsersTab() {
   const [enterprises, setEnterprises] = useState<Enterprise[]>([])
   const [loading, setLoading] = useState(true)
   const [filterEnt, setFilterEnt] = useState<number | undefined>(undefined)
+  const [userScope, setUserScope] = useState<'members' | 'unassigned'>('members')
 
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editQuota, setEditQuota] = useState(0)
@@ -31,7 +32,7 @@ export function UsersTab() {
     try {
       setLoading(true)
       const [usersData, enterprisesData] = await Promise.all([
-        getAdminUsers(filterEnt),
+        getAdminUsers(isSuperAdmin ? filterEnt : userScope === 'unassigned' ? { scope: 'unassigned' } : undefined),
         isSuperAdmin ? getEnterprises() : Promise.resolve({ enterprises: [] }),
       ])
       setUsers(usersData.users)
@@ -45,7 +46,7 @@ export function UsersTab() {
 
   useEffect(() => {
     fetchData()
-  }, [filterEnt])
+  }, [filterEnt, isSuperAdmin, userScope])
 
   const startEditing = (user: AdminUser) => {
     setEditingId(user.id)
@@ -82,6 +83,20 @@ export function UsersTab() {
     }
   }
 
+  const claimUser = async (user: AdminUser) => {
+    if (!currentUser?.enterprise_id) {
+      show('当前管理员尚未分配企业', 'error')
+      return
+    }
+    try {
+      await updateAdminUser(user.id, { enterprise_id: currentUser.enterprise_id })
+      show('用户已分配到本企业', 'success')
+      await fetchData()
+    } catch (err: unknown) {
+      show(err instanceof Error ? err.message : '分配失败', 'error')
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -101,6 +116,29 @@ export function UsersTab() {
               </option>
             ))}
           </select>
+        )}
+        {!isSuperAdmin && (
+          <div
+            className="inline-flex items-center rounded-lg border p-1"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface-panel-subtle)' }}
+          >
+            <button
+              type="button"
+              onClick={() => setUserScope('members')}
+              className={`min-h-[36px] px-3 text-xs font-medium transition ${userScope === 'members' ? 'theme-surface-chip rounded-md border' : ''}`}
+              aria-pressed={userScope === 'members'}
+            >
+              成员列表
+            </button>
+            <button
+              type="button"
+              onClick={() => setUserScope('unassigned')}
+              className={`min-h-[36px] px-3 text-xs font-medium transition ${userScope === 'unassigned' ? 'theme-surface-chip rounded-md border' : ''}`}
+              aria-pressed={userScope === 'unassigned'}
+            >
+              未分配用户
+            </button>
+          </div>
         )}
       </div>
 
@@ -131,6 +169,7 @@ export function UsersTab() {
               users.map(u => {
                 const isEditing = editingId === u.id
                 const isSuperAdminUser = u.role === 'super_admin'
+                const isUnassignedRow = !isSuperAdmin && userScope === 'unassigned'
                 return (
                   <tr key={u.id}>
                     <td>{u.id}</td>
@@ -191,6 +230,13 @@ export function UsersTab() {
                     <td className="space-x-2">
                       {isSuperAdminUser ? (
                         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>不可操作</span>
+                      ) : isUnassignedRow ? (
+                        <button
+                          onClick={() => claimUser(u)}
+                          className="theme-link-action text-xs font-medium min-h-[44px]"
+                        >
+                          分配到本企业
+                        </button>
                       ) : isEditing ? (
                         <>
                           <button

@@ -49,6 +49,7 @@ _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 _DRAWING_FOLDER_NAMES = {"drawing", "drawings", "图纸"}
 _SHEET_NAME_PDF_CRAFT = "PDF工艺规程"
 _SHEET_NAME_TXT_CRAFT = "TXT工艺规程"
+_MIN_ZIP_IMPORT_FILE_COUNT = 10
 
 # ── 工种推断关键词表（入库链路专用） ──────────────────────────────────────────
 _TRADE_KEYWORDS_IMPORT = [
@@ -192,6 +193,73 @@ def _write_batch_item(batch_id: str, prefix: str, pdf_name: str, xlsx_name: str,
     )
     conn.commit()
     conn.close()
+
+
+def _compute_file_sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _demo_fast_zip_import_enabled() -> bool:
+    return os.getenv("DEMO_FAST_ZIP_IMPORT", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _demo_zip_cache_path(
+    *,
+    zip_hash: str,
+    enterprise_id: int | None,
+    library_mode: str,
+    library_key: str,
+    library_name: str,
+    conflict_mode: str,
+) -> str:
+    scope_bits = {
+        "zip_hash": zip_hash,
+        "enterprise_id": enterprise_id,
+        "library_mode": library_mode or "",
+        "library_key": library_key or "",
+        "library_name": library_name or "",
+        "conflict_mode": conflict_mode or "",
+    }
+    scope_hash = hashlib.sha256(
+        json.dumps(scope_bits, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    cache_dir = os.path.join(OUTPUT_FOLDER, "_demo_zip_import_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    return os.path.join(cache_dir, f"{scope_hash}.json")
+
+
+def _load_demo_zip_cache(cache_path: str) -> Dict | None:
+    if not os.path.exists(cache_path):
+        return None
+    try:
+        with open(cache_path, "r", encoding="utf-8") as f:
+            cached = json.load(f)
+        report = dict(cached.get("report") or {})
+        if not report:
+            return None
+        report["cached"] = True
+        report["message"] = "检测到相同知识包，已复用历史入库结果"
+        return report
+    except Exception:
+        logger.warning("[KB Import] demo ZIP cache read failed: %s", cache_path, exc_info=True)
+        return None
+
+
+def _write_demo_zip_cache(cache_path: str, report: Dict, zip_hash: str) -> None:
+    try:
+        payload = {
+            "zip_hash": zip_hash,
+            "cached_at": datetime.now().isoformat(),
+            "report": report,
+        }
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+    except Exception:
+        logger.warning("[KB Import] demo ZIP cache write failed: %s", cache_path, exc_info=True)
 
 
 def _normalize_key(filename: str) -> str:
@@ -376,6 +444,17 @@ def _parse_txt_process(txt_path: str) -> Dict:
 
 def _scan_zip_dir(extract_dir: str) -> Dict[str, List[str]]:
     """Classify every file under extract_dir into format buckets."""
+    def _is_ignored_archive_member(path: str) -> bool:
+        rel = os.path.relpath(path, extract_dir).replace("\\", "/")
+        parts = rel.split("/")
+        name = parts[-1] if parts else ""
+        lowered_parts = [p.lower() for p in parts]
+        return (
+            "__macosx" in lowered_parts
+            or name.startswith("._")
+            or name in {".DS_Store", "Thumbs.db"}
+        )
+
     def _in_drawing_folder(path: str) -> bool:
         rel = os.path.relpath(path, extract_dir).replace("\\", "/")
         parts = rel.split("/")
@@ -391,6 +470,8 @@ def _scan_zip_dir(extract_dir: str) -> Dict[str, List[str]]:
     for root, _, files in os.walk(extract_dir):
         for filename in files:
             path = os.path.join(root, filename)
+            if _is_ignored_archive_member(path):
+                continue
             lower = filename.lower()
             ext = os.path.splitext(lower)[1]
             if PRT_FILE_RE.search(lower):
@@ -640,6 +721,7 @@ def _build_record_from_prefix(
     visual_items: List[Dict],
     conflict_mode: str,
     library_key: str,
+    enterprise_id: int | None = None,
 ) -> Dict:
     merged_xlsx_text = "\n".join(entry["content"] for entry in xlsx_entries if entry.get("content")).strip()
     merged_visual_text = "\n\n".join(item.get("text", "") for item in visual_items if item.get("text")).strip()
@@ -706,6 +788,7 @@ def _build_record_from_prefix(
         draft["feature_report_text"] = feature_report.get("report_text") or source_text
 
     draft["batch_id"] = batch_id
+    draft["enterprise_id"] = enterprise_id
     draft["source_xlsx"] = xlsx_entries[0].get("xlsx_name") if xlsx_entries else ""
     source_filenames = [os.path.basename(item.get("source_path", "")) for item in visual_items]
     draft["source_prts"] = [f for f in source_filenames if PRT_FILE_RE.search(f)]
@@ -982,7 +1065,15 @@ def import_zip_knowledge(
 
         try:
             display_prefix = (xlsx_entries[0].get("prefix") if xlsx_entries else None) or visual_items[0].get("prefix_hint") or stem_key
-            item = _build_record_from_prefix(batch_id, display_prefix, xlsx_entries, visual_items, conflict_mode, target_scope["library_key"])
+            item = _build_record_from_prefix(
+                batch_id,
+                display_prefix,
+                xlsx_entries,
+                visual_items,
+                conflict_mode,
+                target_scope["library_key"],
+                enterprise_id=enterprise_id,
+            )
             report["matched_pairs"].append(item)
             report["summary"]["matched_pairs"] += 1
             if item["status"] == "skipped":
@@ -1158,6 +1249,7 @@ def import_folder_knowledge(
                 item = _build_record_from_prefix(
                     batch_id, prefix, xlsx_entries, visual_items,
                     conflict_mode, target_scope["library_key"],
+                    enterprise_id=enterprise_id,
                 )
                 report["matched_pairs"].append(item)
                 report["summary"]["matched_pairs"] += 1
@@ -1263,15 +1355,35 @@ def import_zip_route():
     try:
         with zipfile.ZipFile(zip_path) as zf:
             file_count = len([f for f in zf.namelist() if not f.endswith('/')])
-        if file_count < 30:
+        if file_count < _MIN_ZIP_IMPORT_FILE_COUNT:
             os.unlink(zip_path)
-            return jsonify({"error": f"数据量太少，压缩包内文件数为 {file_count}，必须大于 30 个文件"}), 400
+            return jsonify({"error": f"压缩包至少需要 {_MIN_ZIP_IMPORT_FILE_COUNT} 个文件"}), 400
     except zipfile.BadZipFile:
         os.unlink(zip_path)
         return jsonify({"error": "无效的 ZIP 文件"}), 400
 
     from ._utils import get_enterprise_scope
     _ent_id, _ = get_enterprise_scope()
+
+    demo_cache_path = ""
+    demo_zip_hash = ""
+    if _demo_fast_zip_import_enabled():
+        demo_zip_hash = _compute_file_sha256(zip_path)
+        demo_cache_path = _demo_zip_cache_path(
+            zip_hash=demo_zip_hash,
+            enterprise_id=_ent_id,
+            library_mode=library_mode,
+            library_key=library_key,
+            library_name=library_name,
+            conflict_mode=conflict_mode,
+        )
+        cached_report = _load_demo_zip_cache(demo_cache_path)
+        if cached_report:
+            try:
+                os.unlink(zip_path)
+            except OSError:
+                pass
+            return jsonify(cached_report)
 
     try:
         report = import_zip_knowledge(
@@ -1283,6 +1395,8 @@ def import_zip_route():
             library_key=library_key,
             enterprise_id=_ent_id,
         )
+        if demo_cache_path and demo_zip_hash:
+            _write_demo_zip_cache(demo_cache_path, report, demo_zip_hash)
         return jsonify(report)
     except Exception as exc:
         logger.exception("ZIP import failed")

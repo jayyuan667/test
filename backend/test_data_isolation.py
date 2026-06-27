@@ -6,8 +6,10 @@ Run: pytest backend/test_data_isolation.py -v
 """
 
 import json
+import io
 import os
 import tempfile
+import threading
 
 import pytest
 from werkzeug.security import generate_password_hash
@@ -25,21 +27,30 @@ def setup_db(monkeypatch):
     monkeypatch.setattr(auth_store, "DB_FILE", path)
     auth_store.init_auth_db()
 
+    # Use a temp history.json to protect real data
+    from backend import history as history_module
+    fd, hist_path = tempfile.mkstemp(suffix=".json", prefix="test_history_")
+    os.close(fd)
+    _original_history = history_module.HISTORY_FILE
+    monkeypatch.setattr(history_module, "HISTORY_FILE", hist_path)
+    # Write empty list to the temp file
+    with open(hist_path, 'w') as f:
+        f.write('[]')
+
     yield
+
+    # Restore real history file path + clean up temp
+    monkeypatch.setattr(history_module, "HISTORY_FILE", _original_history)
+    try:
+        os.unlink(hist_path)
+    except OSError:
+        pass
 
     # Clean up temp auth DB
     try:
         os.unlink(path)
     except OSError:
         pass
-
-    # Clean up history file to avoid cross-test pollution
-    from backend.history import HISTORY_FILE
-    if os.path.exists(HISTORY_FILE):
-        try:
-            os.remove(HISTORY_FILE)
-        except OSError:
-            pass
 
 
 @pytest.fixture
@@ -106,6 +117,139 @@ class TestEnterpriseIsolation:
         b_task_ids = [h["task_id"] for h in history if h.get("enterprise_id") == data["ent_b"]["id"]]
         assert len(b_task_ids) == 0, f"Leaked enterprise B tasks: {b_task_ids}"
 
+    def test_history_delete_requires_login(self, client):
+        """删除历史记录必须登录，避免未认证用户按 task_id 删除数据"""
+        from backend.history import add_history_entry
+        add_history_entry("task_to_protect", "protected.pdf", 100, "2025-01-01", enterprise_id=1)
+
+        resp = client.delete("/api/history/task_to_protect")
+
+        assert resp.status_code == 401
+
+    def test_user_cannot_delete_other_enterprise_history_by_id(self, client):
+        """企业 A 用户不能按 task_id 删除企业 B 的历史记录"""
+        data = _create_test_data()
+        from backend.history import add_history_entry, load_history_from_file
+        add_history_entry("task_b_delete_probe", "b.pdf", 100, "2025-01-01",
+                          enterprise_id=data["ent_b"]["id"])
+        _login_as(client, "ent_a_user", "test123")
+
+        resp = client.delete("/api/history/task_b_delete_probe")
+
+        assert resp.status_code == 404
+        assert any(h.get("task_id") == "task_b_delete_probe" for h in load_history_from_file())
+
+    def test_user_cannot_access_other_enterprise_task_by_id(self, client):
+        """企业 A 用户即使知道企业 B task_id，也不能读 status/result"""
+        data = _create_test_data()
+
+        from backend.app import tasks
+        task_id = "task_b_secret"
+        tasks[task_id] = {
+            "task_id": task_id,
+            "status": "completed",
+            "progress": 100,
+            "pdf_name": "secret.pdf",
+            "enterprise_id": data["ent_b"]["id"],
+            "result": {"enterprise_id": data["ent_b"]["id"], "secret": "hidden"},
+        }
+        try:
+            _login_as(client, "ent_a_user", "test123")
+
+            status_resp = client.get(f"/api/status/{task_id}")
+            result_resp = client.get(f"/api/result/{task_id}")
+
+            assert status_resp.status_code == 404
+            assert result_resp.status_code == 404
+        finally:
+            tasks.pop(task_id, None)
+
+    def test_public_retrieval_task_still_enforces_enterprise_access(self, client):
+        """企业任务即使用 public 检索库，也不能被其他企业按 task_id 访问"""
+        data = _create_test_data()
+
+        from backend.app import tasks
+        task_id = "task_b_public_retrieval_secret"
+        tasks[task_id] = {
+            "task_id": task_id,
+            "status": "completed",
+            "progress": 100,
+            "pdf_name": "secret.pdf",
+            "library_key": "public",
+            "retrieval_library_key": "public",
+            "enterprise_id": data["ent_b"]["id"],
+            "result": {"enterprise_id": data["ent_b"]["id"], "secret": "hidden"},
+        }
+        try:
+            _login_as(client, "ent_a_user", "test123")
+
+            status_resp = client.get(f"/api/status/{task_id}")
+            result_resp = client.get(f"/api/result/{task_id}")
+
+            assert status_resp.status_code == 404
+            assert result_resp.status_code == 404
+        finally:
+            tasks.pop(task_id, None)
+
+    def test_unassigned_user_cannot_access_business_task_by_id(self, client):
+        """未分配企业用户不能通过 task_id 访问业务任务"""
+        data = _create_test_data()
+        auth_store.create_user(
+            "unassigned_task_probe",
+            generate_password_hash("test123"),
+            role="user",
+            enterprise_id=None,
+        )
+
+        from backend.app import tasks
+        task_id = "task_ent_a_secret"
+        tasks[task_id] = {
+            "task_id": task_id,
+            "status": "completed",
+            "progress": 100,
+            "pdf_name": "a.pdf",
+            "enterprise_id": data["ent_a"]["id"],
+            "result": {"enterprise_id": data["ent_a"]["id"], "secret": "hidden"},
+        }
+        try:
+            _login_as(client, "unassigned_task_probe", "test123")
+
+            status_resp = client.get(f"/api/status/{task_id}")
+            result_resp = client.get(f"/api/result/{task_id}")
+
+            assert status_resp.status_code == 403
+            assert result_resp.status_code == 403
+        finally:
+            tasks.pop(task_id, None)
+
+    def test_review_retrieval_library_does_not_reclassify_task_scope(self, client):
+        """审阅阶段切换检索库只应改 retrieval_library_key，不应把企业任务改成公共归属"""
+        data = _create_test_data()
+        _login_as(client, "ent_a_user", "test123")
+
+        from backend.app import tasks
+        task_id = "task_review_retrieval_probe"
+        tasks[task_id] = {
+            "task_id": task_id,
+            "status": "awaiting_review",
+            "progress": 50,
+            "pdf_name": "a.prt",
+            "library_key": "enterprise-a",
+            "enterprise_id": data["ent_a"]["id"],
+            "review_event": threading.Event(),
+        }
+        try:
+            resp = client.post(
+                f"/api/review/{task_id}",
+                json={"review_text": "已确认", "action": "continue", "retrieval_library_key": "public"},
+            )
+
+            assert resp.status_code == 200
+            assert tasks[task_id]["library_key"] == "enterprise-a"
+            assert tasks[task_id]["retrieval_library_key"] == "public"
+        finally:
+            tasks.pop(task_id, None)
+
     def test_user_cannot_access_other_enterprise_library_record(self, client):
         """企业 A 用户请求知识库记录，不应返回企业 B 的记录"""
         # 这个测试依赖 vectors.db 中有实际数据
@@ -155,16 +299,14 @@ class TestEnterpriseIsolation:
         b_entries = [h for h in history if h.get("enterprise_id") == data["ent_b"]["id"]]
         assert len(b_entries) == 0
 
-    def test_unassigned_user_only_sees_public_library(self, client):
+    def test_unassigned_user_only_sees_public_library(self, client, monkeypatch, tmp_path):
         """未分配企业用户只能看到 scope_type='public' 的记录"""
-        # Skip if vectors.db has existing private scopes without enterprise_id
-        from backend.library_scope import list_scopes as _list_scopes
-        _existing_private = [s for s in _list_scopes()
-                             if s.get("scope_type") != "public"
-                             and s.get("enterprise_id") is None]
-        if _existing_private:
-            pytest.skip(f"vectors.db has {len(_existing_private)} pre-existing private scope(s) "
-                        f"with NULL enterprise_id — cannot verify isolation in this env")
+        from backend import library_scope
+
+        monkeypatch.setattr(library_scope, "DB_PATH", str(tmp_path / "vectors.db"))
+        library_scope.ensure_scope_registry()
+        library_scope.ensure_scope("enterprise_a_scope", "企业 A 私有库", scope_type="private", enterprise_id=1)
+        library_scope.ensure_scope("enterprise_b_scope", "企业 B 私有库", scope_type="private", enterprise_id=2)
 
         auth_store.create_user(
             "unassigned", generate_password_hash("test123"),
@@ -195,6 +337,34 @@ class TestEnterpriseIsolation:
             )
         except Exception as e:
             pytest.fail(f"insert_task with enterprise_id failed: {e}")
+
+    def test_batch_upload_writes_enterprise_id(self, client):
+        """批量 PRT 上传创建的父任务和子任务都应写入 enterprise_id"""
+        data = _create_test_data()
+        _login_as(client, "ent_a_user", "test123")
+
+        from backend.app import tasks
+        from backend.task_store import get_task
+
+        resp = client.post(
+            "/api/batch_upload",
+            data={"files": [(io.BytesIO(b"dummy prt content"), "sample.prt")]},
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 200
+        batch_task_id = resp.get_json()["batch_task_id"]
+
+        try:
+            assert tasks[batch_task_id]["enterprise_id"] == data["ent_a"]["id"]
+            assert tasks[batch_task_id]["retrieval_library_key"] == "public"
+            assert get_task(batch_task_id)["enterprise_id"] == data["ent_a"]["id"]
+            child_ids = [f["task_id"] for f in tasks[batch_task_id]["files"]]
+            assert child_ids
+            assert all(tasks[child_id]["enterprise_id"] == data["ent_a"]["id"] for child_id in child_ids)
+        finally:
+            for child in tasks.get(batch_task_id, {}).get("files", []):
+                tasks.pop(child.get("task_id"), None)
+            tasks.pop(batch_task_id, None)
 
     def test_zip_import_writes_enterprise_id(self, client):
         """ZIP 导入时自动写入 enterprise_id"""

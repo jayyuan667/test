@@ -152,17 +152,17 @@ export function UploadPanel({ onFileSelected, disabled, previewUrls, onFullscree
         {/* Toolbar */}
         <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3 shrink-0">
           <div className="flex items-center gap-3">
-            <span className="text-[13px] font-bold text-slate-700">图纸预览</span>
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-r from-slate-100 to-slate-50 text-[11px] font-mono font-semibold text-slate-500">
+            <span className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>图纸预览</span>
+            <span className="theme-surface-chip inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-mono font-semibold">
               {pageIdx + 1} / {previewUrls.length}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
             <button className="btn btn-ghost !px-2.5 !py-1.5 text-[11px] min-h-[44px] min-w-[44px]" aria-label="上一页" onClick={() => setPageIdx(i => Math.max(0, i - 1))} disabled={pageIdx === 0}>←</button>
             <button className="btn btn-ghost !px-2.5 !py-1.5 text-[11px] min-h-[44px] min-w-[44px]" aria-label="下一页" onClick={() => setPageIdx(i => Math.min(previewUrls!.length - 1, i + 1))} disabled={pageIdx >= previewUrls!.length - 1}>→</button>
-            <div className="w-px h-4 bg-slate-200 mx-1" />
+            <div className="w-px h-4 mx-1" style={{ background: 'var(--border)' }} />
             <button className="btn btn-ghost !px-2 !py-1.5 text-[11px] min-h-[44px] min-w-[44px]" aria-label="缩小" onClick={() => setZoom(z => Math.max(0.1, z / 1.25))}>−</button>
-            <span className="inline-flex items-center justify-center min-w-[48px] px-2 py-1 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-100 text-[11px] font-mono font-semibold text-slate-500">
+            <span className="theme-surface-chip inline-flex items-center justify-center min-w-[48px] px-2 py-1 rounded-lg border text-[11px] font-mono font-semibold">
               {Math.round(zoom * 100)}%
             </span>
             <button className="btn btn-ghost !px-2 !py-1.5 text-[11px] min-h-[44px] min-w-[44px]" aria-label="放大" onClick={() => setZoom(z => Math.min(10, z * 1.25))}>+</button>
@@ -185,13 +185,13 @@ export function UploadPanel({ onFileSelected, disabled, previewUrls, onFullscree
         <div
           ref={scrollRef}
           className={`flex-1 min-h-0 mx-4 mb-4 rounded-xl overflow-auto ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
-          style={{ background: 'linear-gradient(135deg, #fafbfc 0%, #f8fafc 100%)' }}
+          style={{ background: 'var(--surface-panel-muted)' }}
           onMouseDown={handlePanStart}
           onMouseMove={handlePanMove}
           onMouseUp={handlePanEnd}
           onMouseLeave={handlePanEnd}
         >
-          <div className="relative inline-block" style={{ width: `${zoom * 100}%`, minWidth: '100%', minHeight: '100%' }}>
+          <div className="relative inline-block leading-[0]" style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
             <img
               ref={imageRef}
               src={previewUrls[pageIdx]}
@@ -263,27 +263,27 @@ export function UploadPanel({ onFileSelected, disabled, previewUrls, onFullscree
         <div
           className="w-18 h-18 rounded-2xl grid place-items-center mb-5 relative"
           style={{
-            background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)',
-            border: '2px solid rgba(249, 115, 22, 0.2)',
+            background: 'var(--surface-empty-accent)',
+            border: '2px solid color-mix(in srgb, var(--accent-action) 20%, transparent)',
             width: '72px',
             height: '72px',
           }}
         >
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent-action)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
         </div>
 
-        <div className="text-lg font-bold text-slate-800 mb-1.5">上传 2D 工艺图纸</div>
-        <div className="text-[13px] text-slate-500 max-w-[360px] leading-relaxed">
+        <div className="text-lg font-bold mb-1.5" style={{ color: 'var(--text-primary)' }}>上传 2D 工艺图纸</div>
+        <div className="text-[13px] max-w-[360px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
           支持 PDF、PNG、JPG 格式，自动提取工艺特征并生成规程
         </div>
 
         <div className="flex flex-wrap justify-center gap-2 mt-5">
           {['最大 20MB', '支持多页 PDF', '自动 OCR'].map(tag => (
-            <span key={tag} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-white to-slate-50 border border-slate-200 text-[11px] font-medium text-slate-500">
+            <span key={tag} className="theme-surface-chip px-3 py-1.5 rounded-lg border text-[11px] font-medium">
               {tag}
             </span>
           ))}

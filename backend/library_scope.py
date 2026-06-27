@@ -13,8 +13,19 @@ except ImportError:
 
 PUBLIC_LIBRARY_KEY = "public"
 PUBLIC_LIBRARY_NAME = "公共工艺库"
+PUBLIC_SCOPE_TYPE = "public"
 PUBLIC_VECTOR_TABLE = "vectors_v2"
 PUBLIC_FEATURE_TABLE = "drawing_features"
+
+
+def is_public_library(library_key: str | None) -> bool:
+    """Check whether a library_key refers to the public library."""
+    return (library_key or "").strip() == PUBLIC_LIBRARY_KEY
+
+
+def is_public_scope_type(scope_type: str | None) -> bool:
+    """Check whether a scope_type value is public."""
+    return (scope_type or "").strip() == PUBLIC_SCOPE_TYPE
 
 
 def ensure_import_tracking_tables():
@@ -286,7 +297,7 @@ def resolve_scope(library_key: str | None = None):
     try:
         cursor.execute(
             """
-            SELECT library_key, library_name, scope_type, vector_table, feature_table, seed_source, created_at, last_batch_id
+            SELECT library_key, library_name, scope_type, vector_table, feature_table, seed_source, created_at, last_batch_id, enterprise_id
             FROM kb_library_scopes WHERE library_key = ?
             """,
             (key,),
@@ -307,6 +318,7 @@ def resolve_scope(library_key: str | None = None):
         "seed_source": row[5],
         "created_at": row[6],
         "last_batch_id": row[7] or "",
+        "enterprise_id": row[8],
     }
 
 
@@ -317,7 +329,7 @@ def list_scopes():
     try:
         cursor.execute(
             """
-            SELECT library_key, library_name, scope_type, vector_table, feature_table, seed_source, created_at, last_batch_id
+            SELECT library_key, library_name, scope_type, vector_table, feature_table, seed_source, created_at, last_batch_id, enterprise_id
             FROM kb_library_scopes
             ORDER BY CASE WHEN library_key = ? THEN 0 ELSE 1 END, created_at DESC
             """,
@@ -337,6 +349,7 @@ def list_scopes():
             "seed_source": row[5],
             "created_at": row[6],
             "last_batch_id": row[7] or "",
+            "enterprise_id": row[8],
         }
         for row in rows
     ]

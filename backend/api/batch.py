@@ -26,7 +26,8 @@ from ..services.event_emitter import (
     emit_log,
 )
 from ..vision_utils import split_vision_results, format_vision_failure_message
-from ._utils import PRT_FILE_RE, extract_prefix_from_filename
+from ._utils import PRT_FILE_RE, extract_prefix_from_filename, get_enterprise_scope
+from ..library_scope import PUBLIC_LIBRARY_KEY
 
 batch_bp = Blueprint("batch", __name__)
 logger = logging.getLogger(__name__)
@@ -45,6 +46,17 @@ def set_shared_state(tasks_dict, event_data_dict, event_locks_dict):
 
 
 _extract_prefix_from_filename = extract_prefix_from_filename
+
+
+def _request_retrieval_library_key() -> str:
+    """Resolve the RAG retrieval library key from new and legacy request fields."""
+    return (
+        request.form.get("retrieval_library_key")
+        or request.args.get("retrieval_library_key")
+        or request.form.get("library_key")
+        or request.args.get("library_key")
+        or PUBLIC_LIBRARY_KEY
+    )
 
 
 def _build_upload_mode_meta(file_count: int, page_count: int):
@@ -96,6 +108,7 @@ def batch_upload():
     batch_task_id = str(uuid.uuid4())
     logger.info("[%s] /batch_upload received %d prt file(s)", batch_task_id, len(prt_files))
     print(f"[{batch_task_id}] /batch_upload received {len(prt_files)} prt file(s)")
+    enterprise_id, _ = get_enterprise_scope()
 
     tasks[batch_task_id] = {
         "task_id": batch_task_id,
@@ -103,9 +116,11 @@ def batch_upload():
         "status": "processing",
         "progress": 0,
         "created_at": datetime.now().isoformat(),
-        "library_key": request.form.get("library_key") or request.args.get("library_key") or "public",
+        "library_key": request.form.get("library_key") or request.args.get("library_key") or PUBLIC_LIBRARY_KEY,
+        "retrieval_library_key": _request_retrieval_library_key(),
+        "enterprise_id": enterprise_id,
     }
-    insert_task(task_id=batch_task_id, pdf_name=f"Batch ({len(prt_files)} files)", prt_name=f"Batch ({len(prt_files)} files)", output_dir=os.path.join(OUTPUT_FOLDER, batch_task_id), prefix_hint="batch", library_key=tasks[batch_task_id]["library_key"], source_kind="prt")
+    insert_task(task_id=batch_task_id, pdf_name=f"Batch ({len(prt_files)} files)", prt_name=f"Batch ({len(prt_files)} files)", output_dir=os.path.join(OUTPUT_FOLDER, batch_task_id), prefix_hint="batch", library_key=tasks[batch_task_id]["library_key"], source_kind="prt", enterprise_id=enterprise_id)
     event_data[batch_task_id] = []
     event_locks[batch_task_id] = threading.Lock()
 
@@ -126,6 +141,7 @@ def batch_upload():
                 "prt_path": filepath,
                 "status": "pending",
                 "prefix_hint": prefix_hint,
+                "enterprise_id": enterprise_id,
             }
         )
         tasks[task_id] = {
@@ -136,6 +152,7 @@ def batch_upload():
             "status": "pending",
             "progress": 0,
             "created_at": datetime.now().isoformat(),
+            "enterprise_id": enterprise_id,
         }
         event_data[task_id] = []
         event_locks[task_id] = threading.Lock()
@@ -357,7 +374,10 @@ def batch_upload():
             feature_report_json = build_feature_report(successful_descriptions, prefix_hint=batch_prefix_hint, total_pages=len(successful_descriptions))
 
             process_flow_raw, process_data, rag_results = generator.generate(
-                fused_descriptions, comprehensive, prefix_hint=batch_prefix_hint, library_key=tasks[batch_task_id].get("library_key")
+                fused_descriptions,
+                comprehensive,
+                prefix_hint=batch_prefix_hint,
+                library_key=tasks[batch_task_id].get("retrieval_library_key") or tasks[batch_task_id].get("library_key"),
             )
 
             tasks[batch_task_id]["progress"] = 100
@@ -385,6 +405,7 @@ def batch_upload():
                 "feature_report_json": feature_report_json,
                 "feature_report_text": feature_report_json.get("report_text", ""),
                 "completed_at": datetime.now().isoformat(),
+                "enterprise_id": tasks[batch_task_id].get("enterprise_id"),
             }
 
             output_dir = os.path.join(OUTPUT_FOLDER, batch_task_id)
@@ -407,6 +428,7 @@ def batch_upload():
                 progress=100,
                 created_at=tasks[batch_task_id].get("created_at", ""),
                 file_count=len(files),
+                enterprise_id=tasks[batch_task_id].get("enterprise_id"),
             )
 
         except Exception as e:

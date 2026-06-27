@@ -54,7 +54,7 @@ export function LoginPage({ onNavigate, onOpenAuth, onReturnHome, phase }: Login
       subtitle="进入图纸检视台，继续你的工艺流程。"
       footer={(
         <p className="text-center text-xs text-slate-400">
-          &copy; {new Date().getFullYear()} 二维工艺系统
+          &copy; {new Date().getFullYear()} DICA智能工艺系统
         </p>
       )}
     >

@@ -27,7 +27,7 @@ interface SnapshotData {
 
 const PAGE_SIZE = 6
 
-export function HistoryPage() {
+export function HistoryPage({ visible = true }: { visible?: boolean }) {
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
@@ -61,6 +61,11 @@ export function HistoryPage() {
   }, [])
 
   useEffect(() => { loadHistory() }, [loadHistory])
+
+  // Reload when page becomes visible (fix stale data after upload)
+  useEffect(() => {
+    if (visible) loadHistory()
+  }, [visible, loadHistory])
 
   // GSAP: Page load animation
   useEffect(() => {

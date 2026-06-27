@@ -2,6 +2,7 @@
 """Shared utilities for API blueprints."""
 
 import os
+import json
 import re
 
 # Matches .prt and .prt.N (e.g. .prt.1, .prt.12)
@@ -95,17 +96,40 @@ def assert_task_access(task_id):
         except Exception:
             pass
 
+    # Try file-based result/pending snapshots for legacy restored tasks.
+    if task is None:
+        try:
+            from ..config import OUTPUT_FOLDER
+
+            for filename in ("result.json", "pending_review.json"):
+                path = os.path.join(OUTPUT_FOLDER, task_id, filename)
+                if not os.path.exists(path):
+                    continue
+                with open(path, "r", encoding="utf-8") as f:
+                    task = json.load(f)
+                task_ent = task.get("enterprise_id")
+                break
+        except Exception:
+            pass
+
     if task is None:
         return False, (jsonify({"error": "Task not found"}), 404)
+
+    # Public-library-only legacy tasks are readable by authenticated users.
+    # Enterprise tasks may use the public library for retrieval, but still
+    # belong to their enterprise and must pass the enterprise check below.
+    task_lib = task.get("library_key") if isinstance(task, dict) else None
+    from ..library_scope import is_public_library
+    if task_ent is None and is_public_library(task_lib):
+        return True, None
 
     if ent_id is None:
         return False, (jsonify({"error": "未分配企业，无权访问"}), 403)
 
-    if task_ent is not None and task_ent != ent_id:
+    if task_ent is None:
         return False, (jsonify({"error": "Task not found"}), 404)
 
-    if task_ent is None:
-        # Task exists but has no enterprise_id (orphan/ancient)
+    if task_ent != ent_id:
         return False, (jsonify({"error": "Task not found"}), 404)
 
     return True, None

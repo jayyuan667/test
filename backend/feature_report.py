@@ -203,6 +203,8 @@ FEATURE_SYNONYMS = {
     "部件名称": "零件名称",
     "毛坯": "毛坯类型",
     "材料": "毛坯类型",
+    "物料": "毛坯类型",
+    "物料形态": "毛坯类型",
     "技术条件": "技术要求",
     "加工要求": "技术要求",
     "外形": "形态",
@@ -224,6 +226,9 @@ FEATURE_SYNONYMS = {
     "探伤": "热处理与探伤",
     "标识": "标识与检验",
     "检验": "标识与检验",
+    "刻字": "标识与检验",
+    "刻字要求": "标识与检验",
+    "标记": "标识与检验",
     "线切": "线切割",
     "线割": "线切割",
     "精度": "精度与检测特征",
@@ -231,6 +236,11 @@ FEATURE_SYNONYMS = {
     "表面处理": "表面处理与镀层特征",
     "镀层": "表面处理与镀层特征",
     "过渡": "过渡特征",
+    "翻面": "过渡特征",
+    "吊面": "过渡特征",
+    "吊面/翻面": "过渡特征",
+    "吊面/翻面特征": "过渡特征",
+    "翻面特征": "过渡特征",
 }
 
 
@@ -338,7 +348,7 @@ def build_feature_report(descriptions: Iterable[Dict], prefix_hint: str | None =
 
     for field in REPORT_FIELD_ORDER:
         values = merged_fields.get(field, [])
-        lines.append(f"【{field}】{'；'.join(values) if values else ''}")
+        lines.append(f"【{field}】{'；'.join(values) if values else '无'}")
 
     extra_fields = [
         field for field in merged_fields.keys()
@@ -346,7 +356,7 @@ def build_feature_report(descriptions: Iterable[Dict], prefix_hint: str | None =
     ]
     for field in extra_fields:
         values = merged_fields.get(field, [])
-        lines.append(f"【{field}】{'；'.join(values) if values else ''}")
+        lines.append(f"【{field}】{'；'.join(values) if values else '无'}")
 
     for item in page_summaries:
         lines.append(f"【第{item['page']}页摘要】{item['summary'] or '未识别'}")

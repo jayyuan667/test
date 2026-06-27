@@ -2,14 +2,40 @@ import type { User, Enterprise, QuotaInfo, AdminUser } from '../types/auth'
 
 const BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
+function fallbackErrorMessage(status: number, fallback: string): string {
+  if (status === 401) return '请先登录'
+  if (status === 403) return '没有权限执行此操作'
+  return fallback
+}
+
+function extractErrorMessage(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    const nested = extractErrorMessage(obj.message ?? obj.error ?? obj.detail, '')
+    if (nested) return nested
+  }
+  return fallback
+}
+
+async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  const defaultMessage = fallbackErrorMessage(res.status, fallback)
+  const text = await res.text().catch(() => '')
+  if (!text.trim()) return defaultMessage
+  try {
+    return extractErrorMessage(JSON.parse(text), defaultMessage)
+  } catch {
+    return extractErrorMessage(text, defaultMessage)
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     credentials: 'include',
   })
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || body.message || `HTTP ${res.status}`)
+    throw new Error(await readErrorMessage(res, `请求失败：HTTP ${res.status}`))
   }
   return res.json()
 }
@@ -21,8 +47,7 @@ export async function uploadFile(file: File, opts?: { retrieval_library_key?: st
   if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
   const res = await fetch(`${BASE}/upload`, { method: 'POST', body: fd, credentials: 'include' })
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || body.message || `Upload failed: ${res.status}`)
+    throw new Error(await readErrorMessage(res, `上传失败：HTTP ${res.status}`))
   }
   return res.json()
 }
@@ -39,8 +64,7 @@ export async function batchUpload(files: File[], opts?: { retrieval_library_key?
   if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
   const res = await fetch(`${BASE}/batch_upload`, { method: 'POST', body: fd, credentials: 'include' })
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || body.message || `Batch upload failed: ${res.status}`)
+    throw new Error(await readErrorMessage(res, `批量上传失败：HTTP ${res.status}`))
   }
   return res.json()
 }
@@ -55,7 +79,7 @@ export async function getResult(taskId: string) {
   return request<Record<string, unknown>>(`/result/${taskId}`)
 }
 
-export async function submitReview(taskId: string, payload: { review_text: string; action: string; library_key?: string }) {
+export async function submitReview(taskId: string, payload: { review_text: string; action: string; retrieval_library_key?: string }) {
   const res = await fetch(`${BASE}/review/${taskId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -64,14 +88,7 @@ export async function submitReview(taskId: string, payload: { review_text: strin
   })
   if (res.ok) return { message: 'Review accepted', task_id: taskId }
 
-  let message = `HTTP ${res.status}`
-  try {
-    const body = await res.json() as { error?: string; message?: string }
-    message = body.error || body.message || message
-  } catch {
-    // Preserve the HTTP status when the error response is not JSON.
-  }
-  throw new Error(message)
+  throw new Error(await readErrorMessage(res, `审阅提交失败：HTTP ${res.status}`))
 }
 
 export async function rerunTask(taskId: string, reviewText?: string) {
@@ -115,7 +132,7 @@ export async function downloadExport(taskId: string, format: 'pdf' | 'xlsx', row
     credentials: 'include',
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`Export failed: ${res.status}`)
+  if (!res.ok) throw new Error(await readErrorMessage(res, `导出失败：HTTP ${res.status}`))
   return res.blob()
 }
 
@@ -133,7 +150,7 @@ export function connectSSE(taskId: string, handlers: {
   onImageReady?: (data: Record<string, unknown>) => void
   onAnnotationRequired?: (data: Record<string, unknown>) => void
 }): EventSource {
-  const es = new EventSource(`${BASE}/events/${taskId}`)
+  const es = new EventSource(`${BASE}/events/${taskId}`, { withCredentials: true })
 
   es.addEventListener('sse_ready', () => {})
 
@@ -243,6 +260,8 @@ export interface ZipImportReport {
   zip_name: string
   conflict_mode: string
   library_mode: string
+  cached?: boolean
+  message?: string
   summary: {
     total_files: number
     prt_count: number
@@ -268,7 +287,7 @@ export interface ZipImportReport {
   unmatched_xlsx: string[]
   unmatched_prts: string[]
   unmatched_images: string[]
-  errors: { prefix?: string; pdf_name?: string; prt_name?: string; error?: string; message?: string }[]
+  errors: { prefix?: string; pdf_name?: string; image_name?: string; prt_name?: string; error?: string; message?: string }[]
   target_library?: { library_key: string; library_name: string }
   created_at: string
 }
@@ -292,8 +311,7 @@ export async function importZipZip(params: {
   if (params.library_key) fd.append('library_key', params.library_key)
   const res = await fetch(`${BASE}/kb/import_zip`, { method: 'POST', body: fd, credentials: 'include' })
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || body.message || `Import failed: ${res.status}`)
+    throw new Error(await readErrorMessage(res, `导入失败：HTTP ${res.status}`))
   }
   return res.json()
 }
@@ -465,8 +483,7 @@ export async function uploadDrawing(file: File, opts?: { retrieval_library_key?:
   if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
   const res = await fetch(`${BASE}/upload_drawing`, { method: 'POST', body: fd, credentials: 'include' })
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error?.message || body.error || body.message || `Upload failed: ${res.status}`)
+    throw new Error(await readErrorMessage(res, `上传失败：HTTP ${res.status}`))
   }
   return res.json()
 }
@@ -508,7 +525,14 @@ export async function saveAnnotation(taskId: string, payload: {
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     console.error(`[saveAnnotation] ${res.status}:`, body, 'payload:', JSON.stringify(payload).slice(0, 500))
-    throw new Error(body || `Save failed: ${res.status}`)
+    const fallback = fallbackErrorMessage(res.status, `保存失败：HTTP ${res.status}`)
+    let message = extractErrorMessage(body, fallback)
+    try {
+      message = extractErrorMessage(JSON.parse(body), fallback)
+    } catch {
+      // Keep the text-derived message.
+    }
+    throw new Error(message)
   }
   return res.json()
 }
@@ -519,7 +543,7 @@ export async function finalizeAnnotation(taskId: string): Promise<{ ok: boolean;
 
 export async function exportAnnotations(taskId: string): Promise<Blob> {
   const res = await fetch(`${BASE}/annotations/${taskId}/export`, { credentials: 'include' })
-  if (!res.ok) throw new Error(`Export failed: ${res.status}`)
+  if (!res.ok) throw new Error(await readErrorMessage(res, `导出失败：HTTP ${res.status}`))
   return res.blob()
 }
 
@@ -587,9 +611,16 @@ export async function updateEnterprise(id: number, updates: Partial<Enterprise>)
   })
 }
 
-export async function getAdminUsers(enterpriseId?: number): Promise<{ users: AdminUser[] }> {
-  const qs = enterpriseId ? `?enterprise_id=${enterpriseId}` : ''
-  return authRequest<{ users: AdminUser[] }>(`/admin/users${qs}`)
+export async function getAdminUsers(params?: number | { enterpriseId?: number; scope?: 'unassigned' }): Promise<{ users: AdminUser[] }> {
+  const qs = new URLSearchParams()
+  if (typeof params === 'number') {
+    qs.set('enterprise_id', String(params))
+  } else if (params) {
+    if (params.enterpriseId) qs.set('enterprise_id', String(params.enterpriseId))
+    if (params.scope) qs.set('scope', params.scope)
+  }
+  const query = qs.toString()
+  return authRequest<{ users: AdminUser[] }>(`/admin/users${query ? `?${query}` : ''}`)
 }
 
 export async function updateAdminUser(userId: number, updates: Partial<AdminUser>): Promise<{ user: AdminUser }> {

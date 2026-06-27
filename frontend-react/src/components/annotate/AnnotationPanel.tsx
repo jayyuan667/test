@@ -261,8 +261,8 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
 
   // Drawing handlers
   const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (panMode || e.button !== 0) return
     isDrawingRef.current = true
-    if (e.button !== 0) return
     const rect = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
@@ -270,19 +270,25 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
     setDrawStart({ x, y })
     setDrawCurrent({ x, y })
     setSelectedId(null)
-  }, [])
+  }, [panMode])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
-    if (!isDrawingRef.current) return
+    if (panMode || !isDrawingRef.current) return
     const rect = e.currentTarget.getBoundingClientRect()
     setDrawCurrent({
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     })
-  }, [])
+  }, [panMode])
 
   const handleMouseUp = useCallback(() => {
-    if (!isDrawingRef.current || !drawStart || !drawCurrent) return
+    if (panMode || !isDrawingRef.current || !drawStart || !drawCurrent) {
+      isDrawingRef.current = false
+      setIsDrawing(false)
+      setDrawStart(null)
+      setDrawCurrent(null)
+      return
+    }
     isDrawingRef.current = false
     setIsDrawing(false)
 
@@ -318,7 +324,15 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
     setDrawStart(null)
     setDrawCurrent(null)
     setSelectedId(newShape.id)
-  }, [drawStart, drawCurrent, activeLabel, pageNumber, imgNatural, toReal])
+  }, [panMode, drawStart, drawCurrent, activeLabel, pageNumber, imgNatural, toReal])
+
+  useEffect(() => {
+    if (!panMode) return
+    isDrawingRef.current = false
+    setIsDrawing(false)
+    setDrawStart(null)
+    setDrawCurrent(null)
+  }, [panMode])
 
   // Shape interaction
   const handleShapeClick = useCallback((id: string, e: React.MouseEvent) => {
@@ -560,6 +574,7 @@ function AnnotationPanel({ taskId, previewImages, getAssetUrl, onClose, onSucces
               />
               <svg
                 className="anno-svg"
+                style={{ cursor: panMode ? (isPanning ? 'grabbing' : 'grab') : 'crosshair' }}
                 width={displayW}
                 height={displayH}
                 viewBox={`0 0 ${imgNatural.w} ${imgNatural.h}`}

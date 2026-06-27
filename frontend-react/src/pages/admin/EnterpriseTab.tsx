@@ -173,7 +173,7 @@ export function EnterpriseTab() {
                       onClick={() => openRenewModal(ent)}
                       className="theme-link-action text-xs font-medium"
                     >
-                      续期管理员
+                      设置/续期管理员
                     </button>
                   </td>
                 </tr>
@@ -188,7 +188,7 @@ export function EnterpriseTab() {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'var(--modal-overlay)' }} onClick={() => setRenewModal(null)}>
           <div className="theme-modal-shell rounded-lg border p-6 w-full max-w-sm shadow-xl mx-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
-              续期管理员 - {renewModal.enterprise.name}
+              设置/续期管理员 - {renewModal.enterprise.name}
             </h3>
             <div className="space-y-4">
               <div>

@@ -13,7 +13,7 @@ async function loginAs(page: any, username: string, password: string) {
 test.describe('auth pages', () => {
   test('login page renders', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'DiMo' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'DICA' })).toBeVisible()
     await expect(page.getByRole('button', { name: '进入系统' })).toBeVisible()
     await expect(page.getByLabel('用户名')).not.toBeVisible()
   })
@@ -38,9 +38,29 @@ test.describe('auth pages', () => {
     await expect(page.getByText('工艺生成')).not.toBeVisible()
   })
 
+  test('login shows chinese message when api error is an object', async ({ page }) => {
+    await page.route('**/api/auth/login', async route => {
+      await route.fulfill({
+        contentType: 'application/json',
+        status: 401,
+        body: JSON.stringify({ success: false, error: { code: 'INVALID_CREDENTIALS', message: '用户名或密码错误' } }),
+      })
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: '进入系统' }).click()
+    await page.getByLabel('用户名').fill('admin')
+    await page.locator('#password').fill('wrong-password')
+    await page.getByRole('button', { name: '登录' }).click()
+
+    await expect(page.getByText('用户名或密码错误')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('[object Object]')).not.toBeVisible()
+  })
+
   test('admin can login and see main app', async ({ page }) => {
     await loginAs(page, ADMIN.username, ADMIN.password)
     await expect(page.getByText('工艺生成')).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('[data-app-shell="true"]')).toHaveAttribute('data-theme', 'v2')
   })
 
   test('register new account redirects to login', async ({ page }) => {

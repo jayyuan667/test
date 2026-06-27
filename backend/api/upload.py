@@ -49,6 +49,7 @@ from ..auth_utils import login_required, require_quota
 from ..services.capabilities import inspect_pdf_capability
 from ._utils import PRT_FILE_RE, extract_prefix_from_filename, get_enterprise_scope, assert_task_access
 from ..services.observability import time_block
+from ..library_scope import PUBLIC_LIBRARY_KEY
 
 upload_bp = Blueprint("upload", __name__)
 logger = logging.getLogger(__name__)
@@ -68,6 +69,17 @@ def set_shared_state(tasks_dict, event_data_dict, event_locks_dict):
 
 
 _extract_prefix_from_filename = extract_prefix_from_filename
+
+
+def _request_retrieval_library_key() -> str:
+    """Resolve the RAG retrieval library key from new and legacy request fields."""
+    return (
+        request.form.get("retrieval_library_key")
+        or request.args.get("retrieval_library_key")
+        or request.form.get("library_key")
+        or request.args.get("library_key")
+        or PUBLIC_LIBRARY_KEY
+    )
 
 
 DRAWING_FILE_RE = re.compile(r'\.(pdf|png|jpg|jpeg|dxf|dwg)$', re.IGNORECASE)
@@ -569,7 +581,7 @@ def _resume_from_review(task_id):
         reviewed_text=reviewed_text,
         prefix_hint=task.get("prefix_hint", ""),
         source_descriptions=[{"description": reviewed_text}],
-        library_key=task.get("library_key") or "public",
+        library_key=task.get("retrieval_library_key") or task.get("library_key") or PUBLIC_LIBRARY_KEY,
     )
 
 
@@ -601,7 +613,7 @@ def _rerun_from_review(task_id):
             reviewed_text=reviewed_text,
             prefix_hint=task.get("prefix_hint"),
             source_descriptions=[{"description": reviewed_text}],
-            library_key=task.get("library_key"),
+            library_key=task.get("retrieval_library_key") or task.get("library_key"),
             force_llm=True,
         )
     except Exception as e:
@@ -710,7 +722,8 @@ def upload():
             "vision_failures": [],
             "keep_after_complete": True,
             "source_name": file.filename,
-            "library_key": request.form.get("library_key") or request.args.get("library_key") or "public",
+            "library_key": request.form.get("library_key") or request.args.get("library_key") or PUBLIC_LIBRARY_KEY,
+            "retrieval_library_key": _request_retrieval_library_key(),
             "enterprise_id": _ent_id,
             "_from_cache": True,
             **({"gltf_path": _dst_glb} if os.path.isfile(_dst_glb) else {}),
@@ -765,7 +778,7 @@ def upload():
                 reviewed_text=reviewed_text,
                 prefix_hint=prefix_hint,
                 source_descriptions=[{"description": reviewed_text}],
-                library_key=tasks[task_id]["library_key"],
+                library_key=tasks[task_id].get("retrieval_library_key") or tasks[task_id]["library_key"],
             )
 
         threading.Thread(target=_cached_review_worker, daemon=True).start()
@@ -793,7 +806,8 @@ def upload():
         "vision_failures": [],
         "keep_after_complete": True,
         "source_name": file.filename,
-        "library_key": request.form.get("library_key") or request.args.get("library_key") or "public",
+        "library_key": request.form.get("library_key") or request.args.get("library_key") or PUBLIC_LIBRARY_KEY,
+        "retrieval_library_key": _request_retrieval_library_key(),
         "enterprise_id": _ent_id,
     }
     insert_task(task_id=task_id, pdf_name=file.filename, prt_name=file.filename, output_dir=output_dir, prefix_hint=prefix_hint, library_key=tasks[task_id]["library_key"], source_kind="prt", enterprise_id=_ent_id)
@@ -980,7 +994,7 @@ def upload():
                 reviewed_text=reviewed_text,
                 prefix_hint=prefix_hint,
                 source_descriptions=[{"description": reviewed_text}],
-                library_key=task.get("library_key"),
+                library_key=task.get("retrieval_library_key") or task.get("library_key"),
             )
         except Exception as e:
             import traceback
@@ -1038,9 +1052,13 @@ def review_visual_features(task_id):
     task["review_text"] = review_text
     task["review_action"] = action
 
-    new_library_key = (payload.get("library_key") or "").strip()
-    if new_library_key:
-        task["library_key"] = new_library_key
+    new_retrieval_library_key = (
+        payload.get("retrieval_library_key")
+        or payload.get("library_key")
+        or ""
+    ).strip()
+    if new_retrieval_library_key:
+        task["retrieval_library_key"] = new_retrieval_library_key
 
     if action == "rerun":
         allowed = {"completed", "error", "processing", "awaiting_review"}
@@ -1231,7 +1249,8 @@ def upload_drawing():
         "vision_descriptions": None,
         "vision_failures": [],
         "keep_after_complete": True,
-        "library_key": request.form.get("library_key") or request.args.get("library_key") or "public",
+        "library_key": request.form.get("library_key") or request.args.get("library_key") or PUBLIC_LIBRARY_KEY,
+        "retrieval_library_key": _request_retrieval_library_key(),
         "enterprise_id": _ent_id_drawing,
     }
     insert_task(
@@ -1557,7 +1576,7 @@ def upload_drawing():
                 reviewed_text=reviewed_text,
                 prefix_hint=prefix_hint,
                 source_descriptions=[{"description": reviewed_text}],
-                library_key=task.get("library_key"),
+                library_key=task.get("retrieval_library_key") or task.get("library_key"),
             )
 
         except Exception as e:

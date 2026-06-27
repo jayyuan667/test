@@ -185,6 +185,75 @@ def test_zip_scan_image_outside_drawing_folder():
     print("PASS: ZIP scan — images at any folder depth land in drawing_image bucket")
 
 
+def test_zip_scan_ignores_macos_metadata_files():
+    """macOS __MACOSX / ._* metadata entries must not be treated as images."""
+    mod = _mod()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zip_path = os.path.join(tmpdir, "macos.zip")
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("new/drawing/Y1.png", "real png")
+            zf.writestr("__MACOSX/new/drawing/._Y1.png", "appledouble metadata")
+            zf.writestr("new/drawing/.DS_Store", "finder metadata")
+            zf.writestr("new/craft/Y1.pdf", "craft pdf")
+
+        extract_dir = os.path.join(tmpdir, "extract")
+        os.makedirs(extract_dir)
+        with zipfile.ZipFile(zip_path) as arc:
+            arc.extractall(extract_dir)
+
+        buckets = mod._scan_zip_dir(extract_dir)
+
+    image_names = [os.path.basename(path) for path in buckets["drawing_image"]]
+    assert image_names == ["Y1.png"], image_names
+    assert len(buckets["craft_pdf"]) == 1
+    print("PASS: ZIP scan — macOS metadata files ignored")
+
+
+def test_zip_build_record_writes_enterprise_id(monkeypatch, tmp_path):
+    """ZIP import records must inherit the importing user's enterprise_id."""
+    mod = _mod()
+    captured = {}
+
+    def fake_build_feature_report(*_args, **_kwargs):
+        return {"report_text": "【图号】Y1\n【材料】45钢", "pages": []}
+
+    def fake_build_draft(prefix, source_name, source_type, source_text, content_rows):
+        return {
+            "prefix": prefix,
+            "source_name": source_name,
+            "source_type": source_type,
+            "context": source_text,
+            "process_list": content_rows,
+        }
+
+    def fake_upsert_record(draft, replace, library_key):
+        captured["draft"] = dict(draft)
+        captured["replace"] = replace
+        captured["library_key"] = library_key
+
+    monkeypatch.setattr(mod, "KB_PREVIEW_FOLDER", str(tmp_path / "previews"))
+    monkeypatch.setattr(mod, "build_feature_report", fake_build_feature_report)
+    monkeypatch.setattr(mod.library_api, "_build_draft", fake_build_draft)
+    monkeypatch.setattr(mod.library_api, "_fetch_existing_record", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(mod.library_api, "_upsert_record", fake_upsert_record)
+    monkeypatch.setattr(mod, "write_feature_report_json", lambda *_args, **_kwargs: str(tmp_path / "report.json"))
+
+    item = mod._build_record_from_prefix(
+        "batch-1",
+        "Y1",
+        [{"content": "0010@下料", "rows": ["0010@下料"], "sheet_name": "Y1.pdf", "xlsx_name": "Y1.pdf"}],
+        [{"source_kind": "image", "text": "【图号】Y1", "source_path": str(tmp_path / "Y1.png"), "page_count": 1}],
+        "replace",
+        "my_db",
+        enterprise_id=6,
+    )
+
+    assert item["status"] == "imported"
+    assert captured["library_key"] == "my_db"
+    assert captured["draft"]["enterprise_id"] == 6
+    print("PASS: ZIP build record — enterprise_id propagated to library draft")
+
+
 def test_zip_scan_pdf_routing_unchanged():
     """Original rule: PDF in drawing/ → drawing_pdf, PDF elsewhere → craft_pdf."""
     mod = _mod()

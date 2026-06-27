@@ -75,25 +75,10 @@ export function WorkflowHUD({ progress, phaseHint, busy, completed, waiting }: P
   // ── Single tween drives BOTH bar width AND percentage state ──
   const tweenObj = useRef({ value: 0 })
   const prevTarget = useRef(0)
-  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const crawlRef = useRef<gsap.core.Tween | null>(null)
-  const isCrawlingRef = useRef(false)
-
   useEffect(() => {
     const bar = progressBarRef.current
     const gap = Math.abs(progress - prevTarget.current)
     prevTarget.current = progress
-
-    // Kill any active crawl — real progress arrived
-    if (crawlRef.current) {
-      crawlRef.current.kill()
-      crawlRef.current = null
-      isCrawlingRef.current = false
-    }
-    if (stallTimerRef.current) {
-      clearTimeout(stallTimerRef.current)
-      stallTimerRef.current = null
-    }
 
     const duration = Math.max(0.5, gap * 0.06)
 
@@ -105,20 +90,12 @@ export function WorkflowHUD({ progress, phaseHint, busy, completed, waiting }: P
       onUpdate() {
         const v = tweenObj.current.value
         if (bar) bar.style.width = `${Math.max(v, 2)}%`
-        // Show 1 decimal while crawling, integer otherwise
-        setDisplayPct(isCrawlingRef.current ? Math.round(v * 10) / 10 : Math.round(v))
-      },
-      onComplete() {
-        if (busyRef.current && !completedRef.current) {
-          stallTimerRef.current = setTimeout(() => startCrawl(), 1500)
-        }
+        setDisplayPct(Math.round(v))
       },
     })
 
     return () => {
       gsap.killTweensOf(tweenObj.current)
-      if (stallTimerRef.current) clearTimeout(stallTimerRef.current)
-      crawlRef.current?.kill()
     }
   }, [progress])
 
@@ -126,38 +103,6 @@ export function WorkflowHUD({ progress, phaseHint, busy, completed, waiting }: P
   const completedRef = useRef(completed)
   useEffect(() => { busyRef.current = busy }, [busy])
   useEffect(() => { completedRef.current = completed }, [completed])
-
-  const startCrawl = useCallback(() => {
-    if (crawlRef.current?.isActive()) return
-    if (!busyRef.current || completedRef.current) return
-    const current = tweenObj.current.value
-    const cap = Math.min(current + 3, 95)
-    if (current >= cap) return
-    isCrawlingRef.current = true
-    crawlRef.current = gsap.to(tweenObj.current, {
-      value: cap,
-      duration: 6,
-      ease: 'none',
-      onUpdate() {
-        const v = tweenObj.current.value
-        if (progressBarRef.current) progressBarRef.current.style.width = `${Math.max(v, 2)}%`
-        setDisplayPct(Math.round(v * 10) / 10)
-      },
-      onComplete() { isCrawlingRef.current = false },
-    })
-  }, [])
-
-  useEffect(() => {
-    if (!busy) {
-      crawlRef.current?.kill()
-      crawlRef.current = null
-      isCrawlingRef.current = false
-      if (stallTimerRef.current) {
-        clearTimeout(stallTimerRef.current)
-        stallTimerRef.current = null
-      }
-    }
-  }, [busy])
 
   const params = useBreathingParams(displayPct, busy, completed, waiting)
 
@@ -273,11 +218,11 @@ export function WorkflowHUD({ progress, phaseHint, busy, completed, waiting }: P
     const count = parseInt(match[1], 10)
     if (lastCountRef.current !== null && count !== lastCountRef.current && phaseRef.current) {
       if (reduceMotion) {
-        gsap.set(phaseRef.current, { scale: 1, color: '#334155' })
+        gsap.set(phaseRef.current, { scale: 1 })
       } else {
         gsap.fromTo(phaseRef.current,
-          { scale: 1.03, color: '#f97316' },
-          { scale: 1, color: '#334155', duration: 0.4, ease: 'back.out(1.7)' }
+          { scale: 1.03 },
+          { scale: 1, duration: 0.4, ease: 'back.out(1.7)' }
         )
       }
     }
@@ -311,8 +256,8 @@ export function WorkflowHUD({ progress, phaseHint, busy, completed, waiting }: P
 
   const handleCollapseToggle = useCallback(() => { setCollapsed(c => !c) }, [])
 
-  const statusColor = completed ? '#10b981' : busy ? '#f97316' : waiting ? '#f59e0b' : '#94a3b8'
-  const textColor = completed ? '#059669' : busy ? '#ea580c' : waiting ? '#d97706' : '#64748b'
+  const statusColor = completed ? '#10b981' : busy ? 'var(--accent-action)' : waiting ? '#f59e0b' : 'var(--text-muted)'
+  const textColor = completed ? '#059669' : busy ? 'var(--accent-action-strong)' : waiting ? '#d97706' : 'var(--text-secondary)'
   const dotShadowAlpha = busy
     ? Math.round(20 + (displayPct / 100) * 40).toString(16).padStart(2, '0')
     : waiting ? '30' : '20'
@@ -331,7 +276,7 @@ export function WorkflowHUD({ progress, phaseHint, busy, completed, waiting }: P
                 boxShadow: `0 0 ${6 + (displayPct / 100) * 10}px ${statusColor}${dotShadowAlpha}`,
               }}
             />
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">进度</span>
+            <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>进度</span>
           </div>
           <span
             className="text-2xl font-extrabold tabular-nums tracking-tight"
@@ -364,7 +309,7 @@ export function WorkflowHUD({ progress, phaseHint, busy, completed, waiting }: P
                 filter: 'blur(4px)',
               }}
             />
-            <div className="relative h-2 rounded-full overflow-hidden bg-slate-100 border border-slate-200">
+            <div className="relative h-2 rounded-full overflow-hidden border" style={{ background: 'var(--hud-track-bg)', borderColor: 'var(--hud-track-border)' }}>
               <div
                 ref={progressBarRef}
                 className="h-full rounded-full relative overflow-hidden"
@@ -394,9 +339,9 @@ export function WorkflowHUD({ progress, phaseHint, busy, completed, waiting }: P
           <div
             className="phase-hint-container flex items-start gap-2.5 px-4 py-3 rounded-xl text-[12px] font-mono leading-relaxed"
             style={{
-              background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-              border: '1px solid #e2e8f0',
-              color: '#334155',
+              background: 'var(--hud-phase-bg)',
+              border: '1px solid var(--hud-phase-border)',
+              color: 'var(--hud-phase-text)',
             }}
             aria-live="polite"
           >

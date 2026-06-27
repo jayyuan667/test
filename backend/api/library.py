@@ -7,6 +7,7 @@ import re
 import sqlite3
 import uuid
 import logging
+from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
@@ -31,6 +32,8 @@ from ..library_scope import (
     PUBLIC_LIBRARY_KEY,
     browse_unlock_status,
     initialize_library_storage,
+    is_public_scope_type,
+    is_public_library,
     list_scopes,
     resolve_scope,
 )
@@ -158,6 +161,12 @@ _VECTOR_TABLE_COLUMNS = (
     ("inspection_standards", "TEXT"),
     ("special_requirements", "TEXT DEFAULT ''"),
     ("vector_content", "TEXT DEFAULT ''"),
+    # retrieval self-check metadata (query-dependent diagnostic, not canonical similarity)
+    ("retrieval_check_status", "TEXT DEFAULT ''"),
+    ("retrieval_check_similarity", "REAL DEFAULT 0"),
+    ("retrieval_check_matched_prefix", "TEXT DEFAULT ''"),
+    ("retrieval_check_reason", "TEXT DEFAULT ''"),
+    ("retrieval_checked_at", "TEXT DEFAULT ''"),
 )
 
 
@@ -201,6 +210,16 @@ def _ensure_scope_columns(scope: dict):
         conn.commit()
     finally:
         conn.close()
+
+
+def _retrieval_check_payload(status, similarity, matched_prefix, reason, checked_at):
+    return {
+        "status": status or "",
+        "similarity": float(similarity or 0),
+        "matched_prefix": matched_prefix or "",
+        "reason": reason or "",
+        "checked_at": checked_at or "",
+    }
 
 
 _ensure_context_column()
@@ -382,7 +401,10 @@ def _fetch_existing_record(prefix: str, library_key: str = ""):
         SELECT id, prefix, vector, content, context, product_type, process_summary,
                key_features, materials, created_at, tech_requirement, real,
                source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls,
-               feature_report_text, feature_report_path, enterprise_id
+               feature_report_text, feature_report_path, enterprise_id,
+               retrieval_check_status, retrieval_check_similarity,
+               retrieval_check_matched_prefix, retrieval_check_reason,
+               retrieval_checked_at
         FROM {vector_table}
         WHERE UPPER(prefix) = ?
         """,
@@ -415,6 +437,11 @@ def _fetch_existing_record(prefix: str, library_key: str = ""):
         feature_report_text,
         feature_report_path,
         enterprise_id,
+        retrieval_check_status,
+        retrieval_check_similarity,
+        retrieval_check_matched_prefix,
+        retrieval_check_reason,
+        retrieval_checked_at,
     ) = row
 
     try:
@@ -445,6 +472,13 @@ def _fetch_existing_record(prefix: str, library_key: str = ""):
         "feature_report_path": feature_report_path or "",
         "feature_report_json": feature_report_json,
         "enterprise_id": enterprise_id,
+        "retrieval_check": _retrieval_check_payload(
+            retrieval_check_status,
+            retrieval_check_similarity,
+            retrieval_check_matched_prefix,
+            retrieval_check_reason,
+            retrieval_checked_at,
+        ),
     }
 
 
@@ -459,7 +493,10 @@ def _fetch_record_by_id(record_id: int, library_key: str = ""):
         SELECT id, prefix, content, context, product_type, process_summary,
                    key_features, materials, created_at, tech_requirement, real,
                    source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls,
-                   feature_report_text, feature_report_path, enterprise_id
+                   feature_report_text, feature_report_path, enterprise_id,
+                   retrieval_check_status, retrieval_check_similarity,
+                   retrieval_check_matched_prefix, retrieval_check_reason,
+                   retrieval_checked_at
             FROM {vector_table}
             WHERE id = ?
             """,
@@ -492,6 +529,11 @@ def _fetch_record_by_id(record_id: int, library_key: str = ""):
         feature_report_text,
         feature_report_path,
         enterprise_id,
+        retrieval_check_status,
+        retrieval_check_similarity,
+        retrieval_check_matched_prefix,
+        retrieval_check_reason,
+        retrieval_checked_at,
     ) = row
 
     try:
@@ -523,6 +565,13 @@ def _fetch_record_by_id(record_id: int, library_key: str = ""):
         "feature_report_path": feature_report_path or "",
         "feature_report_json": feature_report_json,
         "enterprise_id": enterprise_id,
+        "retrieval_check": _retrieval_check_payload(
+            retrieval_check_status,
+            retrieval_check_similarity,
+            retrieval_check_matched_prefix,
+            retrieval_check_reason,
+            retrieval_checked_at,
+        ),
     }
 
 
@@ -542,23 +591,16 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
     _ent_sql = ""
     _ent_params_pt = []
     if _is_super:
-        # Super admin: require explicit scope=all to see everything
-        _scope_param = request.args.get("scope", "")
+        # Super admin: optionally filter by enterprise_id
         _filter_ent = request.args.get("enterprise_id", type=int)
-        if _scope_param == "all":
-            pass  # no enterprise_id filter
-        elif _filter_ent is not None:
+        if _filter_ent is not None:
             where.append("enterprise_id = ?")
             params.append(_filter_ent)
             _ent_sql = "AND enterprise_id = ?"
             _ent_params_pt = [_filter_ent]
-        else:
-            # Default: return nothing unless explicitly requested
-            where.append("1 = 0")
-            _ent_sql = "AND 1 = 0"
     else:
         _scope_type_key = (scope or {}).get("scope_type", "")
-        if _scope_type_key == "public":
+        if is_public_scope_type(_scope_type_key):
             # Public scope: all records visible, no enterprise_id filter
             pass
         elif _ent_id is not None:
@@ -590,7 +632,10 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
             f"""
             SELECT id, prefix, product_type, process_summary, context, tech_requirement, created_at, content,
                    source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls,
-                   feature_report_text, feature_report_path
+                   feature_report_text, feature_report_path,
+                   retrieval_check_status, retrieval_check_similarity,
+                   retrieval_check_matched_prefix, retrieval_check_reason,
+                   retrieval_checked_at
             FROM {vector_table}
             WHERE {where_sql}
             ORDER BY id DESC
@@ -610,7 +655,28 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
 
     items = []
     for row in rows:
-        row_id, prefix, row_product_type, process_summary, context, tech_requirement, created_at, content, source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls, feature_report_text, feature_report_path = row
+        (
+            row_id,
+            prefix,
+            row_product_type,
+            process_summary,
+            context,
+            tech_requirement,
+            created_at,
+            content,
+            source_type,
+            source_task_id,
+            preview_task_id,
+            preview_total_pages,
+            preview_image_urls,
+            feature_report_text,
+            feature_report_path,
+            retrieval_check_status,
+            retrieval_check_similarity,
+            retrieval_check_matched_prefix,
+            retrieval_check_reason,
+            retrieval_checked_at,
+        ) = row
         try:
             process_list = json.loads(content) if content else []
         except Exception:
@@ -640,6 +706,13 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
                 "feature_report_text": feature_report_text or "",
                 "feature_report_path": feature_report_path or "",
                 "feature_report_json": _load_feature_report_payload(feature_report_path, feature_report_text),
+                "retrieval_check": _retrieval_check_payload(
+                    retrieval_check_status,
+                    retrieval_check_similarity,
+                    retrieval_check_matched_prefix,
+                    retrieval_check_reason,
+                    retrieval_checked_at,
+                ),
             }
         )
 
@@ -998,6 +1071,39 @@ def _build_retrieval_check(prefix: str, vector_text: str, library_key: str = "")
     }
 
 
+def _persist_retrieval_check(prefix: str, retrieval_check: dict, library_key: str = ""):
+    scope = _scope_from_key(library_key)
+    vector_table = scope["vector_table"]
+    _ensure_scope_columns(scope)
+
+    checked_at = datetime.now().isoformat(timespec="seconds")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            f"""
+            UPDATE {vector_table}
+            SET retrieval_check_status = ?,
+                retrieval_check_similarity = ?,
+                retrieval_check_matched_prefix = ?,
+                retrieval_check_reason = ?,
+                retrieval_checked_at = ?
+            WHERE UPPER(prefix) = ?
+            """,
+            (
+                str(retrieval_check.get("status") or ""),
+                float(retrieval_check.get("similarity") or 0),
+                str(retrieval_check.get("matched_prefix") or ""),
+                str(retrieval_check.get("reason") or ""),
+                checked_at,
+                str(prefix or "").strip().upper(),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
     scope = _scope_from_key(library_key)
     vector_table = scope["vector_table"]
@@ -1061,8 +1167,8 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
              source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls, feature_report_text, feature_report_path,
              blank_type, overall_length_min, overall_length_max, main_diameter_min, main_diameter_max,
              tolerance_levels, thread_specs, hole_specs, roughness,
-             heat_treatment, inspection_standards, special_requirements, vector_content)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             heat_treatment, inspection_standards, special_requirements, vector_content, enterprise_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 prefix,
@@ -1095,6 +1201,7 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
                 inspection_standards,
                 special_requirements,
                 vector_content,
+                draft.get("enterprise_id"),
             ),
         )
 
@@ -1172,10 +1279,10 @@ def library_scopes():
     if not _is_super:
         if _ent_id is not None:
             scopes = [s for s in scopes
-                      if s.get("scope_type") == "public"
+                      if is_public_scope_type(s.get("scope_type"))
                       or s.get("enterprise_id") == _ent_id]
         else:
-            scopes = [s for s in scopes if s.get("scope_type") == "public"]
+            scopes = [s for s in scopes if is_public_scope_type(s.get("scope_type"))]
     return jsonify(_json_safe({"items": scopes, **browse_unlock_status()}))
 
 
@@ -1292,6 +1399,7 @@ def commit_library_record():
         saved_meta["vector_text"],
         library_key=library_key,
     )
+    _persist_retrieval_check(saved_meta["prefix"], retrieval_check, library_key=library_key)
     logger.info(
         "[Library] commit finished prefix=%s replaced=%s retrieval_status=%s",
         draft.get("prefix"),

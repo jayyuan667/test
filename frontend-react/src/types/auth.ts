@@ -14,6 +14,14 @@ export interface User {
   }
 }
 
+export type UserRole = User['role']
+
+export const UNASSIGNED_ENTERPRISE_LABEL = '未分配企业'
+
+export function isUnassignedUser(user: Pick<User, 'role' | 'enterprise_id'> | null | undefined): boolean {
+  return user?.role === 'user' && user.enterprise_id == null
+}
+
 export interface Enterprise {
   id: number
   name: string

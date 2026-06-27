@@ -90,15 +90,13 @@ def set_tasks(tasks_dict):
 @result_bp.route("/result/<task_id>", methods=["GET"])
 @login_required
 def get_result(task_id):
+    ok, err = assert_task_access(task_id)
+    if not ok:
+        return err
+
     # 1. Check in-memory cache
     if task_id in tasks:
         task = tasks[task_id]
-        # ── Enterprise isolation check ──
-        ent_id, is_super = get_enterprise_scope()
-        if not is_super and ent_id is not None:
-            task_ent = task.get("enterprise_id")
-            if task_ent is not None and task_ent != ent_id:
-                return jsonify({"error": "Task not found"}), 404
         if task.get("status") != "completed":
             return jsonify(
                 _enrich_result_payload(task_id, {
@@ -123,12 +121,6 @@ def get_result(task_id):
         from backend.task_store import build_task_dict
     db_task = build_task_dict(task_id)
     if db_task:
-        # ── Enterprise isolation check (SQLite path) ──
-        ent_id, is_super = get_enterprise_scope()
-        if not is_super and ent_id is not None:
-            task_ent = db_task.get("enterprise_id")
-            if task_ent is not None and task_ent != ent_id:
-                return jsonify({"error": "Task not found"}), 404
         return jsonify(_enrich_result_payload(task_id, db_task.get("result", {}), db_task))
 
     # 3. Fall back to file-based result.json
@@ -182,13 +174,15 @@ def get_result(task_id):
 @result_bp.route("/result/<task_id>/asset/<path:filename>", methods=["GET"])
 @login_required
 def get_result_asset(task_id, filename):
-    ok, err = assert_task_access(task_id)
-    if not ok:
-        return err
     result_dir = _result_dir(task_id)
     file_path = os.path.join(result_dir, filename)
     if not os.path.isfile(file_path):
         return fail(ERR_TASK_NOT_FOUND, "Asset not found", 404)
+    # KB import previews don't have task records — skip task-level access check
+    if not task_id.startswith("kb_"):
+        ok, err = assert_task_access(task_id)
+        if not ok:
+            return err
     resp = send_from_directory(result_dir, filename)
     resp.headers["Cache-Control"] = "public, max-age=3600"
     ext = os.path.splitext(filename)[1].lower()

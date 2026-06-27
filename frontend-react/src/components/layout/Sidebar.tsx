@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import type { PageId } from '../../types'
+import { isUnassignedUser, type User } from '../../types/auth'
 
 interface NavItem {
   id: PageId
@@ -24,11 +25,27 @@ interface Props {
   collapsed: boolean
   onToggleCollapse: () => void
   disabled?: boolean
-  userRole?: string
+  userRole?: User['role']
+  userEnterpriseId?: User['enterprise_id']
 }
 
-export function Sidebar({ active, onNavigate, collapsed, onToggleCollapse, disabled, userRole }: Props) {
+export function Sidebar({ active, onNavigate, collapsed, onToggleCollapse, disabled, userRole, userEnterpriseId }: Props) {
   const [hovered, setHovered] = useState<string | null>(null)
+  const isUnassigned = isUnassignedUser(userRole ? { role: userRole, enterprise_id: userEnterpriseId ?? null } : undefined)
+  const visibleItems = NAV_ITEMS
+    .map(item => (
+      item.id === 'admin'
+        ? {
+            ...item,
+            sub: userRole === 'super_admin' ? '平台治理与配额总览' : '企业成员与授权管理',
+          }
+        : item
+    ))
+    .filter(item => {
+      if (item.roles && !item.roles.includes(userRole || '')) return false
+      if (isUnassigned && item.id !== 'profile') return false
+      return true
+    })
 
   return (
     <aside
@@ -40,15 +57,15 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapse, disab
     >
       {/* ── Background layers ── */}
       <div className="absolute inset-0" style={{
-        background: 'linear-gradient(175deg, #0f1d35 0%, #0b1526 40%, #081220 100%)',
+        background: 'var(--sidebar-bg)',
       }} />
       {/* Radial glow top-left */}
       <div className="absolute inset-0" style={{
-        background: 'radial-gradient(ellipse 60% 50% at 15% 5%, rgba(59, 130, 246, 0.12) 0%, transparent 70%)',
+        background: 'var(--sidebar-glow-top)',
       }} />
       {/* Radial glow bottom-right */}
       <div className="absolute inset-0" style={{
-        background: 'radial-gradient(ellipse 50% 40% at 85% 90%, rgba(249, 115, 22, 0.06) 0%, transparent 70%)',
+        background: 'var(--sidebar-glow-bottom)',
       }} />
       {/* Noise texture overlay */}
       <div className="absolute inset-0 opacity-[0.03]" style={{
@@ -58,31 +75,20 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapse, disab
       {/* ── Content ── */}
       <div className="relative z-10 flex flex-col h-full">
         {/* Brand */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-white/[0.06]">
-          <div
-            className="w-10 h-10 rounded-xl shrink-0 relative overflow-hidden"
-            style={{
-              background: 'linear-gradient(135deg, #f97316 0%, #ea580c 50%, #c2410c 100%)',
-              boxShadow: '0 4px 12px rgba(249, 115, 22, 0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
-            }}
-          >
-            <div className="absolute inset-0" style={{
-              background: 'radial-gradient(circle at 30% 25%, rgba(255,255,255,0.25) 0%, transparent 50%)',
-            }} />
+        <div className="flex items-center gap-3 px-5 py-5 border-b" style={{ borderColor: 'var(--sidebar-border)' }}>
+          <div className="w-12 h-8 shrink-0 relative overflow-hidden rounded-md bg-white">
+            <img src="/dica-logo.png" alt="DICA" className="w-full h-full object-contain" />
           </div>
           <div className="overflow-hidden" style={{ opacity: collapsed ? 0 : 1, transition: 'opacity 0.2s ease' }}>
-            <div className="text-[15px] font-bold text-white tracking-wide leading-tight">二维工艺系统</div>
-            <div className="text-[11px] text-white/40 mt-0.5 font-medium tracking-wider uppercase">2D Process Intelligence</div>
+            <div className="text-[15px] font-bold tracking-wide leading-tight" style={{ color: 'var(--sidebar-text-primary)' }}>DICA智能工艺系统</div>
+            <div className="text-[11px] mt-0.5 font-medium tracking-wider uppercase" style={{ color: 'var(--sidebar-text-muted)' }}>DICA</div>
           </div>
         </div>
 
         {/* Nav */}
         <nav className="flex flex-col gap-1 px-3 pt-5 flex-1">
-          <div className="px-2 mb-3 text-[10px] font-bold text-white/25 uppercase tracking-[0.12em] overflow-hidden" style={{ opacity: collapsed ? 0 : 1, maxHeight: collapsed ? 0 : '1.5em', transition: 'opacity 0.2s ease, max-height 0.2s ease' }}>导航</div>
-          {NAV_ITEMS.map(item => {
-            // Role-based filtering: only show if item has no roles restriction, or user's role matches
-            if (item.roles && !item.roles.includes(userRole || '')) return null
-
+          <div className="px-2 mb-3 text-[10px] font-bold uppercase tracking-[0.12em] overflow-hidden" style={{ color: 'var(--sidebar-text-faint)', opacity: collapsed ? 0 : 1, maxHeight: collapsed ? 0 : '1.5em', transition: 'opacity 0.2s ease, max-height 0.2s ease' }}>导航</div>
+          {visibleItems.map(item => {
             const isActive = active === item.id
             const isHovered = hovered === item.id
             const isDisabled = disabled && !isActive
@@ -96,22 +102,30 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapse, disab
                 className={`
                   group relative flex items-center gap-3 rounded-xl cursor-pointer
                   border transition-all duration-200 ease-out text-left
-                  ${isActive
-                    ? 'text-white border-white/[0.08]'
-                    : isDisabled
-                      ? 'text-white/20 border-transparent cursor-not-allowed'
-                      : 'text-white/50 border-transparent hover:text-white/80 hover:border-white/[0.05]'}
+                  ${isDisabled ? 'cursor-not-allowed' : ''}
                 `}
                 style={{
                   padding: collapsed ? '12px 0' : '11px 14px',
                   justifyContent: collapsed ? 'center' : undefined,
-                  background: isActive
-                    ? 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(234, 88, 12, 0.08) 100%)'
+                  color: isActive
+                    ? 'var(--sidebar-text-primary)'
+                    : isDisabled
+                      ? 'var(--sidebar-text-disabled)'
+                      : isHovered
+                        ? 'var(--sidebar-text-hover)'
+                        : 'var(--sidebar-text-secondary)',
+                  borderColor: isActive
+                    ? 'var(--sidebar-active-border)'
                     : isHovered
-                      ? 'rgba(255, 255, 255, 0.04)'
+                      ? 'var(--sidebar-hover-border)'
+                      : 'transparent',
+                  background: isActive
+                    ? 'var(--sidebar-active-bg)'
+                    : isHovered
+                      ? 'var(--sidebar-hover-bg)'
                       : 'transparent',
                   boxShadow: isActive
-                    ? 'inset 0 1px 0 rgba(255,255,255,0.05), 0 2px 8px rgba(249, 115, 22, 0.08)'
+                    ? 'var(--sidebar-active-shadow)'
                     : 'none',
                 }}
               >
@@ -119,7 +133,7 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapse, disab
                 {isActive && (
                   <span
                     className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
-                    style={{ background: 'linear-gradient(180deg, #fb923c 0%, #f97316 100%)' }}
+                    style={{ background: 'var(--accent-action-gradient-vertical)' }}
                   />
                 )}
 
@@ -128,15 +142,15 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapse, disab
                   className={`
                     inline-flex items-center justify-center text-sm rounded-lg shrink-0
                     transition-all duration-200
-                    ${isActive ? 'text-white' : 'text-white/40 group-hover:text-white/60'}
                   `}
                   style={{
                     width: collapsed ? 36 : 30,
                     height: collapsed ? 36 : 30,
+                    color: isActive ? 'var(--sidebar-icon-active)' : 'var(--sidebar-icon-default)',
                     background: isActive
-                      ? 'rgba(249, 115, 22, 0.2)'
-                      : 'rgba(255, 255, 255, 0.04)',
-                    border: `1px solid ${isActive ? 'rgba(249, 115, 22, 0.2)' : 'rgba(255, 255, 255, 0.04)'}`,
+                      ? 'var(--sidebar-icon-active-bg)'
+                      : 'var(--sidebar-icon-bg)',
+                    border: `1px solid ${isActive ? 'var(--sidebar-icon-active-border)' : 'var(--sidebar-icon-border)'}`,
                   }}
                 >
                   {item.icon}
@@ -147,7 +161,7 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapse, disab
                   <div className="text-[13px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis leading-tight">
                     {item.title}
                   </div>
-                  <div className={`text-[11px] mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis ${isActive ? 'text-white/50' : 'text-white/25'}`}>
+                  <div className="text-[11px] mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: isActive ? 'var(--sidebar-text-muted)' : 'var(--sidebar-text-faint)' }}>
                     {item.sub}
                   </div>
                 </span>
@@ -160,7 +174,8 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapse, disab
         {userRole && (
           <div className="px-3 pb-2">
             <button onClick={() => onNavigate('login')}
-              className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[11px] font-medium text-white/25 hover:text-red-400 hover:bg-white/[0.04] transition-all duration-200 border border-transparent hover:border-white/[0.05]">
+              className="sidebar-utility-button w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[11px] font-medium transition-all duration-200 border border-transparent"
+              style={{ color: 'var(--sidebar-text-faint)' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                 <polyline points="16 17 21 12 16 7" />
@@ -172,11 +187,12 @@ export function Sidebar({ active, onNavigate, collapsed, onToggleCollapse, disab
         )}
 
         {/* Footer */}
-        <div className="px-3 pb-4 border-t border-white/[0.06] pt-3">
+        <div className="px-3 pb-4 border-t pt-3" style={{ borderColor: 'var(--sidebar-border)' }}>
           <button
             onClick={onToggleCollapse}
             aria-label={collapsed ? '展开侧栏' : '折叠侧栏'}
-            className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[11px] font-medium text-white/30 hover:text-white/50 hover:bg-white/[0.04] transition-all duration-200 border border-transparent hover:border-white/[0.05]"
+            className="sidebar-utility-button w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[11px] font-medium transition-all duration-200 border border-transparent"
+            style={{ color: 'var(--sidebar-text-secondary)' }}
           >
             <span className="text-sm" aria-hidden="true">{collapsed ? '→' : '←'}</span>
             {!collapsed && <span>折叠侧栏</span>}

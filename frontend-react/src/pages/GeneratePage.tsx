@@ -14,6 +14,17 @@ import gsap from 'gsap'
 
 type ActiveTab = 'review' | 'annotation' | 'process'
 type WorkflowStage = 'idle' | 'analysis' | 'annotation' | 'review' | 'process' | 'completed'
+type FeatureProgressMode = 'normal' | 'cache'
+
+const PROGRESS = {
+  yoloDone: 30,
+  featureDone: 70,
+  processHold: 97,
+  featureNormalMs: 120000,
+  featureSlowNoticeMs: 110000,
+  featureCacheMs: 10000,
+  processMs: 30000,
+}
 
 export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (msg: string) => void; onSuccess?: (msg: string) => void; onBusyChange?: (busy: boolean) => void }) {
   const { user } = useAuth()
@@ -34,15 +45,154 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
   const activeTaskIdRef = useRef<string | null>(null)  // 防止旧 SSE 事件串台
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
+  const progressTimerRef = useRef<number | null>(null)
+  const progressRunRef = useRef(0)
+  const progressValueRef = useRef(0)
+  const featureProgressRef = useRef<{ mode: FeatureProgressMode; startedAt: number } | null>(null)
   // runToken increments on each new run (upload / confirm / rerun / reset)
   // so ProcessPanel can reset internal state even when taskId stays the same
   const [runToken, setRunToken] = useState(0)
+
+  const clearProgressPlan = useCallback(() => {
+    if (progressTimerRef.current != null) {
+      window.clearInterval(progressTimerRef.current)
+      progressTimerRef.current = null
+    }
+  }, [])
+
+  const setPlannedProgress = useCallback((next: number | ((previous: number) => number)) => {
+    setProgress(prev => {
+      const raw = typeof next === 'function' ? next(progressValueRef.current || prev) : next
+      const clamped = Math.max(0, Math.min(100, raw))
+      progressValueRef.current = clamped
+      return clamped
+    })
+  }, [])
+
+  const animateProgressTo = useCallback((target: number, durationMs: number, runId = progressRunRef.current) => {
+    clearProgressPlan()
+    const start = progressValueRef.current
+    const startedAt = performance.now()
+    const tick = () => {
+      if (runId !== progressRunRef.current) return
+      const ratio = durationMs <= 0 ? 1 : Math.min(1, (performance.now() - startedAt) / durationMs)
+      setPlannedProgress(start + (target - start) * ratio)
+      if (ratio >= 1) clearProgressPlan()
+    }
+    tick()
+    progressTimerRef.current = window.setInterval(tick, 250)
+  }, [clearProgressPlan, setPlannedProgress])
+
+  const resetProgressPlan = useCallback((initial = 0) => {
+    progressRunRef.current += 1
+    featureProgressRef.current = null
+    clearProgressPlan()
+    setPlannedProgress(initial)
+  }, [clearProgressPlan, setPlannedProgress])
+
+  const holdYoloReviewProgress = useCallback(() => {
+    featureProgressRef.current = null
+    clearProgressPlan()
+    setPlannedProgress(PROGRESS.yoloDone)
+  }, [clearProgressPlan, setPlannedProgress])
+
+  const startFeatureProgress = useCallback((mode: FeatureProgressMode) => {
+    const runId = progressRunRef.current
+    const startedAt = performance.now()
+    const duration = mode === 'cache' ? PROGRESS.featureCacheMs : PROGRESS.featureNormalMs
+    featureProgressRef.current = { mode, startedAt }
+    clearProgressPlan()
+    setPlannedProgress(prev => Math.max(prev, PROGRESS.yoloDone))
+    setPhaseHint(mode === 'cache'
+      ? '命中特征缓存，正在恢复特征报告...'
+      : '正在提取图纸特征，请耐心等待...')
+
+    const tick = () => {
+      if (runId !== progressRunRef.current) return
+      const elapsed = performance.now() - startedAt
+      if (mode === 'normal' && elapsed >= PROGRESS.featureSlowNoticeMs) {
+        setPhaseHint('特征提取已接近完成，请耐心等待')
+        return
+      }
+      const ratio = Math.min(1, elapsed / duration)
+      const nextProgress = PROGRESS.yoloDone + (PROGRESS.featureDone - PROGRESS.yoloDone) * ratio
+      setPlannedProgress(prev => Math.max(prev, nextProgress))
+      if (ratio >= 1) clearProgressPlan()
+    }
+
+    tick()
+    progressTimerRef.current = window.setInterval(tick, 500)
+  }, [clearProgressPlan, setPlannedProgress])
+
+  const finishFeatureProgress = useCallback((after: () => void) => {
+    const feature = featureProgressRef.current
+    const elapsed = feature ? performance.now() - feature.startedAt : 0
+    let duration = 2000
+    if (feature?.mode === 'cache') {
+      duration = Math.max(1000, PROGRESS.featureCacheMs - elapsed)
+    } else if (feature?.mode === 'normal' && elapsed >= PROGRESS.featureSlowNoticeMs) {
+      duration = 1000
+    }
+    const runId = progressRunRef.current
+    animateProgressTo(PROGRESS.featureDone, duration, runId)
+    window.setTimeout(() => {
+      if (runId !== progressRunRef.current) return
+      clearProgressPlan()
+      setPlannedProgress(PROGRESS.featureDone)
+      featureProgressRef.current = null
+      after()
+    }, duration)
+  }, [animateProgressTo, clearProgressPlan, setPlannedProgress])
+
+  const startProcessProgress = useCallback(() => {
+    const runId = progressRunRef.current
+    const startedAt = performance.now()
+    clearProgressPlan()
+    setPlannedProgress(prev => Math.max(prev, PROGRESS.featureDone))
+    setPhaseHint('正在生成工艺规程...')
+
+    const tick = () => {
+      if (runId !== progressRunRef.current) return
+      const ratio = Math.min(1, (performance.now() - startedAt) / PROGRESS.processMs)
+      setPlannedProgress(PROGRESS.featureDone + (PROGRESS.processHold - PROGRESS.featureDone) * ratio)
+      if (ratio >= 1) {
+        setPhaseHint('马上生成完成，请耐心等待')
+        clearProgressPlan()
+      }
+    }
+
+    tick()
+    progressTimerRef.current = window.setInterval(tick, 500)
+  }, [clearProgressPlan, setPlannedProgress])
+
+  const finishProcessProgress = useCallback((durationMs = 1000) => {
+    animateProgressTo(100, durationMs)
+  }, [animateProgressTo])
+
+  useEffect(() => () => clearProgressPlan(), [clearProgressPlan])
 
   // Shared SSE connection helper — used by initial upload, confirm, and rerun flows
   const connectStream = useCallback((tid: string) => {
     esRef.current?.close()
     esRef.current = connectSSE(tid, {
-      onStepStart(data) { setPhaseHint(String(data.message || data.step_name || '处理中...')) },
+      onStepStart(data) {
+        const message = String(data.message || data.step_name || '处理中...')
+        const stepName = String(data.step_name || '')
+        const alreadyGenerating =
+          processSubmissionLockedRef.current ||
+          workflowStageRef.current === 'process' ||
+          workflowStageRef.current === 'completed'
+        if (stepName.includes('YOLO')) {
+          if (alreadyGenerating) return
+          animateProgressTo(PROGRESS.yoloDone, 1800)
+          setPhaseHint(message)
+        } else if (stepName.includes('特征提取') || message.includes('特征')) {
+          if (alreadyGenerating) return
+          startFeatureProgress(message.includes('缓存命中') ? 'cache' : 'normal')
+        } else {
+          setPhaseHint(message)
+        }
+      },
       onStepComplete(data) { setPhaseHint(String(data.message || '步骤完成')) },
       onLog(data) { setPhaseHint(String(data.message || '')) },
       onReviewRequired(data) {
@@ -51,15 +201,16 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
         if (processSubmissionLockedRef.current) return
         if (workflowStageRef.current === 'process' || workflowStageRef.current === 'completed') return
         const text = String(data.content || data.review_text || data.raw_content || '')
-        workflowStageRef.current = 'review'
-        setReviewText(text)
-        setReviewFeedback(undefined)
-        setStatus('awaiting_review')
-        setProgress(50)
-        setPhaseHint('请审阅特征报告')
-        setActiveTab('review')
         const urls = (data.preview_image_urls as string[]) || []
-        if (urls.length) setPreviewUrls(urls)
+        finishFeatureProgress(() => {
+          workflowStageRef.current = 'review'
+          setReviewText(text)
+          setReviewFeedback(undefined)
+          setStatus('awaiting_review')
+          setPhaseHint('请审阅特征报告')
+          setActiveTab('review')
+          if (urls.length) setPreviewUrls(urls)
+        })
       },
       onProcessStream(data) {
         setStreamingChunks(prev => prev + String(data.chunk || ''))
@@ -75,7 +226,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
         setAnnotateSummary((data.summary as Record<string, number>) || {})
         setAnnotateVisited(false)
         setStatus('awaiting_annotation')
-        setProgress(35)
+        holdYoloReviewProgress()
         setPhaseHint('等待人工补全标注')
         setActiveTab('annotation')
         // Use preview URLs from the event (backend includes them)
@@ -92,7 +243,8 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       async onComplete() {
         processSubmissionLockedRef.current = true  // 防止完成后重复触发生成
         workflowStageRef.current = 'completed'
-        setProgress(prev => Math.max(prev, 90))
+        clearProgressPlan()
+        setPlannedProgress(prev => Math.max(prev, PROGRESS.processHold))
         setPhaseHint('渲染工艺表格...')
         try {
           const res = await getResult(tid)
@@ -103,16 +255,17 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
           }
         } catch { /* already set */ }
         setStatus('completed')
-        setProgress(100)
+        finishProcessProgress(1000)
       },
       onError(data) {
         const msg = String(data.message || data.error || '处理失败')
+        resetProgressPlan(progressValueRef.current)
         setStatus('error')
         setPhaseHint(`错误：${msg}`)
         onErrorRef.current(msg)
       },
     })
-  }, [])
+  }, [animateProgressTo, clearProgressPlan, finishFeatureProgress, finishProcessProgress, holdYoloReviewProgress, resetProgressPlan, setPlannedProgress, startFeatureProgress])
   const [showExport, setShowExport] = useState(false)
   const [showFullscreen, setShowFullscreen] = useState(false)
   const [fullscreenIndex, setFullscreenIndex] = useState(0)
@@ -231,7 +384,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
         workflowStageRef.current = 'completed'
         setResult(res as unknown as TaskResult)
         setStatus('completed')
-        setProgress(100)
+        finishProcessProgress(1000)
         const rawUrls = (res as Record<string, unknown>).preview_image_urls as string[] || []
         if (rawUrls.length) {
           setPreviewUrls(rawUrls.map(u => u.startsWith('/api') ? u : getAssetUrl(taskId, u)))
@@ -247,7 +400,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [taskId, status])
+  }, [finishProcessProgress, taskId, status])
 
   // GSAP: Tab content transition
   useEffect(() => {
@@ -383,19 +536,11 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
     try {
       workflowStageRef.current = 'analysis'
       setStatus('processing')
-      setProgress(45)
+      holdYoloReviewProgress()
       setPhaseHint('等待特征审阅结果...')
       setReviewFeedback({ message: '等待特征审阅结果，后端正在继续视觉分析。', tone: 'info' })
       setActiveTab('review')
-      // VLM 可能耗时较长（1-10 分钟），进度条做慢速心跳避免用户以为卡死
-      const vlmTicker = setInterval(() => {
-        setProgress(prev => Math.min(prev + 1, 49))
-      }, 8000)
-      try {
-        await finalizeAnnotation(taskId)
-      } finally {
-        clearInterval(vlmTicker)
-      }
+      await finalizeAnnotation(taskId)
     } catch (err) {
       workflowStageRef.current = 'annotation'
       const msg = err instanceof Error ? err.message : '标注确认失败'
@@ -404,7 +549,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setReviewFeedback(undefined)
       setActiveTab('annotation')
     }
-  }, [taskId, onError])
+  }, [holdYoloReviewProgress, taskId, onError])
 
   const handleBatchSelected = useCallback(async (files: File[]) => {
     try {
@@ -415,7 +560,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setStreamingChunks('')
       setPreviewUrls([])
       setEditedRows([])
-      setProgress(0)
+      resetProgressPlan(0)
       setPhaseHint(`正在上传 ${files.length} 个文件...`)
       setStatus('processing')
       setFileName(files.map(f => f.name).join(', '))
@@ -437,7 +582,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setPhaseHint(`上传失败：${msg}`)
       onErrorRef.current(msg)
     }
-  }, [connectStream, featureCache, retrievalKey])
+  }, [connectStream, featureCache, resetProgressPlan, retrievalKey])
 
   const handleFileSelected = useCallback(async (file: File) => {
     try {
@@ -448,7 +593,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setStreamingChunks('')
       setPreviewUrls([])
       setEditedRows([])
-      setProgress(0)
+      resetProgressPlan(0)
       setPhaseHint('正在上传文件...')
       setStatus('processing')
       setFileName(file.name)
@@ -472,7 +617,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setPhaseHint(`上传失败：${msg}`)
       onErrorRef.current(msg)
     }
-  }, [connectStream, featureCache, retrievalKey])
+  }, [connectStream, featureCache, resetProgressPlan, retrievalKey])
 
   const handleConfirmReview = useCallback(async () => {
     if (!taskId) {
@@ -488,20 +633,21 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
     workflowStageRef.current = 'process'
     esRef.current?.close()
     setStatus('processing')
-    setProgress(60)
-    setPhaseHint('特征已确认，等待后端响应...')
+    startProcessProgress()
     setResult(null)
     setStreamingChunks('')
     setActiveTab('process')
     setRunToken(t => t + 1)
 
     try {
-      await submitReview(taskId, { review_text: reviewText, action: 'continue', library_key: retrievalKey })
+      await submitReview(taskId, { review_text: reviewText, action: 'continue', retrieval_library_key: retrievalKey })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '审阅提交失败'
       if (/^HTTP [45]\d\d/.test(msg)) {
         processSubmissionLockedRef.current = false
         workflowStageRef.current = 'review'
+        clearProgressPlan()
+        setPlannedProgress(PROGRESS.featureDone)
         setStatus('awaiting_review')
         setActiveTab('review')
         setReviewFeedback({ message: msg, tone: 'danger' })
@@ -521,7 +667,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setPhaseHint(msg)
       onErrorRef.current(msg)
     }
-  }, [taskId, reviewText, retrievalKey, connectStream])
+  }, [clearProgressPlan, connectStream, retrievalKey, reviewText, setPlannedProgress, startProcessProgress, taskId])
 
   const handleRerun = useCallback(async () => {
     if (!taskId) {
@@ -534,8 +680,8 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       workflowStageRef.current = 'analysis'
       esRef.current?.close()  // 关闭旧 SSE
       setStatus('processing')
-      setProgress(40)
-      setPhaseHint('重新生成中，正在特征审阅...')
+      resetProgressPlan(PROGRESS.yoloDone)
+      setPhaseHint('重新生成中，正在特征提取...')
       setResult(null)
       setStreamingChunks('')
       setActiveTab('review')
@@ -550,7 +696,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
       setReviewFeedback({ message: msg, tone: 'danger' })
       onErrorRef.current(msg)
     }
-  }, [taskId, reviewText, connectStream])
+  }, [connectStream, resetProgressPlan, reviewText, taskId])
 
   const handleReviewTextChange = useCallback((text: string) => {
     setReviewText(text)
@@ -564,22 +710,16 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
     const active = (info.currentChar < info.currentTotal) ? 1 : 0
     const total = info.displayed + info.queued + active
 
-    // Throttle progress update to ~200ms to avoid excessive re-renders
     const now = Date.now()
-    if (total > 0 && now - progressThrottleRef.current > 200) {
-      progressThrottleRef.current = now
-      const pct = info.displayed / total
-      const next = Math.min(95, 60 + Math.round(pct * 35))
-      setProgress(prev => Math.max(prev, next))
-    }
-
-    // Phase hint with live count
     if (info.queued > 0 || info.currentChar < info.currentTotal) {
-      setPhaseHint(`正在生成工艺规程... 已完成 ${info.displayed} 道工序，共 ${total} 道`)
+      if (now - progressThrottleRef.current > 200) {
+        progressThrottleRef.current = now
+        setPhaseHint(`正在生成工艺规程... 已完成 ${info.displayed} 道工序，共 ${total} 道`)
+      }
     } else if (info.displayed > 0) {
       setPhaseHint(`工艺内容生成完成，共 ${info.displayed} 道工序`)
     }
-  }, [])
+  }, [resetProgressPlan])
 
   const handleReset = useCallback(() => {
     processSubmissionLockedRef.current = false
@@ -589,7 +729,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
     setTaskId(null)
     activeTaskIdRef.current = null
     setStatus('idle')
-    setProgress(0)
+    resetProgressPlan(0)
     setPhaseHint('等待文件进入解析流程')
     setReviewText('')
     setStreamingChunks('')
@@ -810,7 +950,7 @@ export function GeneratePage({ onError, onSuccess, onBusyChange }: { onError: (m
                     streamingChunks={streamingChunks}
                     reviewText={reviewText}
                     onTypewriterComplete={(rowCount) => {
-                      setProgress(100)
+                      finishProcessProgress(1000)
                       setPhaseHint(`工艺生成完成，共 ${rowCount} 道工序`)
                     }}
                     onTypewriterProgress={handleTypewriterProgress}

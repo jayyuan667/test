@@ -1,6 +1,6 @@
 # 管理员操作清单
 
-> 服务器 liu4th，账号 caojiayuan。完成后系统即可通过 gongyi.neusymlab.cn 公网访问。
+> 服务器 liu4th，账号 caojiayuan。完成后系统即可通过 gongyi.neusym.cn 公网访问。
 
 ---
 
@@ -17,7 +17,7 @@ sudo systemctl reload nginx
 
 验证：
 ```bash
-curl -H "Host: gongyi.neusymlab.cn" http://127.0.0.1/api/health
+curl -H "Host: gongyi.neusym.cn" http://127.0.0.1/api/health
 # 应返回 {"status":"ok"}
 ```
 
@@ -76,7 +76,7 @@ sudo systemctl start smart-process
 
 ```bash
 # 从公网访问
-curl -f http://gongyi.neusymlab.cn/api/health
+curl -f http://gongyi.neusym.cn/api/health
 
 # 检查服务状态
 sudo systemctl status smart-process

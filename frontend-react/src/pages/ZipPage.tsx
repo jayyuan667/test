@@ -22,6 +22,43 @@ interface LibraryTarget {
   key: string
 }
 
+const ZIP_IMPORT_SECONDS_PER_FILE = 120
+const ZIP_PROGRESS_INITIAL = 4
+const ZIP_PROGRESS_CAP = 97
+const ZIP_PROGRESS_TICK_MS = 3000
+const ZIP_CACHE_COMPLETION_MS = 15000
+const ZIP_NORMAL_COMPLETION_MS = 1800
+
+function formatProgressPercent(value: number): string {
+  if (value >= 99.95) return '100'
+  return value.toFixed(1)
+}
+
+async function countZipEntries(file: File): Promise<number | null> {
+  const eocdMinSize = 22
+  const maxCommentSize = 0xffff
+  if (file.size < eocdMinSize) return null
+
+  const tailStart = Math.max(0, file.size - eocdMinSize - maxCommentSize)
+  const tail = await file.slice(tailStart).arrayBuffer()
+  const bytes = new Uint8Array(tail)
+  const view = new DataView(tail)
+
+  for (let offset = bytes.length - eocdMinSize; offset >= 0; offset -= 1) {
+    if (
+      bytes[offset] === 0x50 &&
+      bytes[offset + 1] === 0x4b &&
+      bytes[offset + 2] === 0x05 &&
+      bytes[offset + 3] === 0x06
+    ) {
+      const totalEntries = view.getUint16(offset + 10, true)
+      return totalEntries > 0 && totalEntries < 0xffff ? totalEntries : null
+    }
+  }
+
+  return null
+}
+
 export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => void }) {
   const { user } = useAuth()
   const [scopes, setScopes] = useState<LibraryScope[]>([])
@@ -39,12 +76,17 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
   }, [busy, onBusyChange])
   const [report, setReport] = useState<ZipImportReport | null>(null)
   const [phaseText, setPhaseText] = useState('等待上传工艺包')
+  const [progressHint, setProgressHint] = useState('')
   const [percent, setPercent] = useState(0)
   const [matchedPage, setMatchedPage] = useState(1)
   const [unmatchedPage, setUnmatchedPage] = useState(1)
   const [dragOver, setDragOver] = useState(false)
   const dropRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const uploadRunIdRef = useRef(0)
+  const progressTimerRef = useRef<number | null>(null)
+  const completionTimerRef = useRef<number | null>(null)
+  const progressPercentRef = useRef(0)
 
   // Refs for GSAP animations
   const heroRef = useRef<HTMLDivElement>(null)
@@ -53,6 +95,89 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
   const resultRef = useRef<HTMLDivElement>(null)
   const matchCardsRef = useRef<(HTMLDivElement | null)[]>([])
   const reduceMotion = usePrefersReducedMotion()
+
+  const clearProgressTimers = useCallback(() => {
+    if (progressTimerRef.current != null) {
+      window.clearInterval(progressTimerRef.current)
+      progressTimerRef.current = null
+    }
+    if (completionTimerRef.current != null) {
+      window.clearInterval(completionTimerRef.current)
+      completionTimerRef.current = null
+    }
+  }, [])
+
+  const setProgressValue = useCallback((next: number) => {
+    const clamped = Math.max(0, Math.min(100, next))
+    progressPercentRef.current = clamped
+    setPercent(clamped)
+  }, [])
+
+  useEffect(() => clearProgressTimers, [clearProgressTimers])
+
+  const animateProgressTo = useCallback((target: number, durationMs: number, runId: number) => {
+    return new Promise<void>(resolve => {
+      if (completionTimerRef.current != null) {
+        window.clearInterval(completionTimerRef.current)
+        completionTimerRef.current = null
+      }
+
+      const start = progressPercentRef.current
+      const startedAt = performance.now()
+      const frameMs = reduceMotion ? ZIP_PROGRESS_TICK_MS : 500
+
+      const tick = () => {
+        if (uploadRunIdRef.current !== runId) {
+          if (completionTimerRef.current != null) window.clearInterval(completionTimerRef.current)
+          completionTimerRef.current = null
+          resolve()
+          return
+        }
+        const elapsed = performance.now() - startedAt
+        const ratio = durationMs <= 0 ? 1 : Math.min(1, elapsed / durationMs)
+        setProgressValue(start + (target - start) * ratio)
+        if (ratio >= 1) {
+          if (completionTimerRef.current != null) window.clearInterval(completionTimerRef.current)
+          completionTimerRef.current = null
+          resolve()
+        }
+      }
+
+      tick()
+      completionTimerRef.current = window.setInterval(tick, frameMs)
+    })
+  }, [reduceMotion, setProgressValue])
+
+  const startEstimatedProgress = useCallback((fileCount: number, runId: number) => {
+    if (progressTimerRef.current != null) {
+      window.clearInterval(progressTimerRef.current)
+      progressTimerRef.current = null
+    }
+
+    const safeFileCount = Math.max(1, fileCount)
+    const estimatedMs = safeFileCount * ZIP_IMPORT_SECONDS_PER_FILE * 1000
+    const startedAt = performance.now()
+    const totalTicks = Math.max(1, Math.ceil(estimatedMs / ZIP_PROGRESS_TICK_MS))
+    const progressPerTick = (ZIP_PROGRESS_CAP - ZIP_PROGRESS_INITIAL) / totalTicks
+
+    setPhaseText('正在提取工艺与图片特征...')
+    setProgressHint(`预计 ${safeFileCount} 个文件，按每条约 2 分钟估算，进度每 3 秒平滑推进。`)
+    setProgressValue(ZIP_PROGRESS_INITIAL)
+
+    const tick = () => {
+      if (uploadRunIdRef.current !== runId) return
+      const elapsedTicks = Math.floor((performance.now() - startedAt) / ZIP_PROGRESS_TICK_MS)
+      const next = Math.min(ZIP_PROGRESS_CAP, ZIP_PROGRESS_INITIAL + elapsedTicks * progressPerTick)
+      setProgressValue(next)
+      if (next >= ZIP_PROGRESS_CAP) {
+        setPhaseText('正在完成最后一步，请耐心等待')
+        setProgressHint('实际入库时间已超过预估，系统仍在写入和整理报告。')
+      }
+    }
+
+    tick()
+    progressTimerRef.current = window.setInterval(tick, ZIP_PROGRESS_TICK_MS)
+  }, [setProgressValue])
 
   const loadScopes = useCallback(async () => {
     try {
@@ -211,18 +336,24 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
 
   const handleUpload = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.zip')) return
+    const runId = uploadRunIdRef.current + 1
+    uploadRunIdRef.current = runId
+    clearProgressTimers()
     setBusy(true)
     setStatusZone('running')
-    setPhaseText('正在上传并解析...')
-    setPercent(10)
+    setPhaseText('正在准备入库...')
+    setProgressHint('正在读取 ZIP 文件结构。')
+    setProgressValue(ZIP_PROGRESS_INITIAL)
     setReport(null)
     setMatchedPage(1)
     setUnmatchedPage(1)
 
     const target = currentTarget()
     try {
-      setPercent(30)
-      setPhaseText('正在解析知识库内容...')
+      const zipEntryCount = await countZipEntries(file)
+      if (uploadRunIdRef.current !== runId) return
+      startEstimatedProgress(zipEntryCount || 10, runId)
+
       const result = await importZipZip({
         file,
         conflict_mode: conflictMode,
@@ -230,25 +361,41 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
         library_name: target.name,
         library_key: target.key,
       })
-      setPercent(60)
-      setPhaseText('正在整理匹配关系...')
+      if (uploadRunIdRef.current !== runId) return
+      if (progressTimerRef.current != null) {
+        window.clearInterval(progressTimerRef.current)
+        progressTimerRef.current = null
+      }
+
+      if (result.cached) {
+        setPhaseText('命中历史入库结果，正在整理入库报告...')
+        setProgressHint('已命中缓存，约 15 秒内平滑完成报告展示。')
+        await animateProgressTo(100, ZIP_CACHE_COMPLETION_MS, runId)
+      } else {
+        setPhaseText('正在整理匹配关系与入库报告...')
+        setProgressHint('导入结果已返回，正在完成最后的报告展示。')
+        await animateProgressTo(100, ZIP_NORMAL_COMPLETION_MS, runId)
+      }
+
+      if (uploadRunIdRef.current !== runId) return
       setReport(result)
-      await new Promise(r => setTimeout(r, 400))
-      setPercent(85)
-      setPhaseText('正在写入目标库...')
-      await new Promise(r => setTimeout(r, 400))
-      setPercent(100)
       setPhaseText('入库完成')
+      setProgressHint('')
       setStatusZone('done')
       sessionStorage.setItem('zip_unlocked', 'true')
       loadScopes()
     } catch (err) {
+      if (uploadRunIdRef.current !== runId) return
+      clearProgressTimers()
       setStatusZone('error')
       setPhaseText(`错误：${err instanceof Error ? err.message : '上传失败'}`)
+      setProgressHint('')
     } finally {
-      setBusy(false)
+      if (uploadRunIdRef.current === runId) {
+        setBusy(false)
+      }
     }
-  }, [currentTarget, conflictMode, loadScopes])
+  }, [animateProgressTo, clearProgressTimers, currentTarget, conflictMode, loadScopes, setProgressValue, startEstimatedProgress])
 
   const handleFileInput = useCallback(() => {
     const input = document.createElement('input')
@@ -273,14 +420,17 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
   const handleDragLeave = useCallback(() => setDragOver(false), [])
 
   const handleReset = useCallback(() => {
+    uploadRunIdRef.current += 1
+    clearProgressTimers()
     setStatusZone('idle')
     setReport(null)
     setPhaseText('等待上传工艺包')
-    setPercent(0)
+    setProgressHint('')
+    setProgressValue(0)
     setBusy(false)
     setMatchedPage(1)
     setUnmatchedPage(1)
-  }, [])
+  }, [clearProgressTimers, setProgressValue])
 
   // Pagination
   const MATCHED_PAGE_SIZE = 1
@@ -304,7 +454,7 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
     `图纸 ${report.summary?.prt_count || 0} 个，PDF ${report.summary?.pdf_count || 0} 个。`,
     `已匹配 ${report.summary?.matched_pairs || 0} 组，导入 ${report.summary?.imported_count || 0} 条。`,
     `未匹配图纸 ${unmatchedPrts.length} 项，未匹配 PDF ${unmatchedPdfs.length} 项。`,
-    ...errors.slice(0, 3).map(err => `错误：${err.prefix || err.pdf_name || err.prt_name || '批次项'} - ${err.error || err.message || '解析失败'}`),
+    ...errors.slice(0, 3).map(err => `错误：${err.prefix || err.pdf_name || err.image_name || err.prt_name || '批次项'} - ${err.error || err.message || '解析失败'}`),
   ] : []
 
   const activeScopeLabel = (() => {
@@ -481,14 +631,19 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
                 <span className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: 'var(--accent-action)' }} />
                 <span className="text-[14px] font-bold" style={{ color: 'var(--text-primary)' }}>{phaseText}</span>
               </div>
-              <span className="text-[18px] font-extrabold tabular-nums" style={{ color: 'var(--accent-action-strong)' }}>{percent}%</span>
+              <span className="text-[18px] font-extrabold tabular-nums" style={{ color: 'var(--accent-action-strong)' }}>{formatProgressPercent(percent)}%</span>
             </div>
             <div className="h-2.5 rounded-full overflow-hidden mb-4" style={{ background: 'var(--surface-panel-subtle)', border: '1px solid var(--border)' }}>
               <div
-                className="h-full rounded-full transition-all duration-500 ease-out"
+                className="zip-progress-fill h-full rounded-full"
                 style={{ background: 'var(--accent-action-gradient)', width: `${percent}%` }}
               />
             </div>
+            {progressHint && (
+              <div className="text-[12px] mb-3" style={{ color: 'var(--text-secondary)' }} aria-live="polite">
+                {progressHint}
+              </div>
+            )}
             {report && (
               <div className="flex gap-5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
                 <span>总文件 <strong style={{ color: 'var(--text-primary)' }}>{report.summary?.total_files || 0}</strong></span>
@@ -517,12 +672,14 @@ export function ZipPage({ onBusyChange }: { onBusyChange?: (busy: boolean) => vo
             </div>
             <div className="flex-1 min-w-0">
               <div className={`text-[15px] font-bold ${statusZone === 'error' ? 'text-red-700' : 'text-emerald-700'}`}>
-                {statusZone === 'error' ? '入库失败' : '入库完成'}
+                {statusZone === 'error' ? '入库失败' : report?.cached ? '复用历史入库结果' : '入库完成'}
               </div>
               <div className={`text-[12px] mt-0.5 ${statusZone === 'error' ? 'text-red-500' : 'text-emerald-600'}`}>
                 {statusZone === 'error'
                   ? phaseText
-                  : `批次 ${report?.batch_id || '-'} 已完成，共 ${report?.summary?.matched_pairs || 0} 组匹配${report?.summary?.error_count ? `，${report.summary.error_count} 项错误` : ''}。`}
+                  : report?.cached
+                    ? report.message || `批次 ${report?.batch_id || '-'} 已复用，共 ${report?.summary?.matched_pairs || 0} 组匹配。`
+                    : `批次 ${report?.batch_id || '-'} 已完成，共 ${report?.summary?.matched_pairs || 0} 组匹配${report?.summary?.error_count ? `，${report.summary.error_count} 项错误` : ''}。`}
               </div>
             </div>
             <button className="btn btn-secondary !text-[12px] !py-2" onClick={handleReset}>再次上传</button>

@@ -2,10 +2,18 @@
 """Flask decorators for authentication and authorization."""
 
 from functools import wraps
-from flask import request, g
+from flask import request, g, jsonify, make_response
 from .auth_service import decode_token
 from . import auth_store
 from .api._response import fail, ERR_UNAUTHORIZED, ERR_FORBIDDEN
+
+
+def _unauth(message: str):
+    """Return a 401 response with cleared auth cookie."""
+    body = {"success": False, "error": {"code": ERR_UNAUTHORIZED, "message": message}}
+    resp = make_response(jsonify(body), 401)
+    resp.delete_cookie("gn_token")
+    return resp
 
 
 def login_required(f):
@@ -22,20 +30,14 @@ def login_required(f):
 
         payload = decode_token(token)
         if not payload:
-            resp = fail(ERR_UNAUTHORIZED, "登录已过期，请重新登录", status=401)
-            resp.delete_cookie("gn_token")
-            return resp
+            return _unauth("登录已过期，请重新登录")
 
         user = auth_store.get_user_by_id(int(payload["sub"]))
         if not user:
-            resp = fail(ERR_UNAUTHORIZED, "用户不存在", status=401)
-            resp.delete_cookie("gn_token")
-            return resp
+            return _unauth("用户不存在")
 
         if not user["is_active"]:
-            resp = fail(ERR_UNAUTHORIZED, "账号已被停用", status=401)
-            resp.delete_cookie("gn_token")
-            return resp
+            return _unauth("账号已被停用")
 
         g.current_user = user
         return f(*args, **kwargs)

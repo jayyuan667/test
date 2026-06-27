@@ -20,9 +20,9 @@ CLASS_ORDER = [
 ]
 
 CLASS_CONF = {
-    "code_hole": 0.25, "threaded_hole": 0.25, "chamfer": 0.25,
-    "through_hole": 0.25, "counterbore": 0.30, "countersink": 0.30,
-    "blind_hole": 0.50,
+    "code_hole": 0.15, "threaded_hole": 0.20, "chamfer": 0.15,
+    "through_hole": 0.20, "counterbore": 0.20, "countersink": 0.20,
+    "blind_hole": 0.35,
 }
 
 

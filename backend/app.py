@@ -27,6 +27,7 @@ if sys.stdout.isatty():
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Load environment variables
 load_dotenv()
@@ -68,9 +69,24 @@ ensure_poppler_path()
 
 # Create Flask app
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+
+
+def _get_cors_origins() -> list[str]:
+    raw_origins = os.getenv("CORS_ORIGINS", "")
+    if raw_origins.strip():
+        return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return [
+        "http://localhost:3200",
+        "http://localhost:5190",
+        "http://127.0.0.1:3200",
+        "http://127.0.0.1:5190",
+    ]
+
+
 CORS(app, resources={r"/api/*": {
-    "origins": ["http://localhost:3200", "http://localhost:5190", "http://127.0.0.1:3200", "http://127.0.0.1:5190"],
+    "origins": _get_cors_origins(),
     "supports_credentials": True,
 }})
 
@@ -104,6 +120,16 @@ def react_vite_svg():
     """Serve vite.svg if present."""
     frontend_dir = os.path.join(BASE_DIR, "frontend-react", "dist")
     return send_from_directory(frontend_dir, "vite.svg")
+
+
+@app.route("/dica-logo.png")
+@app.route("/favicon-32.png")
+@app.route("/favicon.png")
+@app.route("/apple-touch-icon.png")
+def react_public_asset():
+    """Serve Vite public assets copied to the dist root."""
+    frontend_dir = os.path.join(BASE_DIR, "frontend-react", "dist")
+    return send_from_directory(frontend_dir, request.path.lstrip("/"))
 
 
 # ============ H5 前端路由（兼容旧版） ============

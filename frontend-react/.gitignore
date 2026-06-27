@@ -8,3 +8,4 @@ playwright-report/
 # Local Python probes contain environment-specific paths and mock services.
 scripts/*.py
 tests/*.py
+backups/

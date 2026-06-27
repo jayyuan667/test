@@ -113,6 +113,7 @@ def list_users():
     Enterprise admin: only own enterprise users.
     """
     user = g.current_user
+    scope = (request.args.get("scope") or "").strip().lower()
     if user["role"] == "super_admin":
         enterprise_id = request.args.get("enterprise_id", type=int)
         if enterprise_id:
@@ -121,7 +122,12 @@ def list_users():
             users = auth_store.list_all_users()
     else:
         eid = user.get("enterprise_id")
-        if not eid:
+        if scope == "unassigned":
+            users = [
+                u for u in auth_store.list_all_users()
+                if u.get("role") == "user" and u.get("enterprise_id") is None
+            ]
+        elif not eid:
             users = []
         else:
             users = auth_store.list_enterprise_users(eid)
@@ -151,11 +157,25 @@ def update_user(user_id):
 
     # Enterprise admin can only manage own enterprise
     if current_user["role"] == "enterprise_admin":
-        if target.get("enterprise_id") != current_user.get("enterprise_id"):
+        current_eid = current_user.get("enterprise_id")
+        requested_eid = data.get("enterprise_id") if "enterprise_id" in data else None
+
+        if "role" in data:
+            return fail(ERR_FORBIDDEN, "无权修改角色", status=403)
+
+        if "enterprise_id" in data:
+            can_claim = (
+                current_eid is not None
+                and
+                target.get("role") == "user"
+                and target.get("enterprise_id") is None
+                and requested_eid is not None
+                and requested_eid == current_eid
+            )
+            if not can_claim:
+                return fail(ERR_FORBIDDEN, "只能分配未分配用户到本企业", status=403)
+        elif target.get("enterprise_id") != current_eid:
             return fail(ERR_FORBIDDEN, "只能管理本企业用户", status=403)
-        # Enterprise admin cannot change role or enterprise_id
-        if "role" in data or "enterprise_id" in data:
-            return fail(ERR_FORBIDDEN, "无权修改角色或所属企业", status=403)
 
     kwargs = {}
     if "is_active" in data:
@@ -169,6 +189,8 @@ def update_user(user_id):
             if not enterprise:
                 return fail(ERR_VALIDATION, "企业不存在")
         kwargs["enterprise_id"] = eid
+    elif "enterprise_id" in data and current_user["role"] == "enterprise_admin":
+        kwargs["enterprise_id"] = data.get("enterprise_id")
     if "quota_total" in data:
         try:
             total = int(data["quota_total"])

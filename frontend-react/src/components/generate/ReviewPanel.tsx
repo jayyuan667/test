@@ -68,8 +68,8 @@ export function ReviewPanel({ reviewText, onReviewTextChange, onConfirm, onRerun
       {/* Header */}
       <div className="flex items-center justify-between gap-3 shrink-0">
         <div>
-          <h3 className="text-[15px] font-bold text-slate-800 mb-0.5">特征审阅</h3>
-          <p className="text-[12px] text-slate-500">
+          <h3 className="text-[15px] font-bold mb-0.5" style={{ color: 'var(--text-primary)' }}>特征审阅</h3>
+          <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
             {hasContent ? `已收到 ${fields.length} 项特征，内容可编辑，字段名固定。` : '确认或修改 AI 提取的工艺特征后继续'}
           </p>
         </div>
@@ -90,8 +90,8 @@ export function ReviewPanel({ reviewText, onReviewTextChange, onConfirm, onRerun
 
       {/* Annotation summary — YOLO + manual annotation counts */}
       {annotateSummary && Object.keys(annotateSummary).length > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200/60 flex-wrap">
-          <span className="text-[11px] text-slate-500 shrink-0">标注汇总：</span>
+        <div className="theme-surface-panel-subtle flex items-center gap-2 px-4 py-2.5 rounded-xl border flex-wrap">
+          <span className="text-[11px] shrink-0" style={{ color: 'var(--text-secondary)' }}>标注汇总：</span>
           {Object.entries(annotateSummary)
             .filter(([, v]) => v > 0)
             .map(([key, count]) => {
@@ -112,9 +112,7 @@ export function ReviewPanel({ reviewText, onReviewTextChange, onConfirm, onRerun
 
       {/* OCR hint */}
       {ocrThicknessHint && (
-        <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl text-[12px] leading-relaxed"
-          style={{ background: 'var(--info-soft)', border: '1px solid #bfdbfe', color: '#1e40af' }}
-        >
+        <div className="theme-info-note flex items-start gap-2.5 px-4 py-3 rounded-xl text-[12px] leading-relaxed">
           <span className="mt-0.5">ℹ</span>
           <span>{ocrThicknessHint}</span>
         </div>
@@ -133,21 +131,18 @@ export function ReviewPanel({ reviewText, onReviewTextChange, onConfirm, onRerun
       )}
 
       {/* Table */}
-      <div ref={tableRef} className="flex-1 min-h-0 rounded-2xl border border-slate-200 overflow-y-auto overflow-x-hidden bg-white">
+      <div ref={tableRef} className="theme-surface-panel flex-1 min-h-0 rounded-2xl border overflow-y-auto overflow-x-hidden">
         {!hasContent ? (
           <div ref={emptyStateRef} className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-8 min-h-[300px]">
-            <div
-              className="w-16 h-16 rounded-xl grid place-items-center"
-              style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe' }}
-            >
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <div className="theme-empty-accent w-16 h-16 rounded-xl grid place-items-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--surface-empty-accent-stroke)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" />
                 <path d="M3 9h18" />
                 <path d="M9 21V9" />
               </svg>
             </div>
-            <div className="text-[14px] font-semibold text-slate-600">上传图纸后查看特征</div>
-            <div className="text-[12px] text-slate-500 max-w-[280px] leading-relaxed">
+            <div className="text-[14px] font-semibold" style={{ color: 'var(--text-primary)' }}>上传图纸后查看特征</div>
+            <div className="text-[12px] max-w-[280px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               AI 将自动识别尺寸公差、粗糙度、形位公差等关键特征
             </div>
           </div>
@@ -166,7 +161,7 @@ export function ReviewPanel({ reviewText, onReviewTextChange, onConfirm, onRerun
             <tbody>
               {fields.map((field, i) => (
                 <tr key={i}>
-                  <td className="font-mono text-[12px] text-slate-500 font-semibold">
+                  <td className="font-mono text-[12px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
                     {field.label}
                   </td>
                   <td>

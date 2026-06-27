@@ -66,7 +66,7 @@ export function RegisterPage({ onNavigate, onOpenAuth, onReturnHome, phase }: Re
       subtitle="注册后可申请企业授权并继续工艺入库与生成流程。"
       footer={(
         <p className="text-center text-xs text-slate-400">
-          &copy; {new Date().getFullYear()} 二维工艺系统
+          &copy; {new Date().getFullYear()} DICA智能工艺系统
         </p>
       )}
     >

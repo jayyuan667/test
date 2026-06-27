@@ -202,7 +202,7 @@ test.describe('auth entry scene', () => {
   test('starts in minimal home state before auth is opened', async ({ page }) => {
     await page.goto('/')
 
-    const title = page.getByRole('heading', { name: '2D i' })
+    const title = page.getByRole('heading', { name: 'DICA' })
     await expect(title).toBeVisible()
     await expect(title).toHaveCSS('color', 'rgb(5, 5, 5)')
     await expect(page.getByRole('button', { name: '进入系统' })).toBeVisible()
@@ -236,7 +236,7 @@ test.describe('auth entry scene', () => {
     await page.getByRole('button', { name: '进入系统' }).click()
     await page.getByRole('button', { name: '返回首页' }).click()
 
-    await expect(page.getByRole('heading', { name: '2D i' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'DICA' })).toBeVisible()
     await expect(page.getByText('聚焦当前图纸，进入工艺编制与检视控制台。')).toBeVisible()
     await expect(page.getByLabel('用户名')).not.toBeVisible()
   })

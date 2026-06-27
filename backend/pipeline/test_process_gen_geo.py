@@ -490,6 +490,20 @@ def test_post_check_no_geo_constraints_unchanged():
     assert result == raw
 
 
+def test_post_check_standalone_flip_row_trade_is_flip():
+    pg = _make_pg()
+    raw = "- 0040: 翻面，以正面为基准重新装夹，压紧底面两侧 （工种：数铣）"
+    result = pg._post_check_process(raw, _make_constraints())
+    assert result == "- 0040: 翻面，以正面为基准重新装夹，压紧底面两侧 （工种：翻面）"
+
+
+def test_post_check_combined_flip_workstep_keeps_machining_trade():
+    pg = _make_pg()
+    raw = "- 0040: 工步1：铣正面；工步2：翻面，以正面为基准重新装夹，铣背面槽 （工种：数铣）"
+    result = pg._post_check_process(raw, _make_constraints())
+    assert result == raw
+
+
 # ── generate() signature test ──────────────────────────────────────────────
 
 def test_build_controlled_prompt_contains_authoritative_blank_instruction():
@@ -570,6 +584,43 @@ def test_build_controlled_prompt_requires_dropping_unsupported_blueprint_steps()
         allowed_fragments={},
     )
     assert "若蓝本某工序在当前零件特征中找不到依据，则删除该工序" in prompt
+
+
+def test_build_controlled_prompt_labels_standalone_flip_step_as_flip():
+    pg = _make_pg()
+    prompt = pg._build_controlled_prompt(
+        fused_description="【吊面/翻面特征】背面有孔需翻面加工",
+        expert_judgment="",
+        rag_context="",
+        rag_results={"matches": []},
+        constraints={
+            "hard_constraints": {
+                "blank_size": "",
+                "outer_size": "",
+                "key_dims": "",
+                "flip_face": "背面有孔需翻面加工",
+                "geo_blank_spec": "",
+                "geo_hole_count": 0,
+                "geo_bore_range": "",
+                "part_count": 1,
+            },
+            "soft_features": {},
+        },
+        use_blueprint=False,
+        allowed_fragments={},
+    )
+    assert "独立翻面工序的工种必须写【翻面】" in prompt
+    assert "工种保持与正面加工工序一致" not in prompt
+
+
+def test_build_fallback_prompt_labels_standalone_flip_step_as_flip():
+    pg = _make_pg()
+    prompt = pg._build_fallback_prompt(
+        fused_description="【吊面/翻面特征】背面有孔需翻面加工",
+        expert_judgment="",
+        constraints={"hard_constraints": {"flip_face": "背面有孔需翻面加工"}},
+    )
+    assert "独立翻面工序的工种必须写【翻面】" in prompt
 
 
 # ── generate() signature test ──────────────────────────────────────────────
