@@ -15,6 +15,8 @@ STATE_TO_PHASE = {
     "cancelled": "done",
 }
 
+STATE_ALIASES = {"error": "failed"}
+
 
 def _duration_minutes(value):
     if not isinstance(value, str):
@@ -43,9 +45,45 @@ def _normalize_operation(row, index):
     }
 
 
+def _normalize_structured_feature(feature, index):
+    tolerance = feature.get("tolerance")
+    if not isinstance(tolerance, dict):
+        tolerance = {}
+    source = feature.get("source")
+    if not isinstance(source, dict):
+        source = {}
+    return {
+        "id": feature.get("id", f"feature-structured-{index}"),
+        "kind": feature.get("kind", "unknown"),
+        "label": feature.get("label", ""),
+        "value": feature.get("value"),
+        "unit": feature.get("unit"),
+        "tolerance": {
+            "upper": tolerance.get("upper"),
+            "lower": tolerance.get("lower"),
+            "text": tolerance.get("text"),
+        },
+        "source": {
+            "method": source.get("method"),
+            "page": source.get("page"),
+            "bbox": source.get("bbox"),
+            "evidence_text": source.get("evidence_text"),
+        },
+        "confidence": feature.get("confidence"),
+        "review_status": feature.get("review_status", "unreviewed"),
+        "missing_reason": feature.get("missing_reason"),
+    }
+
+
 def _structured_features(result):
     features = result.get("features")
-    return features if isinstance(features, list) else None
+    if not isinstance(features, list):
+        return None
+    return [
+        _normalize_structured_feature(feature, index)
+        for index, feature in enumerate(features)
+        if isinstance(feature, dict)
+    ]
 
 
 def _legacy_features(text):
@@ -65,7 +103,7 @@ def _legacy_features(text):
                 "tolerance": {"upper": None, "lower": None, "text": None},
                 "source": {
                     "method": "legacy_text",
-                    "page": 1,
+                    "page": None,
                     "bbox": None,
                     "evidence_text": evidence,
                 },
@@ -78,26 +116,41 @@ def _legacy_features(text):
 
 
 def build_task_snapshot(task_id: str, task: dict, result: dict | None = None) -> dict:
-    result = result or {}
+    if result is None:
+        result = task.get("result") or {}
     rows = result.get("process_operations", [])
     features = _structured_features(result)
     if features is None:
         features = _legacy_features(result.get("feature_text"))
-    state = task.get("state", task.get("status", "pending"))
+    persisted_state = task.get("state", task.get("status", "pending"))
+    state = STATE_ALIASES.get(persisted_state, persisted_state)
+    phase = STATE_TO_PHASE.get(state, "drawing_analysis")
     return {
         "schema_version": SCHEMA_VERSION,
         "task": {
             "id": task_id,
             "state": state,
-            "phase": STATE_TO_PHASE[state],
+            "phase": phase,
             "progress": task.get("progress", 0),
             "revision": task.get("revision", 0),
             "created_at": task.get("created_at"),
             "updated_at": task.get("updated_at"),
             "error": task.get("error"),
         },
+        "drawing": {
+            "name": task.get("drawing_name", task.get("pdf_name", "")),
+            "source_kind": task.get("source_kind", "unknown"),
+            "page_count": result.get("page_count", 1),
+            "preview_urls": result.get("preview_urls", []),
+        },
         "features": features,
+        "review": {
+            "status": result.get("review_status", "not_ready"),
+            "raw_text": result.get("feature_text"),
+        },
         "process_operations": [
             _normalize_operation(row, index) for index, row in enumerate(rows)
         ],
+        "reuse_candidates": result.get("reuse_candidates", []),
+        "capabilities": result.get("capabilities", {}),
     }
