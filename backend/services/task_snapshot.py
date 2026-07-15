@@ -144,7 +144,7 @@ def build_task_snapshot(task_id: str, task: dict, result: dict | None = None) ->
             "name": task.get("drawing_name", task.get("pdf_name", "")),
             "source_kind": task.get("source_kind", "unknown"),
             "page_count": result.get("page_count", 1),
-            "preview_urls": result.get("preview_urls", []),
+            "preview_urls": result.get("preview_urls", result.get("preview_image_urls", [])),
         },
         "features": features,
         "review": {

@@ -1,5 +1,7 @@
 """Authenticated v1 task command and read endpoints."""
 
+import json
+
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 from ...auth_utils import login_required
@@ -27,6 +29,18 @@ def _snapshot(task_id):
     events = get_events(task_id, since_id=0)
     task["revision"] = max((int(event["id"]) for event in events), default=0)
     result = dict(task.get("result") or {})
+    if not result.get("preview_image_urls"):
+        for event in reversed(events):
+            if event.get("type") != "annotation_required":
+                continue
+            try:
+                payload = json.loads(event.get("data") or "{}")
+            except (TypeError, json.JSONDecodeError):
+                payload = {}
+            if isinstance(payload.get("preview_image_urls"), list):
+                result["preview_image_urls"] = payload["preview_image_urls"]
+                result.setdefault("page_count", payload.get("pages", 1))
+                break
     if task.get("review_text") is not None:
         result.setdefault("feature_text", task["review_text"])
     return build_task_snapshot(task_id, task, result)

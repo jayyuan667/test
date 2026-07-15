@@ -156,10 +156,18 @@ export function createDrawingWorkflowClient(options: DrawingWorkflowClientOption
   return {
     upload(file) { const form = new FormData(); form.append("file", file, file instanceof File ? file.name : "drawing"); return request(`${baseUrl(options.apiBase)}/v1/tasks`, { method: "POST", body: form }); },
     getSnapshot(taskId) { return request(taskUrl(options.apiBase, taskId)); },
+    async getAsset(url) {
+      const target = new URL(url, `${baseUrl(options.apiBase)}/`).toString();
+      const headers = new Headers(); const token = options.getToken();
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+      const response = await fetchImpl(target, { headers });
+      if (!response.ok) throw await responseError(response);
+      return response.blob();
+    },
     connect(taskId, after, onEvent, onDisconnect = () => {}) { return streamTransport({ url: taskUrl(options.apiBase, taskId, "/events"), token: options.getToken(), after, fetchImpl, onUnauthorized: options.onUnauthorized, onEvent, onDisconnect }); },
     finalizeAnnotations(taskId, body) { return command(taskId, "/annotations/finalize", body); },
     submitReview(taskId, body) { return command(taskId, "/review", body); },
     cancel(taskId) { return command(taskId, "/cancel"); },
-    exportUrl(taskId) { return taskUrl(options.apiBase, taskId, "/export"); },
+    exportUrl(taskId) { return `${taskUrl(options.apiBase, taskId, "/export")}?format=pdf`; },
   };
 }

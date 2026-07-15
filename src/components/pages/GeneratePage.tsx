@@ -21,6 +21,7 @@ function V1GeneratePage() {
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = createDrawingWorkflowController(workflowService)
@@ -30,6 +31,15 @@ function V1GeneratePage() {
     if (savedTask) void controller.start(savedTask).catch((error: Error) => setMessage(error.message))
     return () => { unsubscribe(); controller.dispose(); controllerRef.current = null }
   }, [])
+
+  useEffect(() => {
+    const sourceUrl = state.snapshot?.drawing.preview_urls[0]
+    const controller = controllerRef.current
+    if (!sourceUrl || !controller) { setPreviewUrl(null); return }
+    let active = true
+    void controller.loadPreview(sourceUrl).then((url) => { if (active && url) setPreviewUrl(url) }).catch((error: Error) => { if (active) setMessage(error.message) })
+    return () => { active = false }
+  }, [state.snapshot?.drawing.preview_urls])
 
   const run = async (action: (controller: DrawingWorkflowController) => Promise<void>) => {
     const controller = controllerRef.current
@@ -68,18 +78,23 @@ function V1GeneratePage() {
       {snapshot && <>
         <section data-testid="workflow-status" style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-            <div><div style={eyebrowStyle}>当前阶段</div><strong data-testid="workflow-phase">{phaseLabels[snapshot.task.phase] ?? snapshot.task.phase}</strong></div>
+            <div><div style={eyebrowStyle}>当前阶段</div><strong data-testid="workflow-phase" data-phase={snapshot.task.phase}>{phaseLabels[snapshot.task.phase] ?? snapshot.task.phase}</strong><span data-testid="workflow-state" style={{ display: 'none' }}>{snapshot.task.state}</span></div>
             <div><div style={eyebrowStyle}>任务 ID</div><code data-testid="task-id">{snapshot.task.id}</code></div>
             <div><div style={eyebrowStyle}>连接</div><span data-testid="workflow-connection">{state.connection} · seq {state.lastSeq}</span></div>
           </div>
           <div style={{ height: 5, background: 'var(--border)', borderRadius: 5, marginTop: 16 }}><div data-testid="workflow-progress" style={{ height: '100%', width: `${snapshot.task.progress}%`, background: 'var(--accent)', borderRadius: 5 }} /></div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>{snapshot.task.progress}%</div>
+          <div data-testid="workflow-progress-value" style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>{snapshot.task.progress}%</div>
         </section>
 
         <section style={cardStyle}>
+          {previewUrl && <figure style={{ margin: '0 0 16px' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img data-testid="drawing-preview" src={previewUrl} alt={snapshot.drawing.name} style={{ display: 'block', maxWidth: '100%', maxHeight: 420, objectFit: 'contain', borderRadius: 10, border: '1px solid var(--border)' }} />
+            <figcaption style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>{snapshot.drawing.name} · {snapshot.drawing.page_count} 页</figcaption>
+          </figure>}
           <div style={sectionTitleStyle}>结构化特征</div>
           <div data-testid="feature-list" style={{ display: 'grid', gap: 8 }}>
-            {snapshot.features.map((feature) => <FeatureRow key={feature.id} feature={feature} />)}
+            {snapshot.features.map((feature) => <FeatureRow key={feature.id} feature={feature} previewUrl={previewUrl} />)}
             {snapshot.features.length === 0 && <span style={emptyStyle}>等待真实特征数据…</span>}
           </div>
           {awaitingAnnotation && <button data-testid="finalize-annotations" style={buttonStyle} disabled={busy} onClick={() => run((controller) => controller.finalizeAnnotations({ review_text: 'confirmed' }))}>确认标注</button>}
@@ -96,7 +111,7 @@ function V1GeneratePage() {
             </tr>)}</tbody>
           </table></div>
           {operations.length === 0 && <div style={emptyStyle}>等待结构化工艺…</div>}
-          {completed && <a data-testid="download-export" href={`${workflowService.exportUrl(snapshot.task.id)}?format=pdf`} download style={{ ...buttonStyle, display: 'inline-block', textDecoration: 'none' }}>导出 PDF</a>}
+          {completed && <a data-testid="download-export" href={workflowService.exportUrl(snapshot.task.id)} download style={{ ...buttonStyle, display: 'inline-block', textDecoration: 'none' }}>导出 PDF</a>}
         </section>
       </>}
       {(message || state.error) && <div role="alert" style={{ color: 'var(--danger)', fontSize: 13 }}>{message ?? state.error?.message}</div>}
@@ -104,10 +119,10 @@ function V1GeneratePage() {
   )
 }
 
-function FeatureRow({ feature }: { feature: WorkflowFeature }) {
+function FeatureRow({ feature, previewUrl }: { feature: WorkflowFeature; previewUrl: string | null }) {
   return <article data-testid="feature-row" style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 10, display: 'grid', gridTemplateColumns: 'minmax(150px, 1fr) auto', gap: 8 }}>
     <div><strong>{feature.label}</strong><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{feature.kind} · {feature.value ?? '未提供'}</div></div>
-    <div style={{ textAlign: 'right', fontSize: 11 }}><div data-testid="feature-confidence">置信度：{feature.confidence === null ? '未提供' : `${Math.round(feature.confidence * 100)}%`}</div><div data-testid="feature-source" style={{ color: 'var(--text-muted)', marginTop: 4 }}>来源：{feature.source.method ?? '未提供'} / {feature.source.page === null ? '页码未提供' : `P${feature.source.page}`}</div></div>
+    <div style={{ textAlign: 'right', fontSize: 11 }}><div data-testid="feature-confidence">置信度：{feature.confidence === null ? '未提供' : `${Math.round(feature.confidence * 100)}%`}</div>{previewUrl ? <a data-testid="feature-source" href={previewUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--text-muted)', marginTop: 4, display: 'block' }}>来源：{feature.source.method ?? '未提供'} / {feature.source.page === null ? '页码未提供' : `P${feature.source.page}`}</a> : <div data-testid="feature-source" style={{ color: 'var(--text-muted)', marginTop: 4 }}>来源：{feature.source.method ?? '未提供'} / {feature.source.page === null ? '页码未提供' : `P${feature.source.page}`}</div>}</div>
   </article>
 }
 

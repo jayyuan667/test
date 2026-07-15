@@ -20,10 +20,11 @@ export function createMockDrawingWorkflowClient(): DrawingWorkflowClient {
   return {
     upload: async () => mockSnapshot("mock-task"),
     getSnapshot: async (taskId) => mockSnapshot(taskId),
+    getAsset: async () => new Blob(["mock-preview"], { type: "image/png" }),
     connect: () => ({ close() {} }),
     finalizeAnnotations: async (taskId) => mockSnapshot(taskId),
     submitReview: async (taskId) => mockSnapshot(taskId),
     cancel: async (taskId) => ({ ...mockSnapshot(taskId), task: { ...mockSnapshot(taskId).task, state: "cancelled", phase: "done" } }),
-    exportUrl: (taskId) => `/api/v1/tasks/${encodeURIComponent(taskId)}/export`,
+    exportUrl: (taskId) => `/api/v1/tasks/${encodeURIComponent(taskId)}/export?format=pdf`,
   };
 }

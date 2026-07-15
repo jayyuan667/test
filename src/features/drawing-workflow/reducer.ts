@@ -19,7 +19,7 @@ export function createInitialWorkflowState(snapshot: TaskSnapshot | null = null)
     snapshot,
     operationsById: Object.fromEntries(operations.map((operation) => [operation.id, operation])),
     operationOrder: operations.map((operation) => operation.id),
-    lastSeq: 0,
+    lastSeq: snapshot?.task.revision ?? 0,
     connection: "idle",
     error: snapshot?.task.error ?? null,
   };
@@ -33,6 +33,7 @@ function replaceSnapshot(state: WorkflowState, snapshot: TaskSnapshot): Workflow
     snapshot,
     operationsById: Object.fromEntries(operations.map((operation) => [operation.id, operation])),
     operationOrder: operations.map((operation) => operation.id),
+    lastSeq: Math.max(state.lastSeq, snapshot.task.revision),
     error: snapshot.task.error,
   };
 }

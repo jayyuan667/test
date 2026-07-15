@@ -150,7 +150,19 @@ test("upload and command methods use exact v1 endpoints and export URL", async (
   await client.submitReview("task-1", { features: [] });
   await client.cancel("task-1");
   assert.deepEqual(calls.map(({ url, method }) => [url, method]), [["/api/v1/tasks", "POST"], ["/api/v1/tasks/task-1/annotations/finalize", "POST"], ["/api/v1/tasks/task-1/review", "POST"], ["/api/v1/tasks/task-1/cancel", "POST"]]);
-  assert.equal(client.exportUrl("task 1"), "/api/v1/tasks/task%201/export");
+  assert.equal(client.exportUrl("task 1"), "/api/v1/tasks/task%201/export?format=pdf");
+});
+
+test("loads a preview asset with Bearer auth through the workflow client", async () => {
+  let url = ""; let authorization: string | null = null;
+  const client = createDrawingWorkflowClient({ apiBase: "https://forge.example/api", getToken: () => "preview-token", fetchImpl: async (input, init) => {
+    url = String(input); authorization = new Headers(init?.headers).get("Authorization");
+    return new Response(new Blob(["image"], { type: "image/png" }), { status: 200 });
+  }, streamTransport: () => ({ close() {} }) });
+  const blob = await client.getAsset("/api/result/task/asset/pages/test.png");
+  assert.equal(url, "https://forge.example/api/result/task/asset/pages/test.png");
+  assert.equal(authorization, "Bearer preview-token");
+  assert.equal(blob.type, "image/png");
 });
 
 test("SSE parser survives every byte split around CRLF frames and flushes EOF", async () => {

@@ -8,6 +8,7 @@ export interface DrawingWorkflowController {
   submitReview(body: unknown): Promise<void>;
   cancel(): Promise<void>;
   exportUrl(): string;
+  loadPreview(url: string): Promise<string>;
   getState(): WorkflowState;
   subscribe(listener: (state: WorkflowState) => void): () => void;
   dispose(): void;
@@ -17,6 +18,8 @@ export interface ControllerOptions {
   scheduleReconnect?: (callback: () => void, delayMs: number) => () => void;
   random?: () => number;
   maxReconnectDelay?: number;
+  createObjectURL?: (blob: Blob) => string;
+  revokeObjectURL?: (url: string) => void;
 }
 
 const terminalStates = new Set(["completed", "failed", "cancelled"]);
@@ -35,6 +38,9 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
   let reconnectBase = 1_000;
   let disposed = false;
   let terminal = false;
+  const previewUrls = new Set<string>();
+  const createObjectURL = options.createObjectURL ?? ((blob) => URL.createObjectURL(blob));
+  const revokeObjectURL = options.revokeObjectURL ?? ((url) => URL.revokeObjectURL(url));
 
   const publish = (next: WorkflowState) => { state = next; listeners.forEach((listener) => listener(state)); };
   const cleanup = () => { cancelReconnect?.(); cancelReconnect = null; connection?.close(); connection = null; };
@@ -111,17 +117,23 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
     },
     async finalizeAnnotations(body) {
       if (!activeTask) throw new Error("No active workflow task");
-      const snapshot = await client.finalizeAnnotations(activeTask, body);
+      const taskId = activeTask; const expectedGeneration = generation;
+      const snapshot = await client.finalizeAnnotations(taskId, body);
+      if (disposed || expectedGeneration !== generation || activeTask !== taskId) return;
       publish(reduceWorkflowState(state, { type: "snapshot_received", snapshot }));
     },
     async submitReview(body) {
       if (!activeTask) throw new Error("No active workflow task");
-      const snapshot = await client.submitReview(activeTask, body);
+      const taskId = activeTask; const expectedGeneration = generation;
+      const snapshot = await client.submitReview(taskId, body);
+      if (disposed || expectedGeneration !== generation || activeTask !== taskId) return;
       publish(reduceWorkflowState(state, { type: "snapshot_received", snapshot }));
     },
     async cancel() {
       if (!activeTask) throw new Error("No active workflow task");
-      const snapshot = await client.cancel(activeTask);
+      const taskId = activeTask; const expectedGeneration = generation;
+      const snapshot = await client.cancel(taskId);
+      if (disposed || expectedGeneration !== generation || activeTask !== taskId) return;
       publish(reduceWorkflowState(state, { type: "snapshot_received", snapshot }));
       terminal = true;
       cleanup();
@@ -130,11 +142,18 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
       if (!activeTask) throw new Error("No active workflow task");
       return client.exportUrl(activeTask);
     },
+    async loadPreview(url) {
+      const expectedGeneration = generation;
+      const blob = await client.getAsset(url);
+      if (disposed || expectedGeneration !== generation) return "";
+      const objectUrl = createObjectURL(blob); previewUrls.add(objectUrl); return objectUrl;
+    },
     getState: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     dispose() {
       if (disposed) return;
       disposed = true; generation += 1; cleanup();
+      previewUrls.forEach(revokeObjectURL); previewUrls.clear();
       publish(reduceWorkflowState(state, { type: "connection_changed", connection: "closed" }));
       listeners.clear();
     },

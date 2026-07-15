@@ -16,6 +16,7 @@ function harness(getSnapshot: (id: string) => Promise<TaskSnapshot> = async (id)
   const connections: TestConnection[] = [];
   const client: DrawingWorkflowClient = {
     upload: async () => snapshot("uploaded"), getSnapshot,
+    getAsset: async () => new Blob(["preview"]),
     connect: (taskId, after, onEvent, onDisconnect = () => {}) => {
       afterValues.push([taskId, after]);
       const connection: TestConnection = { closed: false, close() { this.closed = true; }, emit: onEvent, disconnect: (info) => onDisconnect(info ?? { retryable: true }) };
@@ -32,7 +33,7 @@ test("reconnects after the latest accepted sequence and owns connection cleanup"
   const { client, afterValues, connections } = harness();
   const controller = createDrawingWorkflowController(client, { scheduleReconnect: (callback) => { callback(); return () => {}; }, random: () => 0 });
   await controller.start("task-1"); connections[0].emit(progress("task-1", 12)); connections[0].disconnect();
-  assert.deepEqual(afterValues, [["task-1", 0], ["task-1", 12]]);
+  assert.deepEqual(afterValues, [["task-1", 1], ["task-1", 12]]);
   assert.equal(connections[0].closed, true); controller.dispose(); controller.dispose(); assert.equal(connections[1].closed, true);
 });
 
@@ -42,9 +43,9 @@ test("switching tasks closes old work, resets sequence, and ignores stale snapsh
   const controller = createDrawingWorkflowController(client);
   const first = controller.start("old"); await controller.start("new"); resolveFirst(snapshot("old")); await first;
   assert.equal(controller.getState().snapshot?.task.id, "new");
-  assert.deepEqual(afterValues, [["new", 0]]);
+  assert.deepEqual(afterValues, [["new", 1]]);
   connections[0].emit(progress("old", 99));
-  assert.equal(controller.getState().lastSeq, 0);
+  assert.equal(controller.getState().lastSeq, 1);
 });
 
 test("terminal events close the stream and never reconnect", async () => {
@@ -107,4 +108,40 @@ test("refreshes the snapshot after legacy transition events without page polling
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(controller.getState().snapshot?.task.state, "awaiting_annotation");
   assert.equal(reads, 2);
+});
+
+test("connects after the initial snapshot revision instead of replaying accepted events", async () => {
+  const { client, afterValues } = harness(async (id) => ({ ...snapshot(id), task: { ...snapshot(id).task, revision: 37 } }));
+  const controller = createDrawingWorkflowController(client);
+  await controller.start("task-1");
+  assert.deepEqual(afterValues, [["task-1", 37]]);
+});
+
+test("ignores a late review response after switching tasks", async () => {
+  let resolveReview!: (value: TaskSnapshot) => void;
+  const { client } = harness();
+  client.submitReview = async () => new Promise((resolve) => { resolveReview = resolve; });
+  const controller = createDrawingWorkflowController(client);
+  await controller.start("old");
+  const review = controller.submitReview({ review_text: "old" });
+  await controller.start("new");
+  resolveReview({ ...snapshot("old"), task: { ...snapshot("old").task, revision: 99 } });
+  await review;
+  assert.equal(controller.getState().snapshot?.task.id, "new");
+});
+
+test("ignores late finalize and cancel responses after dispose", async () => {
+  let resolveFinalize!: (value: TaskSnapshot) => void; let resolveCancel!: (value: TaskSnapshot) => void;
+  const { client } = harness();
+  client.finalizeAnnotations = async () => new Promise((resolve) => { resolveFinalize = resolve; });
+  client.cancel = async () => new Promise((resolve) => { resolveCancel = resolve; });
+  const controller = createDrawingWorkflowController(client);
+  await controller.start("task-1");
+  const finalize = controller.finalizeAnnotations(); const cancel = controller.cancel();
+  controller.dispose();
+  resolveFinalize({ ...snapshot("task-1"), task: { ...snapshot("task-1").task, revision: 9 } });
+  resolveCancel({ ...snapshot("task-1", "cancelled"), task: { ...snapshot("task-1", "cancelled").task, revision: 10 } });
+  await Promise.all([finalize, cancel]);
+  assert.equal(controller.getState().connection, "closed");
+  assert.equal(controller.getState().snapshot?.task.revision, 1);
 });

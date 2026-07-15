@@ -1,8 +1,20 @@
 import { expect, test } from '@playwright/test'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 
-const fixture = '/Users/caojiayuan/Documents/测试包/drawing/test.png'
-const evidenceDir = '/tmp/forge-v1-evidence'
+const fixture = process.env.FORGE_E2E_FIXTURE || '/Users/caojiayuan/Documents/测试包/drawing/test.png'
+const evidenceDir = process.env.FORGE_E2E_EVIDENCE_DIR || '/tmp/forge-v1-evidence'
+const apiBase = process.env.FORGE_E2E_API_BASE || 'http://localhost:5390'
+const username = process.env.FORGE_E2E_USERNAME || 'test'
+const password = process.env.FORGE_E2E_PASSWORD || 'test123'
+
+function sanitized(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitized)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key]) => !/token|url|path/i.test(key)).map(([key, item]) => [key, sanitized(item)]))
+}
+function sanitizeEvent(event: Record<string, unknown>) {
+  return { seq: event.seq, type: event.type, phase: event.phase, progress: event.progress, timestamp: event.timestamp, payload: sanitized(event.payload) }
+}
 
 test('real v1 drawing workflow resumes and exports structured data', async ({ page }) => {
   test.setTimeout(20 * 60 * 1000)
@@ -13,8 +25,8 @@ test('real v1 drawing workflow resumes and exports structured data', async ({ pa
 
   await page.goto('/')
   await page.getByText('进入系统').first().click()
-  await page.locator('#username').fill('test')
-  await page.locator('#pwd').fill('test123')
+  await page.locator('#username').fill(username)
+  await page.locator('#pwd').fill(password)
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page.getByText('控制台').first()).toBeVisible({ timeout: 20_000 })
   await page.getByText('工艺生成').first().click()
@@ -23,44 +35,53 @@ test('real v1 drawing workflow resumes and exports structured data', async ({ pa
   await page.getByTestId('drawing-upload').setInputFiles(fixture)
   await page.getByTestId('start-analysis').click()
   await expect(page.getByTestId('workflow-status')).toBeVisible({ timeout: 30_000 })
+  await expect.poll(async () => Number((await page.getByTestId('workflow-progress-value').innerText()).replace('%', '')), { timeout: 60_000 }).toBeGreaterThan(0)
+  await expect(page.getByTestId('workflow-phase')).not.toHaveAttribute('data-phase', 'upload')
   const taskId = await page.getByTestId('task-id').innerText()
   expect(taskId).toBeTruthy()
   await writeFile(`${evidenceDir}/task-id.txt`, `${taskId}\n`)
   await page.screenshot({ path: `${evidenceDir}/01-real-phase.png`, fullPage: true })
-  const streamProbe = await page.evaluate(async (id) => {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 5_000)
-    try {
-      const token = localStorage.getItem('forge-token')
-      const response = await fetch(`http://localhost:5390/api/v1/tasks/${id}/events?after=0`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal })
-      const reader = response.body?.getReader(); const decoder = new TextDecoder(); let text = ''
-      while (reader && text.length < 10_000 && !text.includes('annotation_required')) { const part = await reader.read(); if (part.done) break; text += decoder.decode(part.value) }
-      return { status: response.status, text }
-    } finally { clearTimeout(timer); controller.abort() }
-  }, taskId)
-  await writeFile(`${evidenceDir}/browser-sse-probe.json`, JSON.stringify(streamProbe, null, 2))
-
   const finalize = page.getByTestId('finalize-annotations')
   try { await expect(finalize).toBeVisible({ timeout: 8 * 60 * 1000 }) }
   finally { await writeFile(`${evidenceDir}/browser-diagnostics.txt`, `${diagnostics.join('\n')}\n`) }
+  await expect(page.getByTestId('drawing-preview')).toBeVisible()
   await finalize.click()
   await expect(page.getByTestId('feature-row').first()).toBeVisible({ timeout: 8 * 60 * 1000 })
-  await expect(page.getByTestId('feature-source').first()).toContainText('来源：')
-  await expect(page.getByTestId('feature-confidence').first()).toContainText(/(未提供|\d+%)/)
+  const featureCount = await page.getByTestId('feature-row').count(); expect(featureCount).toBeGreaterThan(0)
+  await expect(page.getByTestId('feature-confidence')).toHaveText(Array(featureCount).fill('置信度：未提供'))
+  await expect(page.getByTestId('feature-source').first()).toContainText(/来源：(vlm|ocr|yolo|geometry|combined|legacy_text)/)
+  await expect(page.getByTestId('feature-source').first()).toHaveAttribute('href', /^blob:/)
 
   await expect(page.getByTestId('confirm-review')).toBeVisible({ timeout: 3 * 60 * 1000 })
   await page.getByTestId('confirm-review').click()
   await expect(page.getByTestId('operation-row').first()).toBeVisible({ timeout: 8 * 60 * 1000 })
+  const operationCount = await page.getByTestId('operation-row').count(); expect(operationCount).toBeGreaterThan(0)
+  await expect(page.getByTestId('workflow-state')).toHaveText('completed', { timeout: 8 * 60 * 1000 })
+  await expect(page.getByTestId('workflow-phase')).toHaveAttribute('data-phase', 'done')
+  await expect(page.getByTestId('workflow-progress-value')).toHaveText('100%')
   await page.screenshot({ path: `${evidenceDir}/02-structured-operation.png`, fullPage: true })
 
   await page.reload()
   await page.getByText('工艺生成').first().click()
   await expect(page.getByTestId('task-id')).toHaveText(taskId, { timeout: 30_000 })
-  await expect(page.getByTestId('operation-row').first()).toBeVisible({ timeout: 3 * 60 * 1000 })
+  await expect(page.getByTestId('operation-row')).toHaveCount(operationCount, { timeout: 3 * 60 * 1000 })
 
-  const downloadPromise = page.waitForEvent('download')
+  const artifacts = await page.evaluate(async ({ id, api }) => {
+    const token = localStorage.getItem('forge-token'); const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
+    const snapshot = await (await fetch(`${api}/api/v1/tasks/${id}`, { headers })).json()
+    const wire = await (await fetch(`${api}/api/v1/tasks/${id}/events?after=0`, { headers })).text()
+    const events = wire.split(/\r?\n\r?\n/).map((frame) => frame.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n')).filter(Boolean).map((data) => JSON.parse(data))
+    return { snapshot, events }
+  }, { id: taskId, api: apiBase })
+  await writeFile(`${evidenceDir}/final-snapshot.json`, JSON.stringify(artifacts.snapshot, null, 2))
+  await writeFile(`${evidenceDir}/events-sanitized.json`, JSON.stringify(artifacts.events.map(sanitizeEvent), null, 2))
+
+  const downloadPromise = page.waitForEvent('download'); const exportResponse = page.waitForResponse((response) => response.url().includes(`/api/v1/tasks/${taskId}/export`))
   await page.getByTestId('download-export').click()
-  const download = await downloadPromise
-  await download.saveAs(`${evidenceDir}/${download.suggestedFilename()}`)
+  const [download, response] = await Promise.all([downloadPromise, exportResponse])
+  expect(response.headers()['content-type']).toContain('application/pdf')
+  expect(download.suggestedFilename()).toMatch(/\.pdf$/i)
+  const exportPath = `${evidenceDir}/${download.suggestedFilename()}`; await download.saveAs(exportPath)
+  expect((await stat(exportPath)).size).toBeGreaterThan(4); expect((await readFile(exportPath)).subarray(0, 4).toString()).toBe('%PDF')
   await page.screenshot({ path: `${evidenceDir}/03-resumed-complete.png`, fullPage: true })
 })

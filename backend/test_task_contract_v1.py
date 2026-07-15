@@ -37,6 +37,11 @@ def test_real_process_flow_data_maps_to_structured_operations():
     assert snapshot["process_operations"][0]["content"] == "下料棒料"
 
 
+def test_real_preview_image_urls_are_preserved():
+    snapshot = build_task_snapshot("task-preview", {}, {"preview_image_urls": ["/api/result/task-preview/asset/pages/test.png"]})
+    assert snapshot["drawing"]["preview_urls"] == ["/api/result/task-preview/asset/pages/test.png"]
+
+
 def test_legacy_bracket_feature_is_thread_without_invented_confidence():
     snapshot = build_task_snapshot(
         "task-3",

@@ -97,6 +97,15 @@ def test_snapshot_revision_increases_with_persisted_events(client):
     assert after > before
 
 
+def test_snapshot_recovers_preview_urls_from_annotation_event(client):
+    enterprise = _enterprise_user("preview")
+    task_store.insert_task("task-preview", pdf_name="drawing.png", enterprise_id=enterprise["id"])
+    task_store.add_event("task-preview", "annotation_required", data={"pages": 1, "preview_image_urls": ["/api/result/task-preview/asset/pages/drawing.png"]})
+    _login(client, "preview")
+    snapshot = client.get("/api/v1/tasks/task-preview").get_json()
+    assert snapshot["drawing"]["preview_urls"] == ["/api/result/task-preview/asset/pages/drawing.png"]
+
+
 def test_other_enterprise_task_is_hidden(client):
     owner = _enterprise_user("owner")
     _enterprise_user("outsider")

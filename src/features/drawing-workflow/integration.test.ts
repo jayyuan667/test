@@ -28,19 +28,20 @@ test("controller owns upload, feature review, operation upsert, and completion w
   const reviews: unknown[] = [];
   const client: DrawingWorkflowClient = {
     upload: async () => snapshot(), getSnapshot: async () => snapshot(),
+    getAsset: async () => new Blob(["preview"]),
     connect: (_taskId, _after, onEvent): EventConnection => { emit = onEvent; return { close() {} }; },
     finalizeAnnotations: async () => ({ ...snapshot("awaiting_review"), features: [feature], review: { status: "pending", raw_text: null } }),
     submitReview: async (_taskId, body) => { reviews.push(body); return { ...snapshot(), task: { ...snapshot().task, phase: "process_generation", progress: 65 } }; },
-    cancel: async () => snapshot("cancelled"), exportUrl: (id) => `/api/v1/tasks/${id}/export`,
+    cancel: async () => snapshot("cancelled"), exportUrl: (id) => `/api/v1/tasks/${id}/export?format=pdf`,
   };
   const controller = createDrawingWorkflowController(client);
 
   await controller.upload(new Blob(["drawing"]));
-  emit({ schema_version: "1.0", seq: 1, task_id: "task-real", type: "feature_ready", phase: "feature_review", progress: 60, timestamp: "", payload: { feature } });
+  emit({ schema_version: "1.0", seq: 2, task_id: "task-real", type: "feature_ready", phase: "feature_review", progress: 60, timestamp: "", payload: { feature } });
   await controller.finalizeAnnotations();
   await controller.submitReview({ features: [feature] });
-  emit({ schema_version: "1.0", seq: 2, task_id: "task-real", type: "operation_upserted", phase: "process_generation", progress: 85, timestamp: "", payload: { operation } });
-  emit({ schema_version: "1.0", seq: 3, task_id: "task-real", type: "task_completed", phase: "done", progress: 100, timestamp: "", payload: {} });
+  emit({ schema_version: "1.0", seq: 3, task_id: "task-real", type: "operation_upserted", phase: "process_generation", progress: 85, timestamp: "", payload: { operation } });
+  emit({ schema_version: "1.0", seq: 4, task_id: "task-real", type: "task_completed", phase: "done", progress: 100, timestamp: "", payload: {} });
 
   const state = controller.getState();
   assert.equal(state.snapshot?.features[0], feature);
@@ -48,5 +49,5 @@ test("controller owns upload, feature review, operation upsert, and completion w
   assert.equal(state.snapshot?.task.progress, 100);
   assert.equal(state.snapshot?.task.state, "completed");
   assert.deepEqual(reviews, [{ features: [feature] }]);
-  assert.equal(controller.exportUrl(), "/api/v1/tasks/task-real/export");
+  assert.equal(controller.exportUrl(), "/api/v1/tasks/task-real/export?format=pdf");
 });
