@@ -105,16 +105,17 @@ test("default stream sends Bearer auth, parses named frames, and aborts", async 
 });
 
 test("stream ignores malformed JSON and reports HTTP auth errors", async () => {
-  let disconnected: unknown;
-  const client = createDrawingWorkflowClient({ apiBase: "/api", getToken: () => "expired", onUnauthorized: () => { disconnected = "unauthorized"; }, fetchImpl: async () => new Response(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "expired" } }), { status: 401, headers: { "Content-Type": "application/json" } }) });
+  let disconnected: unknown; let unauthorizedCalls = 0;
+  const client = createDrawingWorkflowClient({ apiBase: "/api", getToken: () => "expired", onUnauthorized: () => { unauthorizedCalls += 1; }, fetchImpl: async () => new Response(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "expired" } }), { status: 401, headers: { "Content-Type": "application/json" } }) });
   client.connect("task-1", 0, () => assert.fail("no event expected"), (error) => { disconnected = error ?? disconnected; });
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.ok(disconnected);
+  assert.equal(unauthorizedCalls, 1);
 });
 
 test("stream skips malformed data and preserves structured 403 metadata", async () => {
   const encoder = new TextEncoder();
-  let calls = 0; let failure: unknown;
+  let calls = 0; let failure: import("./types.ts").StreamDisconnect | undefined;
   const client = createDrawingWorkflowClient({ apiBase: "/api", getToken: () => "token", fetchImpl: async () => {
     calls += 1;
     if (calls === 1) return new Response(new ReadableStream({ start(controller) { controller.enqueue(encoder.encode("event: heartbeat\ndata: not-json\n\n")); controller.close(); } }), { status: 200 });
@@ -124,8 +125,8 @@ test("stream skips malformed data and preserves structured 403 metadata", async 
   await new Promise((resolve) => setTimeout(resolve, 0));
   client.connect("task-1", 0, () => {}, (error) => { failure = error; });
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.ok(failure instanceof DrawingWorkflowApiError);
-  assert.equal(failure.metadata.code, "QUOTA_EXCEEDED");
+  assert.equal(failure?.error?.code, "QUOTA_EXCEEDED");
+  assert.equal(failure?.status, 403);
 });
 
 test("upload and command methods use exact v1 endpoints and export URL", async () => {
@@ -137,4 +138,25 @@ test("upload and command methods use exact v1 endpoints and export URL", async (
   await client.cancel("task-1");
   assert.deepEqual(calls.map(({ url, method }) => [url, method]), [["/api/v1/tasks", "POST"], ["/api/v1/tasks/task-1/annotations/finalize", "POST"], ["/api/v1/tasks/task-1/review", "POST"], ["/api/v1/tasks/task-1/cancel", "POST"]]);
   assert.equal(client.exportUrl("task 1"), "/api/v1/tasks/task%201/export");
+});
+
+test("SSE parser survives every byte split around CRLF frames and flushes EOF", async () => {
+  const encoder = new TextEncoder();
+  const wire = "retry: 2750\r\nid: 3\r\nevent: heartbeat\r\ndata: {\"schema_version\":\"1.0\",\"seq\":3,\"task_id\":\"task-1\",\"type\":\"heartbeat\",\"phase\":\"drawing_analysis\",\"progress\":1,\"timestamp\":\"\",\"payload\":{}}\r\n\r\nid: 4\revent: heartbeat\rdata: {\"schema_version\":\"1.0\",\"seq\":4,\"task_id\":\"task-1\",\"type\":\"heartbeat\",\"phase\":\"drawing_analysis\",\"progress\":2,\"timestamp\":\"\",\"payload\":{}}";
+  for (const split of Array.from({ length: wire.length - 1 }, (_, index) => index + 1)) {
+    const bytes = encoder.encode(wire); const events: TaskEvent[] = []; let retryMs: number | undefined;
+    const client = createDrawingWorkflowClient({ apiBase: "/api", getToken: () => "t", fetchImpl: async () => new Response(new ReadableStream({ start(controller) { controller.enqueue(bytes.slice(0, split)); controller.enqueue(bytes.slice(split)); controller.close(); } }), { status: 200 }) });
+    client.connect("task-1", 0, (event) => events.push(event), (disconnect) => { retryMs = disconnect.retryMs; });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(events.map((event) => event.seq), [3, 4], `split=${split}`);
+    assert.equal(retryMs, 2750);
+  }
+});
+
+test("SSE parser joins multiline data fields split one byte at a time", async () => {
+  const wire = "event: heartbeat\ndata: {\"schema_version\":\"1.0\",\ndata: \"seq\":5,\"task_id\":\"task-1\",\"type\":\"heartbeat\",\"phase\":\"drawing_analysis\",\"progress\":0,\"timestamp\":\"\",\"payload\":{}}\n\n";
+  const bytes = new TextEncoder().encode(wire); const events: TaskEvent[] = [];
+  const client = createDrawingWorkflowClient({ apiBase: "/api", getToken: () => null, fetchImpl: async () => new Response(new ReadableStream({ start(controller) { bytes.forEach((byte) => controller.enqueue(Uint8Array.of(byte))); controller.close(); } }), { status: 200 }) });
+  client.connect("task-1", 0, (event) => events.push(event)); await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(events[0]?.seq, 5);
 });

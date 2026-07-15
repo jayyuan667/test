@@ -73,7 +73,7 @@ test("preserves cancelled terminal state and clears completion errors", () => {
   const failed = { code: "X", message: "x", retryable: false, phase: "drawing_analysis" as const, details: {} };
   const base = createInitialWorkflowState({ schema_version: "1.0", task: { id: "task-1", state: "processing", phase: "drawing_analysis", progress: 0, revision: 1, created_at: null, updated_at: null, error: failed }, drawing: { name: "x", source_kind: "unknown", page_count: 1, preview_urls: [] }, features: [], review: { status: "not_ready", raw_text: null }, process_operations: [], reuse_candidates: [], capabilities: {} });
   const completed = reduceWorkflowState(base, { schema_version: "1.0", seq: 1, task_id: "task-1", type: "task_completed", phase: "done", progress: 100, timestamp: "", payload: {} });
-  const cancelled = reduceWorkflowState(base, { schema_version: "1.0", seq: 2, task_id: "task-1", type: "task_failed", phase: "done", progress: 10, timestamp: "", payload: { state: "cancelled", error: failed } });
+  const cancelled = reduceWorkflowState(base, { schema_version: "1.0", seq: 2, task_id: "task-1", type: "task_failed", phase: "done", progress: 10, timestamp: "", payload: { status: "cancelled", error: failed } });
 
   assert.equal(completed.snapshot?.task.error, null);
   assert.equal(cancelled.snapshot?.task.state, "cancelled");

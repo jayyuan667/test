@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createDrawingWorkflowController } from "./controller.ts";
-import type { DrawingWorkflowClient, EventConnection, TaskEvent, TaskSnapshot } from "./types.ts";
+import type { DrawingWorkflowClient, EventConnection, StreamDisconnect, TaskEvent, TaskSnapshot } from "./types.ts";
 
 const snapshot = (id: string, state: TaskSnapshot["task"]["state"] = "processing"): TaskSnapshot => ({
   schema_version: "1.0", task: { id, state, phase: state === "cancelled" ? "done" : "drawing_analysis", progress: 0, revision: 1, created_at: null, updated_at: null, error: null },
   drawing: { name: `${id}.png`, source_kind: "png", page_count: 1, preview_urls: [] }, features: [], review: { status: "not_ready", raw_text: null }, process_operations: [], reuse_candidates: [], capabilities: {},
 });
 
-interface TestConnection extends EventConnection { emit(event: TaskEvent): void; disconnect(): void; closed: boolean }
+interface TestConnection extends EventConnection { emit(event: TaskEvent): void; disconnect(info?: StreamDisconnect): void; closed: boolean }
 
 function harness(getSnapshot: (id: string) => Promise<TaskSnapshot> = async (id) => snapshot(id)) {
   const afterValues: Array<[string, number]> = [];
@@ -18,7 +18,7 @@ function harness(getSnapshot: (id: string) => Promise<TaskSnapshot> = async (id)
     upload: async () => snapshot("uploaded"), getSnapshot,
     connect: (taskId, after, onEvent, onDisconnect = () => {}) => {
       afterValues.push([taskId, after]);
-      const connection: TestConnection = { closed: false, close() { this.closed = true; }, emit: onEvent, disconnect: () => onDisconnect() };
+      const connection: TestConnection = { closed: false, close() { this.closed = true; }, emit: onEvent, disconnect: (info) => onDisconnect(info ?? { retryable: true }) };
       connections.push(connection); return connection;
     },
     finalizeAnnotations: async (id) => snapshot(id), submitReview: async (id) => snapshot(id), cancel: async (id) => snapshot(id, "cancelled"), exportUrl: (id) => `/export/${id}`,
@@ -75,4 +75,22 @@ test("a cancelled snapshot is terminal and does not open a stream", async () => 
   await controller.start("task-1");
   assert.equal(controller.getState().connection, "closed");
   assert.equal(connections.length, 0);
+});
+
+test("nonretryable auth errors enter state and stop reconnect", async () => {
+  const scheduled: Array<() => void> = []; const { client, connections } = harness();
+  const controller = createDrawingWorkflowController(client, { scheduleReconnect: (callback) => { scheduled.push(callback); return () => {}; } });
+  await controller.start("task-1");
+  connections[0].disconnect({ status: 403, retryable: true, error: { code: "QUOTA_EXCEEDED", message: "none", retryable: true, phase: "drawing_analysis", details: { remaining: 0 } } });
+  assert.equal(controller.getState().error?.code, "QUOTA_EXCEEDED");
+  assert.equal(controller.getState().error?.phase, "drawing_analysis");
+  assert.equal(scheduled.length, 0);
+});
+
+test("server retry hint becomes reconnect base within the configured cap", async () => {
+  const delays: number[] = []; const { client, connections } = harness();
+  const controller = createDrawingWorkflowController(client, { scheduleReconnect: (_callback, delay) => { delays.push(delay); return () => {}; }, random: () => 0, maxReconnectDelay: 3_000 });
+  await controller.start("task-1");
+  connections[0].disconnect({ retryable: true, retryMs: 8_000 });
+  assert.deepEqual(delays, [3_000]);
 });

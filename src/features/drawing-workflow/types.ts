@@ -134,10 +134,17 @@ export interface EventConnection {
   close(): void;
 }
 
+export interface StreamDisconnect {
+  retryable: boolean;
+  status?: number;
+  error?: WorkflowError;
+  retryMs?: number;
+}
+
 export interface DrawingWorkflowClient {
   upload(file: File | Blob): Promise<TaskSnapshot>;
   getSnapshot(taskId: string): Promise<TaskSnapshot>;
-  connect(taskId: string, after: number, onEvent: (event: TaskEvent) => void, onDisconnect?: (error?: unknown) => void): EventConnection;
+  connect(taskId: string, after: number, onEvent: (event: TaskEvent) => void, onDisconnect?: (disconnect: StreamDisconnect) => void): EventConnection;
   finalizeAnnotations(taskId: string, body?: unknown): Promise<TaskSnapshot>;
   submitReview(taskId: string, body: unknown): Promise<TaskSnapshot>;
   cancel(taskId: string): Promise<TaskSnapshot>;

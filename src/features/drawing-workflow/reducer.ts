@@ -85,7 +85,7 @@ export function reduceWorkflowState(state: WorkflowState, action: WorkflowAction
     const error = action.payload.error ?? null;
     next = {
       ...next,
-      snapshot: updateSnapshotTask(next.snapshot, { state: action.payload.state === "cancelled" ? "cancelled" : "failed", phase: action.phase, progress: action.progress, error }),
+      snapshot: updateSnapshotTask(next.snapshot, { state: action.payload.status === "cancelled" || action.payload.state === "cancelled" ? "cancelled" : "failed", phase: action.phase, progress: action.progress, error }),
       error,
     };
   }

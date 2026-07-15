@@ -1,4 +1,4 @@
-import type { DrawingWorkflowClient, EventConnection, TaskEvent, TaskSnapshot, WorkflowError } from "./types.ts";
+import type { DrawingWorkflowClient, EventConnection, StreamDisconnect, TaskEvent, TaskSnapshot, WorkflowError } from "./types.ts";
 import { normalizeTaskEvent, normalizeTaskSnapshot } from "./normalize.ts";
 
 export interface StreamRequest {
@@ -8,7 +8,7 @@ export interface StreamRequest {
   fetchImpl: typeof fetch;
   onUnauthorized?: () => void;
   onEvent: (event: TaskEvent) => void;
-  onDisconnect: (error?: unknown) => void;
+  onDisconnect: (disconnect: StreamDisconnect) => void;
 }
 
 export type StreamTransport = (request: StreamRequest) => EventConnection;
@@ -76,40 +76,57 @@ export const fetchStreamTransport: StreamTransport = (request) => {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let frameLines: string[] = [];
+      let serverRetryMs: number | undefined;
+      const dispatchFrame = () => {
+        if (frameLines.length === 0) return;
+        let id: string | undefined;
+        let eventName: string | undefined;
+        const dataLines: string[] = [];
+        for (const line of frameLines) {
+          if (!line || line.startsWith(":")) continue;
+          const separator = line.indexOf(":");
+          const field = separator < 0 ? line : line.slice(0, separator);
+          const raw = separator < 0 ? "" : line.slice(separator + 1).replace(/^ /, "");
+          if (field === "data") dataLines.push(raw);
+          else if (field === "id" && !raw.includes("\0")) id = raw;
+          else if (field === "event") eventName = raw;
+          else if (field === "retry" && /^\d+$/.test(raw)) serverRetryMs = Number(raw);
+        }
+        frameLines = [];
+        const data = dataLines.join("\n");
+        if (data) { const event = parseEvent(data, id, eventName); if (event) request.onEvent(event); }
+      };
+      const consume = (eof: boolean) => {
+        let start = 0;
+        for (let index = 0; index < buffer.length; index += 1) {
+          const char = buffer[index];
+          if (char !== "\n" && char !== "\r") continue;
+          if (char === "\r" && index === buffer.length - 1 && !eof) break;
+          const line = buffer.slice(start, index);
+          if (char === "\r" && buffer[index + 1] === "\n") index += 1;
+          start = index + 1;
+          if (line === "") dispatchFrame(); else frameLines.push(line);
+        }
+        buffer = buffer.slice(start);
+        if (eof) {
+          if (buffer) frameLines.push(buffer);
+          buffer = "";
+          dispatchFrame();
+        }
+      };
       while (!closed) {
         const { done, value } = await reader.read();
-        buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
-        let boundary = buffer.indexOf("\n\n");
-        while (boundary >= 0) {
-          const frame = buffer.slice(0, boundary);
-          buffer = buffer.slice(boundary + 2);
-          let id: string | undefined;
-          let eventName: string | undefined;
-          let retry: number | undefined;
-          const dataLines: string[] = [];
-          for (const line of frame.split("\n")) {
-            if (!line || line.startsWith(":")) continue;
-            const separator = line.indexOf(":");
-            const field = separator < 0 ? line : line.slice(0, separator);
-            const raw = separator < 0 ? "" : line.slice(separator + 1).replace(/^ /, "");
-            if (field === "data") dataLines.push(raw);
-            else if (field === "id" && !raw.includes("\0")) id = raw;
-            else if (field === "event") eventName = raw;
-            else if (field === "retry" && /^\d+$/.test(raw)) retry = Number(raw);
-          }
-          void retry;
-          const data = dataLines.join("\n");
-          if (data) {
-            const event = parseEvent(data, id, eventName);
-            if (event) request.onEvent(event);
-          }
-          boundary = buffer.indexOf("\n\n");
-        }
+        buffer += decoder.decode(value, { stream: !done });
+        consume(done);
         if (done) break;
       }
-      if (!closed) request.onDisconnect();
+      if (!closed) request.onDisconnect({ retryable: true, retryMs: serverRetryMs });
     } catch (error) {
-      if (!closed && !(error instanceof DOMException && error.name === "AbortError")) request.onDisconnect(error);
+      if (!closed && !(error instanceof DOMException && error.name === "AbortError")) {
+        if (error instanceof DrawingWorkflowApiError) request.onDisconnect({ status: error.status, retryable: error.metadata.retryable, error: error.metadata });
+        else request.onDisconnect({ retryable: true });
+      }
     }
   })();
   return { close() { if (closed) return; closed = true; controller.abort(); } };

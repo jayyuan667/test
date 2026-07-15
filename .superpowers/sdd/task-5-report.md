@@ -62,3 +62,28 @@ The preceding SSE and TypeScript concerns are superseded by this correction.
 ### Remaining concern
 
 - The Node test runner reports `MODULE_TYPELESS_PACKAGE_JSON` because the shared package is not declared ESM. Adding `type: module` could affect unrelated application tooling, so this correction leaves the harmless warning in place; all requested gates pass.
+
+## Stream and wire-contract re-review corrections
+
+### RED
+
+- Byte-split SSE tests lost the EOF frame when CR/LF delimiters were split across chunks.
+- Canonical `task_failed.payload.status="cancelled"` produced `failed`.
+- Invalid enum/range fixtures leaked negative revision/duration, invalid source kinds/statuses, out-of-range confidence, and a `snapshot: null` payload key.
+- Typed HTTP status tests showed stream disconnects did not expose 403 to the controller.
+
+### GREEN
+
+- Replaced delimiter search with an incremental line parser that preserves a trailing CR between reads, handles CRLF/LF/CR, multiline data and comments, and flushes the final frame at EOF. The test exercises every possible byte split in a mixed-delimiter stream plus one-byte chunks.
+- `StreamDisconnect` now carries typed `status`, `WorkflowError`, retryability, and optional server `retryMs`. HTTP 401 still calls the unauthorized hook once; 401/403/nonretryable failures dispatch `error_received` and permanently close that controller stream. Only retryable/transport disconnects schedule reconnects.
+- Valid SSE `retry:` updates the controller's exponential base, capped by `maxReconnectDelay`.
+- Normalizers now membership-check all contract enums and range-check finite progress, confidence, revision, page count, duration, page and bbox numbers. Invalid nested snapshots are omitted rather than assigned null.
+- Reducer accepts canonical `payload.status="cancelled"` while retaining compatibility with `payload.state`.
+
+### Verification
+
+- `npm run test:workflow`: 27 passed, 0 failed.
+- `npx eslint src/features/drawing-workflow`: exit 0.
+- `npx tsc --noEmit --pretty false`: exit 0.
+- `npm run build`: exit 0.
+- `git diff --check`: exit 0.

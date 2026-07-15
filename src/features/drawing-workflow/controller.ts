@@ -27,6 +27,7 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
   let cancelReconnect: (() => void) | null = null;
   let generation = 0;
   let reconnectAttempt = 0;
+  let reconnectBase = 1_000;
   let disposed = false;
   let terminal = false;
 
@@ -50,12 +51,19 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
         reconnectAttempt = 0;
         publish(reduceWorkflowState(state, { type: "connection_changed", connection: "connected" }));
       }
-    }, () => {
+    }, (disconnect) => {
       if (expectedGeneration !== generation) return;
       connection?.close(); connection = null;
       if (disposed || terminal) return;
+      if (disconnect.error) publish(reduceWorkflowState(state, { type: "error_received", error: disconnect.error }));
+      if (!disconnect.retryable || disconnect.status === 401 || disconnect.status === 403) {
+        terminal = true;
+        publish(reduceWorkflowState(state, { type: "connection_changed", connection: "closed" }));
+        return;
+      }
       publish(reduceWorkflowState(state, { type: "connection_changed", connection: "reconnecting" }));
-      const base = Math.min(maxDelay, 1_000 * (2 ** reconnectAttempt));
+      if (typeof disconnect.retryMs === "number" && Number.isFinite(disconnect.retryMs) && disconnect.retryMs >= 0) reconnectBase = Math.min(maxDelay, disconnect.retryMs);
+      const base = Math.min(maxDelay, reconnectBase * (2 ** reconnectAttempt));
       const delay = Math.min(maxDelay, Math.round(base * (1 + Math.max(0, random()) * 0.2)));
       reconnectAttempt += 1;
       cancelReconnect?.();
@@ -70,6 +78,7 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
       cleanup();
       activeTask = taskId;
       reconnectAttempt = 0;
+      reconnectBase = 1_000;
       terminal = false;
       publish(createInitialWorkflowState());
       const snapshot = await client.getSnapshot(taskId);
