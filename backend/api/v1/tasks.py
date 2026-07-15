@@ -5,6 +5,7 @@ from flask import Blueprint, Response, jsonify, request, stream_with_context
 from ...auth_utils import login_required
 from ...services.task_snapshot import build_task_snapshot
 from ...services.task_event_stream import stream_v1_events
+from ...services import legacy_task_commands
 from ...task_store import build_task_dict, get_events, get_task
 from .._utils import assert_task_access
 
@@ -29,17 +30,17 @@ def _snapshot(task_id):
     return build_task_snapshot(task_id, task, result)
 
 
-def _response_status(response):
-    flask_response = response[0] if isinstance(response, tuple) else response
-    status = response[1] if isinstance(response, tuple) else flask_response.status_code
-    return flask_response, status
-
-
-def _error_response(response, task_id=None):
-    flask_response, status = _response_status(response)
-    body = flask_response.get_json(silent=True) or {}
+def _error_response(result, task_id=None):
+    status = result.status_code
+    body = result.json()
     legacy_error = body.get("error")
-    if isinstance(legacy_error, dict):
+    if status >= 500:
+        code = "INTERNAL_ERROR"
+        message = "Internal server error"
+        details = {}
+        retryable = False
+        phase = None
+    elif isinstance(legacy_error, dict):
         code = legacy_error.get("code", "COMMAND_FAILED")
         message = legacy_error.get("message", "Command failed")
         details = legacy_error.get("details", legacy_error.get("detail", {}))
@@ -64,62 +65,46 @@ def _error_response(response, task_id=None):
 
 
 def _command_snapshot(task_id, response):
-    _flask_response, status = _response_status(response)
-    if status >= 400:
+    if response.status_code >= 400:
         return _error_response(response, task_id)
-    return jsonify(_snapshot(task_id)), status
+    return jsonify(_snapshot(task_id)), response.status_code
 
 
 @tasks_v1_bp.post("/tasks")
 @login_required
 def create_task():
-    # The legacy handler owns validation, quota, persistence, and pipeline
-    # selection. Calling its Python entry point preserves those semantics and
-    # avoids a loopback HTTP request.
-    from ..upload import upload_drawing
-
-    response = upload_drawing()
-    flask_response, status = _response_status(response)
-    if status >= 400:
-        return _error_response(response)
-    task_id = flask_response.get_json()["task_id"]
+    result = legacy_task_commands.create_task()
+    if result.status_code >= 400:
+        return _error_response(result)
+    task_id = result.json()["task_id"]
     return jsonify(_snapshot(task_id)), 202
 
 
 @tasks_v1_bp.post("/tasks/<task_id>/annotations/finalize")
 @login_required
 def finalize_task_annotations(task_id):
-    from ..annotations import finalize_annotations
-
-    return _command_snapshot(task_id, finalize_annotations(task_id))
+    return _command_snapshot(task_id, legacy_task_commands.finalize_annotations(task_id))
 
 
 @tasks_v1_bp.post("/tasks/<task_id>/review")
 @login_required
 def review_task(task_id):
-    from ..upload import review_visual_features
-
-    return _command_snapshot(task_id, review_visual_features(task_id))
+    return _command_snapshot(task_id, legacy_task_commands.review_task(task_id))
 
 
 @tasks_v1_bp.post("/tasks/<task_id>/cancel")
 @login_required
 def cancel_task(task_id):
-    from ..upload import cancel_task_route
-
-    return _command_snapshot(task_id, cancel_task_route(task_id))
+    return _command_snapshot(task_id, legacy_task_commands.cancel_task(task_id))
 
 
 @tasks_v1_bp.route("/tasks/<task_id>/export", methods=["GET", "POST"])
 @login_required
 def export_task(task_id):
-    from ..export import export_result
-
-    response = export_result(task_id)
-    _flask_response, status = _response_status(response)
-    if status >= 400:
-        return _error_response(response, task_id)
-    return response
+    result = legacy_task_commands.export_task(task_id)
+    if result.status_code >= 400:
+        return _error_response(result, task_id)
+    return result.response
 
 
 @tasks_v1_bp.get("/tasks/<task_id>")

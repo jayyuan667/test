@@ -194,3 +194,89 @@ def test_command_errors_use_exact_v1_envelope(client):
     error = response.get_json()["error"]
     assert set(error) == {"code", "message", "retryable", "phase", "details"}
     assert error["code"] == "TASK_NOT_FOUND"
+
+
+def test_post_export_uses_real_handler_with_edited_rows(client, monkeypatch):
+    enterprise = _enterprise_user("post-exporter")
+    task = _live_task(enterprise, "task-post-export", "completed")
+    task["result"] = {"process_flow": {"data": [["old", "old"]]}}
+    _login(client, "post-exporter")
+    captured = {}
+
+    def fake_excel(task_id, result_data):
+        captured["task_id"] = task_id
+        captured["rows"] = result_data["process_flow"]["data"]
+        return b"serialized-workbook"
+
+    monkeypatch.setattr("backend.api.export._excel_response", fake_excel)
+    rows = [["0050", "车工", "粗车外圆"]]
+
+    response = client.post(
+        "/api/v1/tasks/task-post-export/export?format=xlsx", json={"rows": rows}
+    )
+
+    assert response.status_code == 200
+    assert response.data == b"serialized-workbook"
+    assert captured == {"task_id": "task-post-export", "rows": rows}
+
+
+@pytest.mark.parametrize("command", [
+    "annotations/finalize", "review", "cancel", "export",
+])
+def test_commands_hide_cross_enterprise_tasks_without_mutation(client, command):
+    owner = _enterprise_user(f"owner-{command.replace('/', '-')}")
+    _enterprise_user(f"outsider-{command.replace('/', '-')}")
+    status = "awaiting_annotation" if command.startswith("annotations") else "awaiting_review"
+    task = _live_task(owner, f"secret-{command.replace('/', '-')}", status)
+    original_status = task["status"]
+    _login(client, f"outsider-{command.replace('/', '-')}")
+
+    response = client.post(
+        f"/api/v1/tasks/{task['task_id']}/{command}",
+        json={"review_text": "must-not-apply", "rows": [["mutated"]]},
+    )
+
+    assert response.status_code == 404
+    assert task["status"] == original_status
+    assert not task["annotation_event"].is_set()
+    assert not task["review_event"].is_set()
+    assert task.get("review_text") is None
+
+
+@pytest.mark.parametrize("status,legacy_body,expected_code", [
+    (400, {"error": "bad state"}, "INVALID_TASK_STATE"),
+    (403, {"error": {"code": "QUOTA_EXCEEDED", "message": "quota"}}, "QUOTA_EXCEEDED"),
+    (409, {"error": "already completed"}, "INVALID_TASK_STATE"),
+    (500, {"error": "/private/tmp/secret traceback.py:9 boom"}, "INTERNAL_ERROR"),
+])
+def test_command_error_contract_and_internal_sanitization(
+    client, monkeypatch, status, legacy_body, expected_code
+):
+    from backend.services.legacy_task_commands import CommandResult
+
+    enterprise = _enterprise_user(f"errors-{status}")
+    _live_task(enterprise, f"task-error-{status}", "awaiting_review")
+    _login(client, f"errors-{status}")
+    with app.app_context():
+        response = app.make_response((legacy_body, status))
+    monkeypatch.setattr(
+        "backend.services.legacy_task_commands.cancel_task",
+        lambda task_id: CommandResult(response),
+    )
+
+    result = client.post(f"/api/v1/tasks/task-error-{status}/cancel")
+
+    assert result.status_code == status
+    error = result.get_json()["error"]
+    assert set(error) == {"code", "message", "retryable", "phase", "details"}
+    assert error["code"] == expected_code
+    assert error["phase"] == "feature_review"
+    assert error["retryable"] is False
+    if status == 500:
+        assert error["message"] == "Internal server error"
+        assert "secret" not in result.get_data(as_text=True)
+    else:
+        expected_message = legacy_body["error"]
+        if isinstance(expected_message, dict):
+            expected_message = expected_message["message"]
+        assert error["message"] == expected_message

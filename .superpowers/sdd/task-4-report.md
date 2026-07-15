@@ -35,3 +35,33 @@
 - `backend/api/v1/tasks.py`
 - `backend/test_tasks_api_v1.py`
 - `.superpowers/sdd/task-4-report.md`
+
+## Quality review correction
+
+The first implementation directly invoked decorated legacy views and manually
+interpreted only common two-tuple returns. Quality review rejected that coupling.
+The correction adds `backend/services/legacy_task_commands.py`, the single,
+explicitly transitional seam around request-context legacy handlers. It removes
+only the outer `login_required` wrapper, retains upload quota enforcement,
+normalizes all Flask return forms with `current_app.make_response`, catches and
+sanitizes internal exceptions, and exposes a stable `CommandResult`. The v1
+route no longer imports or invokes legacy handlers directly.
+
+### Correction RED
+
+- Focused suite: `7 failed, 15 passed`.
+- Failures proved the missing adapter, unsupported bare serializer response,
+  and absent 400/403/409/500 adapter contract.
+
+### Correction GREEN
+
+- Focused Task 4 suite: `22 passed`.
+- Task 4 plus protected regressions except the known capability baseline:
+  `39 passed, 1 known warning`.
+- Full requested suite: `39 passed, 1 failed, 1 known warning`; the sole failure
+  remains the pre-existing unauthenticated capability-gate mismatch documented
+  above.
+- Added coverage for single wrapper invocation, Response/two-tuple/three-tuple
+  normalization, real POST export row forwarding with only the serializer
+  boundary mocked, command-specific cross-enterprise non-mutation, exact safe
+  400/403/409 envelopes, and sanitized 500 responses.
