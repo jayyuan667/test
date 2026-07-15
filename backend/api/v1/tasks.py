@@ -24,6 +24,8 @@ def _snapshot(task_id):
     stored = get_task(task_id)
     if stored is not None:
         task["updated_at"] = stored.get("updated_at")
+    events = get_events(task_id, since_id=0)
+    task["revision"] = max((int(event["id"]) for event in events), default=0)
     result = dict(task.get("result") or {})
     if task.get("review_text") is not None:
         result.setdefault("feature_text", task["review_text"])

@@ -2,7 +2,12 @@ import { createInitialWorkflowState, reduceWorkflowState } from "./reducer.ts";
 import type { DrawingWorkflowClient, EventConnection, TaskEvent, WorkflowState } from "./types.ts";
 
 export interface DrawingWorkflowController {
+  upload(file: File | Blob): Promise<void>;
   start(taskId: string): Promise<void>;
+  finalizeAnnotations(body?: unknown): Promise<void>;
+  submitReview(body: unknown): Promise<void>;
+  cancel(): Promise<void>;
+  exportUrl(): string;
   getState(): WorkflowState;
   subscribe(listener: (state: WorkflowState) => void): () => void;
   dispose(): void;
@@ -33,6 +38,14 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
 
   const publish = (next: WorkflowState) => { state = next; listeners.forEach((listener) => listener(state)); };
   const cleanup = () => { cancelReconnect?.(); cancelReconnect = null; connection?.close(); connection = null; };
+  const refreshSnapshot = async (taskId: string, expectedGeneration: number) => {
+    try {
+      const snapshot = await client.getSnapshot(taskId);
+      if (!disposed && expectedGeneration === generation && activeTask === taskId) {
+        publish(reduceWorkflowState(state, { type: "snapshot_received", snapshot }));
+      }
+    } catch { /* the stream remains authoritative; reconnect can retry recovery */ }
+  };
 
   const openConnection = (expectedGeneration: number) => {
     if (!activeTask || disposed || terminal || expectedGeneration !== generation) return;
@@ -42,6 +55,10 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
     connection = client.connect(taskId, state.lastSeq, (event: TaskEvent) => {
       if (disposed || terminal || expectedGeneration !== generation || event.task_id !== taskId) return;
       publish(reduceWorkflowState(state, event));
+      const legacyType = event.payload.legacy_type;
+      if (legacyType === "annotation_required" || legacyType === "review_required" || event.type === "task_completed") {
+        void refreshSnapshot(taskId, expectedGeneration);
+      }
       const taskState = state.snapshot?.task.state;
       terminal = event.type === "task_completed" || event.type === "task_failed" || (taskState ? terminalStates.has(taskState) : false);
       if (terminal) {
@@ -72,6 +89,10 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
   };
 
   return {
+    async upload(file) {
+      const snapshot = await client.upload(file);
+      await this.start(snapshot.task.id);
+    },
     async start(taskId) {
       generation += 1;
       const expectedGeneration = generation;
@@ -87,6 +108,27 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
       terminal = terminalStates.has(snapshot.task.state);
       if (!terminal) openConnection(expectedGeneration);
       else publish(reduceWorkflowState(state, { type: "connection_changed", connection: "closed" }));
+    },
+    async finalizeAnnotations(body) {
+      if (!activeTask) throw new Error("No active workflow task");
+      const snapshot = await client.finalizeAnnotations(activeTask, body);
+      publish(reduceWorkflowState(state, { type: "snapshot_received", snapshot }));
+    },
+    async submitReview(body) {
+      if (!activeTask) throw new Error("No active workflow task");
+      const snapshot = await client.submitReview(activeTask, body);
+      publish(reduceWorkflowState(state, { type: "snapshot_received", snapshot }));
+    },
+    async cancel() {
+      if (!activeTask) throw new Error("No active workflow task");
+      const snapshot = await client.cancel(activeTask);
+      publish(reduceWorkflowState(state, { type: "snapshot_received", snapshot }));
+      terminal = true;
+      cleanup();
+    },
+    exportUrl() {
+      if (!activeTask) throw new Error("No active workflow task");
+      return client.exportUrl(activeTask);
     },
     getState: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },

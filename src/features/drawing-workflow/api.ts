@@ -67,7 +67,8 @@ export const fetchStreamTransport: StreamTransport = (request) => {
       if (request.token) headers.set("Authorization", `Bearer ${request.token}`);
       const url = new URL(request.url, globalThis.location?.origin ?? "http://localhost");
       url.searchParams.set("after", String(request.after));
-      const response = await request.fetchImpl(request.url.startsWith("/") ? `${url.pathname}${url.search}` : url.toString(), { headers, signal: controller.signal });
+      const fetchImpl = request.fetchImpl;
+      const response = await fetchImpl(request.url.startsWith("/") ? `${url.pathname}${url.search}` : url.toString(), { headers, signal: controller.signal });
       if (!response.ok) {
         if (response.status === 401) request.onUnauthorized?.();
         throw await responseError(response);
@@ -125,7 +126,7 @@ export const fetchStreamTransport: StreamTransport = (request) => {
     } catch (error) {
       if (!closed && !(error instanceof DOMException && error.name === "AbortError")) {
         if (error instanceof DrawingWorkflowApiError) request.onDisconnect({ status: error.status, retryable: error.metadata.retryable, error: error.metadata });
-        else request.onDisconnect({ retryable: true });
+        else request.onDisconnect({ retryable: true, error: { code: "STREAM_DISCONNECTED", message: error instanceof Error ? error.message : "Workflow stream disconnected", retryable: true, phase: null, details: {} } });
       }
     }
   })();

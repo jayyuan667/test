@@ -104,6 +104,19 @@ test("default stream sends Bearer auth, parses named frames, and aborts", async 
   assert.equal(signal?.aborted, true);
 });
 
+test("default stream invokes browser fetch without binding the transport request as this", async () => {
+  let receiver: unknown = "not-called";
+  const fetchImpl = async function (this: unknown) {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    receiver = this;
+    return new Response(new ReadableStream({ start(controller) { controller.close(); } }), { status: 200 });
+  } as typeof fetch;
+  const client = createDrawingWorkflowClient({ apiBase: "/api", getToken: () => null, fetchImpl });
+  client.connect("task-1", 0, () => {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(receiver, undefined);
+});
+
 test("stream ignores malformed JSON and reports HTTP auth errors", async () => {
   let disconnected: unknown; let unauthorizedCalls = 0;
   const client = createDrawingWorkflowClient({ apiBase: "/api", getToken: () => "expired", onUnauthorized: () => { unauthorizedCalls += 1; }, fetchImpl: async () => new Response(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "expired" } }), { status: 401, headers: { "Content-Type": "application/json" } }) });

@@ -94,3 +94,17 @@ test("server retry hint becomes reconnect base within the configured cap", async
   connections[0].disconnect({ retryable: true, retryMs: 8_000 });
   assert.deepEqual(delays, [3_000]);
 });
+
+test("refreshes the snapshot after legacy transition events without page polling", async () => {
+  let reads = 0;
+  const { client, connections } = harness(async (id) => {
+    reads += 1;
+    return reads === 1 ? snapshot(id) : { ...snapshot(id), task: { ...snapshot(id).task, state: "awaiting_annotation", phase: "annotation", revision: 2 } };
+  });
+  const controller = createDrawingWorkflowController(client);
+  await controller.start("task-1");
+  connections[0].emit({ ...progress("task-1", 1), payload: { legacy_type: "annotation_required" } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(controller.getState().snapshot?.task.state, "awaiting_annotation");
+  assert.equal(reads, 2);
+});

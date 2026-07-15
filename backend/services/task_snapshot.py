@@ -118,7 +118,10 @@ def _legacy_features(text):
 def build_task_snapshot(task_id: str, task: dict, result: dict | None = None) -> dict:
     if result is None:
         result = task.get("result") or {}
-    rows = result.get("process_operations", [])
+    rows = result.get("process_operations")
+    if not isinstance(rows, list):
+        process_flow = result.get("process_flow")
+        rows = process_flow.get("data", []) if isinstance(process_flow, dict) else []
     features = _structured_features(result)
     if features is None:
         features = _legacy_features(result.get("feature_text"))

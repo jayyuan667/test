@@ -27,6 +27,16 @@ def test_three_column_process_row_has_no_equipment_or_duration():
     assert operation["duration_minutes"] is None
 
 
+def test_real_process_flow_data_maps_to_structured_operations():
+    snapshot = build_task_snapshot(
+        "task-real",
+        {},
+        {"process_flow": {"data": [["0010", "料", "下料棒料", "", ""]]}},
+    )
+    assert snapshot["process_operations"][0]["code"] == "0010"
+    assert snapshot["process_operations"][0]["content"] == "下料棒料"
+
+
 def test_legacy_bracket_feature_is_thread_without_invented_confidence():
     snapshot = build_task_snapshot(
         "task-3",

@@ -87,6 +87,16 @@ def test_snapshot_route_preserves_persisted_updated_at(client):
     assert client.get("/api/v1/tasks/task-time").get_json()["task"]["updated_at"] == persisted["updated_at"]
 
 
+def test_snapshot_revision_increases_with_persisted_events(client):
+    enterprise = _enterprise_user("revision")
+    task_store.insert_task("task-revision", pdf_name="drawing.pdf", enterprise_id=enterprise["id"])
+    _login(client, "revision")
+    before = client.get("/api/v1/tasks/task-revision").get_json()["task"]["revision"]
+    task_store.add_event("task-revision", "annotation_required", data={"pages": 1})
+    after = client.get("/api/v1/tasks/task-revision").get_json()["task"]["revision"]
+    assert after > before
+
+
 def test_other_enterprise_task_is_hidden(client):
     owner = _enterprise_user("owner")
     _enterprise_user("outsider")
