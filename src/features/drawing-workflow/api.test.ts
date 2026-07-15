@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DrawingWorkflowApiError, createDrawingWorkflowClient } from "./api.ts";
-import type { TaskSnapshot } from "./types.ts";
+import type { TaskEvent, TaskSnapshot } from "./types.ts";
 
 const snapshot: TaskSnapshot = {
   schema_version: "1.0",
@@ -24,7 +24,6 @@ test("uses v1 URLs and Bearer authentication for HTTP requests", async () => {
       calls.push([input, init]);
       return new Response(JSON.stringify(snapshot), { status: 200, headers: { "Content-Type": "application/json" } });
     },
-    eventSourceFactory: () => { throw new Error("unused"); },
   });
 
   await client.getSnapshot("task 1");
@@ -41,7 +40,6 @@ test("preserves structured metadata on a 403 response", async () => {
       code: "QUOTA_EXCEEDED", message: "推理次数已用完", retryable: false,
       phase: "drawing_analysis", details: { remaining: 0 },
     } }), { status: 403, headers: { "Content-Type": "application/json" } }),
-    eventSourceFactory: () => { throw new Error("unused"); },
   });
 
   await assert.rejects(client.getSnapshot("task-1"), (error: unknown) => {
@@ -63,26 +61,80 @@ test("notifies the shared unauthorized handler on a 401 response", async () => {
       status: 401,
       headers: { "Content-Type": "application/json" },
     }),
-    eventSourceFactory: () => { throw new Error("unused"); },
   });
 
   await assert.rejects(client.getSnapshot("task-1"), DrawingWorkflowApiError);
   assert.equal(unauthorized, true);
 });
 
-test("connect includes the last sequence and query token in the SSE URL", () => {
-  let url = "";
+test("connect passes the last sequence and token to the injected stream transport", () => {
+  const requests: Array<{ url: string; token: string | null; after: number }> = [];
   const client = createDrawingWorkflowClient({
     apiBase: "https://forge.example/api/",
     getToken: () => "token with spaces",
     fetchImpl: async () => { throw new Error("unused"); },
-    eventSourceFactory: (input) => {
-      url = input;
-      return { close() {}, onmessage: null, onerror: null };
-    },
+    streamTransport: (input) => { requests.push(input); return { close() {} }; },
   });
 
   client.connect("task-1", 19, () => {});
 
-  assert.equal(url, "https://forge.example/api/v1/tasks/task-1/events?after=19&token=token+with+spaces");
+  assert.equal(requests[0].url, "https://forge.example/api/v1/tasks/task-1/events");
+  assert.equal(requests[0].token, "token with spaces");
+  assert.equal(requests[0].after, 19);
+});
+
+test("default stream sends Bearer auth, parses named frames, and aborts", async () => {
+  let signal: AbortSignal | undefined;
+  let authorization: string | null = null;
+  const encoder = new TextEncoder();
+  const frames = [": keepalive\nretry: 2500\nid: 7\nevent: phase_progress\ndata: {\"schema_version\":\"1.0\",\"seq\":999,\"task_id\":\"task-1\",\"type\":\"heartbeat\",\"phase\":\"drawing_analysis\",\"progress\":42,\"timestamp\":\"now\",\"payload\":{}}\n\n"];
+  const client = createDrawingWorkflowClient({ apiBase: "/api", getToken: () => "secret", fetchImpl: async (_input, init) => {
+    signal = init?.signal ?? undefined;
+    authorization = new Headers(init?.headers).get("Authorization");
+    return new Response(new ReadableStream({ start(controller) { frames.forEach((frame) => controller.enqueue(encoder.encode(frame))); controller.close(); } }), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+  }});
+  const events: TaskEvent[] = [];
+  const connection = client.connect("task-1", 6, (event) => events.push(event));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(authorization, "Bearer secret");
+  assert.equal(events[0]?.seq, 7);
+  assert.equal(events[0]?.type, "phase_progress");
+  connection.close();
+  assert.equal(signal?.aborted, true);
+});
+
+test("stream ignores malformed JSON and reports HTTP auth errors", async () => {
+  let disconnected: unknown;
+  const client = createDrawingWorkflowClient({ apiBase: "/api", getToken: () => "expired", onUnauthorized: () => { disconnected = "unauthorized"; }, fetchImpl: async () => new Response(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "expired" } }), { status: 401, headers: { "Content-Type": "application/json" } }) });
+  client.connect("task-1", 0, () => assert.fail("no event expected"), (error) => { disconnected = error ?? disconnected; });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.ok(disconnected);
+});
+
+test("stream skips malformed data and preserves structured 403 metadata", async () => {
+  const encoder = new TextEncoder();
+  let calls = 0; let failure: unknown;
+  const client = createDrawingWorkflowClient({ apiBase: "/api", getToken: () => "token", fetchImpl: async () => {
+    calls += 1;
+    if (calls === 1) return new Response(new ReadableStream({ start(controller) { controller.enqueue(encoder.encode("event: heartbeat\ndata: not-json\n\n")); controller.close(); } }), { status: 200 });
+    return new Response(JSON.stringify({ error: { code: "QUOTA_EXCEEDED", message: "none", retryable: false, phase: "drawing_analysis", details: { remaining: 0 } } }), { status: 403, headers: { "Content-Type": "application/json" } });
+  }});
+  client.connect("task-1", 0, () => assert.fail("malformed data must be ignored"));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  client.connect("task-1", 0, () => {}, (error) => { failure = error; });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.ok(failure instanceof DrawingWorkflowApiError);
+  assert.equal(failure.metadata.code, "QUOTA_EXCEEDED");
+});
+
+test("upload and command methods use exact v1 endpoints and export URL", async () => {
+  const calls: Array<{ url: string; method: string }> = [];
+  const client = createDrawingWorkflowClient({ apiBase: "/api", getToken: () => "token", fetchImpl: async (input, init) => { calls.push({ url: String(input), method: init?.method ?? "GET" }); return new Response(JSON.stringify(snapshot), { status: 200, headers: { "Content-Type": "application/json" } }); }, streamTransport: () => ({ close() {} }) });
+  await client.upload(new File(["x"], "part.png"));
+  await client.finalizeAnnotations("task-1", {});
+  await client.submitReview("task-1", { features: [] });
+  await client.cancel("task-1");
+  assert.deepEqual(calls.map(({ url, method }) => [url, method]), [["/api/v1/tasks", "POST"], ["/api/v1/tasks/task-1/annotations/finalize", "POST"], ["/api/v1/tasks/task-1/review", "POST"], ["/api/v1/tasks/task-1/cancel", "POST"]]);
+  assert.equal(client.exportUrl("task 1"), "/api/v1/tasks/task%201/export");
 });

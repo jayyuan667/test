@@ -4,33 +4,75 @@ import test from "node:test";
 import { createDrawingWorkflowController } from "./controller.ts";
 import type { DrawingWorkflowClient, EventConnection, TaskEvent, TaskSnapshot } from "./types.ts";
 
-const snapshot: TaskSnapshot = {
-  schema_version: "1.0",
-  task: { id: "task-1", state: "processing", phase: "drawing_analysis", progress: 0, revision: 1, created_at: null, updated_at: null, error: null },
-  drawing: { name: "part.png", source_kind: "png", page_count: 1, preview_urls: [] },
-  features: [], review: { status: "not_ready", raw_text: null }, process_operations: [], reuse_candidates: [], capabilities: {},
-};
+const snapshot = (id: string, state: TaskSnapshot["task"]["state"] = "processing"): TaskSnapshot => ({
+  schema_version: "1.0", task: { id, state, phase: state === "cancelled" ? "done" : "drawing_analysis", progress: 0, revision: 1, created_at: null, updated_at: null, error: null },
+  drawing: { name: `${id}.png`, source_kind: "png", page_count: 1, preview_urls: [] }, features: [], review: { status: "not_ready", raw_text: null }, process_operations: [], reuse_candidates: [], capabilities: {},
+});
+
+interface TestConnection extends EventConnection { emit(event: TaskEvent): void; disconnect(): void; closed: boolean }
+
+function harness(getSnapshot: (id: string) => Promise<TaskSnapshot> = async (id) => snapshot(id)) {
+  const afterValues: Array<[string, number]> = [];
+  const connections: TestConnection[] = [];
+  const client: DrawingWorkflowClient = {
+    upload: async () => snapshot("uploaded"), getSnapshot,
+    connect: (taskId, after, onEvent, onDisconnect = () => {}) => {
+      afterValues.push([taskId, after]);
+      const connection: TestConnection = { closed: false, close() { this.closed = true; }, emit: onEvent, disconnect: () => onDisconnect() };
+      connections.push(connection); return connection;
+    },
+    finalizeAnnotations: async (id) => snapshot(id), submitReview: async (id) => snapshot(id), cancel: async (id) => snapshot(id, "cancelled"), exportUrl: (id) => `/export/${id}`,
+  };
+  return { client, afterValues, connections };
+}
+
+const progress = (taskId: string, seq: number): TaskEvent => ({ schema_version: "1.0", seq, task_id: taskId, type: "phase_progress", phase: "drawing_analysis", progress: 25, timestamp: "", payload: {} });
 
 test("reconnects after the latest accepted sequence and owns connection cleanup", async () => {
-  const afterValues: number[] = [];
-  const connections: Array<EventConnection & { emit(event: TaskEvent): void; disconnect(): void; closed: boolean }> = [];
-  const client = {
-    getSnapshot: async () => snapshot,
-    connect: (_taskId: string, after: number, onEvent: (event: TaskEvent) => void, onDisconnect = () => {}) => {
-      afterValues.push(after);
-      const connection = { closed: false, close() { this.closed = true; }, emit: onEvent, disconnect: onDisconnect };
-      connections.push(connection);
-      return connection;
-    },
-  } as DrawingWorkflowClient;
-  const controller = createDrawingWorkflowController(client, { scheduleReconnect: (callback) => { callback(); return () => {}; } });
+  const { client, afterValues, connections } = harness();
+  const controller = createDrawingWorkflowController(client, { scheduleReconnect: (callback) => { callback(); return () => {}; }, random: () => 0 });
+  await controller.start("task-1"); connections[0].emit(progress("task-1", 12)); connections[0].disconnect();
+  assert.deepEqual(afterValues, [["task-1", 0], ["task-1", 12]]);
+  assert.equal(connections[0].closed, true); controller.dispose(); controller.dispose(); assert.equal(connections[1].closed, true);
+});
 
+test("switching tasks closes old work, resets sequence, and ignores stale snapshot races", async () => {
+  let resolveFirst!: (value: TaskSnapshot) => void;
+  const { client, afterValues, connections } = harness((id) => id === "old" ? new Promise((resolve) => { resolveFirst = resolve; }) : Promise.resolve(snapshot(id)));
+  const controller = createDrawingWorkflowController(client);
+  const first = controller.start("old"); await controller.start("new"); resolveFirst(snapshot("old")); await first;
+  assert.equal(controller.getState().snapshot?.task.id, "new");
+  assert.deepEqual(afterValues, [["new", 0]]);
+  connections[0].emit(progress("old", 99));
+  assert.equal(controller.getState().lastSeq, 0);
+});
+
+test("terminal events close the stream and never reconnect", async () => {
+  const scheduled: Array<() => void> = [];
+  const { client, connections } = harness();
+  const controller = createDrawingWorkflowController(client, { scheduleReconnect: (callback) => { scheduled.push(callback); return () => {}; } });
   await controller.start("task-1");
-  connections[0].emit({ schema_version: "1.0", seq: 12, task_id: "task-1", type: "phase_progress", phase: "drawing_analysis", progress: 25, timestamp: "2026-07-15T00:00:00Z", payload: {} });
+  connections[0].emit({ ...progress("task-1", 1), type: "task_completed", phase: "done", progress: 100 });
   connections[0].disconnect();
-
-  assert.deepEqual(afterValues, [0, 12]);
   assert.equal(connections[0].closed, true);
+  assert.equal(scheduled.length, 0);
+});
+
+test("reconnect delay grows exponentially and caps deterministically", async () => {
+  const delays: number[] = [];
+  const callbacks: Array<() => void> = [];
+  const { client, connections } = harness();
+  const controller = createDrawingWorkflowController(client, { scheduleReconnect: (callback, delay) => { delays.push(delay); callbacks.push(callback); return () => {}; }, random: () => 0, maxReconnectDelay: 4_000 });
+  await controller.start("task-1");
+  for (let index = 0; index < 4; index += 1) { connections[index].disconnect(); callbacks[index](); }
+  assert.deepEqual(delays, [1_000, 2_000, 4_000, 4_000]);
   controller.dispose();
-  assert.equal(connections[1].closed, true);
+});
+
+test("a cancelled snapshot is terminal and does not open a stream", async () => {
+  const { client, connections } = harness(async (id) => snapshot(id, "cancelled"));
+  const controller = createDrawingWorkflowController(client);
+  await controller.start("task-1");
+  assert.equal(controller.getState().connection, "closed");
+  assert.equal(connections.length, 0);
 });

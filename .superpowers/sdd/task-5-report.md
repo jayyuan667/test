@@ -29,3 +29,36 @@ Complete. Added the typed v1 workflow contract, reducer, HTTP/SSE client, reconn
 
 - Query-string SSE authentication is required by the current backend/native EventSource combination but is less secure than header auth because URLs can be exposed by surrounding infrastructure. A future backend-issued short-lived stream ticket or cookie-only same-origin transport would reduce exposure.
 - An additional `npx tsc --noEmit` check reports TS5097 for the `.ts` import suffixes required by the configured Node test command because `allowImportingTsExtensions` is not enabled. The prescribed Task 5 test and lint gates pass; changing shared package/tsconfig files was explicitly outside this task's allowed scope.
+
+## Rejection corrections (2026-07-15)
+
+The preceding SSE and TypeScript concerns are superseded by this correction.
+
+### RED evidence
+
+- Production type check reproduced TS5097 plus the incomplete `DrawingWorkflowClient` test cast.
+- Transport/reducer RED: 4 failures proved the default native EventSource dependency, missing feature merge, uncleared completion error, and lost cancelled terminal state.
+- Controller RED: 3 failures proved cross-task event contamination, terminal reconnect scheduling, and absent backoff delays.
+- Normalizer RED: the new contract suite failed because no runtime normalization boundary existed.
+- SSE parser RED: a named frame with `id: 7` and `event: phase_progress` incorrectly retained conflicting JSON `seq/type` values.
+
+### GREEN changes
+
+- Default streaming now uses `fetch` plus `ReadableStream` and Bearer auth. It parses SSE comments, retry, id, event, multiline data, ignores malformed JSON, preserves structured HTTP errors, invokes the 401 hook, and aborts idempotently without logging credentials or URLs.
+- An injectable `StreamTransport` keeps deterministic transport tests without weakening the secure default.
+- Runtime snapshot/event normalizers make nullable wire collections and numbers safe, reject invalid envelope identities, and preserve absent confidence as `null`.
+- Controller start now cancels prior timers/streams, resets per-task state, isolates async generations and task IDs, seals all terminal states, and uses capped exponential backoff with injectable scheduler/randomness.
+- Reducer now upserts `feature_ready`, clears snapshot errors on completion, and preserves cancelled terminal state.
+- `allowImportingTsExtensions` is enabled alongside the existing `noEmit`, resolving the configured Node test imports without changing runtime output.
+
+### Final verification
+
+- `npm run test:workflow`: 21 passed, 0 failed; the existing package module-type warning remains informational.
+- `npx eslint src/features/drawing-workflow`: exit 0.
+- `npx tsc --noEmit --pretty false`: exit 0.
+- `npm run build`: exit 0; Next.js production build and static generation completed.
+- `git diff --check`: exit 0.
+
+### Remaining concern
+
+- The Node test runner reports `MODULE_TYPELESS_PACKAGE_JSON` because the shared package is not declared ESM. Adding `type: module` could affect unrelated application tooling, so this correction leaves the harmless warning in place; all requested gates pass.

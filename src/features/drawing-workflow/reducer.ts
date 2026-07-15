@@ -66,20 +66,26 @@ export function reduceWorkflowState(state: WorkflowState, action: WorkflowAction
   if (action.type === "operation_upserted" && action.payload.operation) {
     next = upsertOperation(next, action.payload.operation);
   }
+  if (action.type === "feature_ready" && action.payload.feature && next.snapshot) {
+    const features = next.snapshot.features;
+    const index = features.findIndex((feature) => feature.id === action.payload.feature?.id);
+    const merged = index < 0 ? [...features, action.payload.feature] : features.map((feature, position) => position === index ? action.payload.feature! : feature);
+    next = { ...next, snapshot: { ...next.snapshot, features: merged } };
+  }
 
   if (action.type === "phase_started" || action.type === "phase_progress" || action.type === "phase_completed") {
     next = { ...next, snapshot: updateSnapshotTask(next.snapshot, { phase: action.phase, progress: action.progress }) };
   } else if (action.type === "task_completed") {
     next = {
       ...next,
-      snapshot: updateSnapshotTask(next.snapshot, { state: "completed", phase: "done", progress: action.progress }),
+      snapshot: updateSnapshotTask(next.snapshot, { state: "completed", phase: "done", progress: action.progress, error: null }),
       error: null,
     };
   } else if (action.type === "task_failed") {
     const error = action.payload.error ?? null;
     next = {
       ...next,
-      snapshot: updateSnapshotTask(next.snapshot, { state: "failed", phase: action.phase, progress: action.progress, error }),
+      snapshot: updateSnapshotTask(next.snapshot, { state: action.payload.state === "cancelled" ? "cancelled" : "failed", phase: action.phase, progress: action.progress, error }),
       error,
     };
   }

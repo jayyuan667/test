@@ -42,7 +42,7 @@ export interface Feature {
   unit: string | null;
   tolerance: { upper: number | null; lower: number | null; text: string | null };
   source: {
-    method: "vlm" | "ocr" | "yolo" | "geometry" | "combined" | "legacy_text";
+    method: "vlm" | "ocr" | "yolo" | "geometry" | "combined" | "legacy_text" | null;
     page: number | null;
     bbox: [number, number, number, number] | null;
     evidence_text: string | null;
@@ -137,7 +137,7 @@ export interface EventConnection {
 export interface DrawingWorkflowClient {
   upload(file: File | Blob): Promise<TaskSnapshot>;
   getSnapshot(taskId: string): Promise<TaskSnapshot>;
-  connect(taskId: string, after: number, onEvent: (event: TaskEvent) => void, onDisconnect?: () => void): EventConnection;
+  connect(taskId: string, after: number, onEvent: (event: TaskEvent) => void, onDisconnect?: (error?: unknown) => void): EventConnection;
   finalizeAnnotations(taskId: string, body?: unknown): Promise<TaskSnapshot>;
   submitReview(taskId: string, body: unknown): Promise<TaskSnapshot>;
   cancel(taskId: string): Promise<TaskSnapshot>;

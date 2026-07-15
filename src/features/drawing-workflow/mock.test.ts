@@ -11,4 +11,5 @@ test("mock returns the v1 snapshot shape without invented confidence", async () 
   assert.ok(Array.isArray(snapshot.process_operations));
   assert.ok(snapshot.features.length > 0);
   assert.equal(snapshot.features[0].confidence, null);
+  assert.deepEqual(Object.keys(snapshot).sort(), ["capabilities", "drawing", "features", "process_operations", "reuse_candidates", "review", "schema_version", "task"]);
 });
