@@ -11,17 +11,9 @@
     "test:workflow": "node --test --experimental-strip-types src/features/drawing-workflow/*.test.ts"
   },
   "dependencies": {
-    "@playwright/test": "^1.61.1",
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.6.1",
-    "@types/three": "^0.185.0",
-    "framer-motion": "^12.42.2",
-    "gsap": "^3.15.0",
     "next": "16.2.10",
-    "playwright": "^1.61.1",
     "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "three": "^0.185.1"
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
