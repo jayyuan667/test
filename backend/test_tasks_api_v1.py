@@ -77,11 +77,12 @@ def test_snapshot_maps_persisted_result_and_preserves_full_envelope(client):
     assert snapshot["task"]["updated_at"] is not None
 
 
-def test_build_task_dict_preserves_updated_at(client):
+def test_snapshot_route_preserves_persisted_updated_at(client):
     enterprise = _enterprise_user("timestamp")
     task_store.insert_task("task-time", pdf_name="drawing.pdf", enterprise_id=enterprise["id"])
     persisted = task_store.get_task("task-time")
-    assert task_store.build_task_dict("task-time")["updated_at"] == persisted["updated_at"]
+    _login(client, "timestamp")
+    assert client.get("/api/v1/tasks/task-time").get_json()["task"]["updated_at"] == persisted["updated_at"]
 
 
 def test_other_enterprise_task_is_hidden(client):

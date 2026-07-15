@@ -21,6 +21,9 @@ def get_task_snapshot(task_id):
     task = build_task_dict(task_id)
     if task is None:
         return jsonify({"error": "Task not found"}), 404
+    persisted = get_task(task_id)
+    if persisted is not None:
+        task["updated_at"] = persisted.get("updated_at")
     return jsonify(build_task_snapshot(task_id, task))
 
 

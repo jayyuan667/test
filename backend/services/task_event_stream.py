@@ -2,7 +2,6 @@
 
 import json
 import time
-from datetime import datetime, timezone
 
 from backend.domain.task_contract import SCHEMA_VERSION
 
@@ -95,22 +94,47 @@ def pack_v1_sse(event):
     )
 
 
-def _synthetic_terminal(task_id, seq, task):
-    status = task.get("status")
-    failed = status in {"error", "failed", "cancelled"}
+def ensure_canonical_terminal_event(task_id, status):
+    """Atomically return or create the task's earliest persisted terminal row."""
+    from backend import task_store
+
+    with task_store._conn() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            """SELECT id, event_type, step, message, data, created_at
+               FROM task_events
+               WHERE task_id=? AND event_type IN ('complete', 'error')
+               ORDER BY id LIMIT 1""",
+            (task_id,),
+        ).fetchone()
+        if row is None:
+            event_type = "error" if status in {"error", "failed", "cancelled"} else "complete"
+            payload = json.dumps(
+                {"canonical": True, "status": status}, ensure_ascii=False
+            )
+            cursor = connection.execute(
+                "INSERT INTO task_events (task_id, event_type, data) VALUES (?, ?, ?)",
+                (task_id, event_type, payload),
+            )
+            row = connection.execute(
+                """SELECT id, event_type, step, message, data, created_at
+                   FROM task_events WHERE id=?""",
+                (cursor.lastrowid,),
+            ).fetchone()
     return {
-        "schema_version": SCHEMA_VERSION,
-        "seq": seq,
-        "task_id": task_id,
-        "type": "task_failed" if failed else "task_completed",
-        "phase": None,
-        "progress": task.get("progress"),
-        "timestamp": task.get("updated_at") or datetime.now(timezone.utc).isoformat(),
-        "payload": {"synthetic": True, "status": status},
+        "id": row[0], "type": row[1], "step": row[2], "message": row[3],
+        "data": row[4], "created_at": row[5],
     }
 
 
-def stream_v1_events(task_id, after, get_events_fn, get_task_fn, sleep_fn=time.sleep):
+def stream_v1_events(
+    task_id,
+    after,
+    get_events_fn,
+    get_task_fn,
+    sleep_fn=time.sleep,
+    ensure_terminal_fn=ensure_canonical_terminal_event,
+):
     """Replay unseen rows and deliver exactly one stable terminal event."""
     yield "retry: 1500\n\n"
     yield ": connected\n\n"
@@ -118,9 +142,10 @@ def stream_v1_events(task_id, after, get_events_fn, get_task_fn, sleep_fn=time.s
     persisted_max = 0
     terminal_emitted = False
     terminal_persisted = False
+    earliest_terminal_id = None
 
     def drain(rows):
-        nonlocal cursor, persisted_max, terminal_emitted, terminal_persisted
+        nonlocal cursor, persisted_max, terminal_emitted, terminal_persisted, earliest_terminal_id
         chunks = []
         for row in rows:
             row_id = int(row["id"])
@@ -128,6 +153,11 @@ def stream_v1_events(task_id, after, get_events_fn, get_task_fn, sleep_fn=time.s
             normalized = normalize_event(task_id, row)
             if normalized["type"] in TERMINAL_TYPES:
                 terminal_persisted = True
+                if earliest_terminal_id is None:
+                    earliest_terminal_id = row_id
+                elif row_id != earliest_terminal_id:
+                    cursor = max(cursor, row_id)
+                    continue
             if row_id <= cursor:
                 continue
             cursor = row_id
@@ -157,9 +187,9 @@ def stream_v1_events(task_id, after, get_events_fn, get_task_fn, sleep_fn=time.s
                     yield chunk
                 if terminal_persisted:
                     return
-            synthetic_seq = persisted_max + 1
-            if synthetic_seq > after:
-                yield pack_v1_sse(_synthetic_terminal(task_id, synthetic_seq, task))
+            canonical = ensure_terminal_fn(task_id, task.get("status"))
+            for chunk in drain([canonical]):
+                yield chunk
             return
 
         sleep_fn(0.5)

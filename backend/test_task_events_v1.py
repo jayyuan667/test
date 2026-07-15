@@ -11,6 +11,7 @@ from backend.app import app
 from backend.services.event_emitter import emit_complete, emit_custom, emit_image_ready, emit_log
 from backend.services.task_event_stream import (
     V1_EVENT_TYPES,
+    ensure_canonical_terminal_event,
     normalize_event,
     pack_v1_sse,
     stream_v1_events,
@@ -52,6 +53,21 @@ def _sse_events(body):
         for block in body.split("\n\n")
         if "data: " in block
     ]
+
+
+def _memory_terminal_ensure(rows):
+    def ensure(_task_id, status):
+        for row in rows:
+            if row["type"] in {"complete", "error"}:
+                return row
+        row = {
+            "id": max((item["id"] for item in rows), default=0) + 1,
+            "type": "error" if status in {"error", "failed", "cancelled"} else "complete",
+            "data": json.dumps({"canonical": True}),
+        }
+        rows.append(row)
+        return row
+    return ensure
 
 
 def test_events_route_requires_login_and_hides_other_enterprise(dbs):
@@ -110,9 +126,9 @@ def test_pack_v1_sse_has_full_envelope():
     }
 
 
-def test_terminal_status_without_stored_terminal_synthesizes_once():
+def test_terminal_status_without_stored_terminal_ensures_canonical_once():
     rows = [{"id": 4, "type": "log", "data": "{}"}]
-    chunks = list(stream_v1_events("task", 0, lambda _id, since_id=0: [r for r in rows if r["id"] > since_id], lambda _id: {"status": "completed"}, sleep_fn=lambda _: None))
+    chunks = list(stream_v1_events("task", 0, lambda _id, since_id=0: [r for r in rows if r["id"] > since_id], lambda _id: {"status": "completed"}, sleep_fn=lambda _: None, ensure_terminal_fn=_memory_terminal_ensure(rows)))
     assert sum("event: task_completed" in chunk for chunk in chunks) == 1
     assert any("id: 5" in chunk for chunk in chunks)
 
@@ -125,6 +141,19 @@ def test_stored_terminal_is_emitted_once_without_synthesis():
     ]
     chunks = list(stream_v1_events("task", 0, lambda _id, since_id=0: [r for r in rows if r["id"] > since_id], lambda _id: {"status": "completed"}, sleep_fn=lambda _: None))
     assert sum("event: task_completed" in chunk for chunk in chunks) == 1
+
+
+def test_duplicate_db_terminals_emit_earliest_once_and_not_on_reconnect():
+    rows = [
+        {"id": 5, "type": "complete", "data": "{}"},
+        {"id": 6, "type": "complete", "data": "{}"},
+    ]
+    get_events = lambda _id, since_id=0: [row for row in rows if row["id"] > since_id]
+    first = list(stream_v1_events("task", 0, get_events, lambda _id: {"status": "completed"}, sleep_fn=lambda _: None))
+    reconnect = list(stream_v1_events("task", 5, get_events, lambda _id: {"status": "completed"}, sleep_fn=lambda _: None))
+    assert sum("event: task_completed" in chunk for chunk in first) == 1
+    assert any("id: 5" in chunk for chunk in first)
+    assert sum("event: task_completed" in chunk for chunk in reconnect) == 0
 
 
 def test_terminal_status_before_save_is_drained_during_grace_read():
@@ -146,8 +175,9 @@ def test_terminal_status_before_save_is_drained_during_grace_read():
 def test_reconnect_after_synthetic_terminal_does_not_duplicate():
     rows = [{"id": 4, "type": "log", "data": "{}"}]
     get_events = lambda _id, since_id=0: [r for r in rows if r["id"] > since_id]
-    first = list(stream_v1_events("task", 0, get_events, lambda _id: {"status": "completed"}, sleep_fn=lambda _: None))
-    second = list(stream_v1_events("task", 5, get_events, lambda _id: {"status": "completed"}, sleep_fn=lambda _: None))
+    ensure = _memory_terminal_ensure(rows)
+    first = list(stream_v1_events("task", 0, get_events, lambda _id: {"status": "completed"}, sleep_fn=lambda _: None, ensure_terminal_fn=ensure))
+    second = list(stream_v1_events("task", 5, get_events, lambda _id: {"status": "completed"}, sleep_fn=lambda _: None, ensure_terminal_fn=ensure))
     assert sum("event: task_completed" in chunk for chunk in first) == 1
     assert sum("event: task_completed" in chunk for chunk in second) == 0
 
@@ -164,6 +194,46 @@ def test_reconnect_does_not_duplicate_when_stored_terminal_claims_synthetic_seq(
         sleep_fn=lambda _: None,
     ))
     assert sum("event: task_completed" in chunk for chunk in chunks) == 0
+
+
+def test_canonical_terminal_persists_and_suppresses_later_terminal_on_reconnect(dbs):
+    task_store.save_event("task-events", "log", {"message": "before"})
+    task_store.update_task_status("task-events", "completed", 100)
+    with app.test_client() as client:
+        _login(client)
+        first = _sse_events(client.get("/api/v1/tasks/task-events/events").get_data(as_text=True))
+    terminal = next(event for event in first if event["type"] == "task_completed")
+    task_store.save_event("task-events", "log", {"message": "after"})
+    task_store.save_event("task-events", "complete", {"message": "late real terminal"})
+    with app.test_client() as client:
+        _login(client)
+        replay = _sse_events(client.get(
+            f"/api/v1/tasks/task-events/events?after={terminal['seq']}"
+        ).get_data(as_text=True))
+    assert sum(event["type"] in {"task_completed", "task_failed"} for event in replay) == 0
+    assert [event["payload"].get("message") for event in replay] == ["after"]
+    stored = task_store.get_events("task-events")
+    assert stored[terminal["seq"] - 1]["type"] == "complete"
+
+
+def test_concurrent_canonical_terminal_ensure_inserts_once(dbs):
+    task_store.update_task_status("task-events", "completed", 100)
+    barrier = threading.Barrier(3)
+    results = []
+
+    def ensure():
+        barrier.wait()
+        results.append(ensure_canonical_terminal_event("task-events", "completed"))
+
+    threads = [threading.Thread(target=ensure) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join()
+    terminal_rows = [row for row in task_store.get_events("task-events") if row["type"] in {"complete", "error"}]
+    assert len(terminal_rows) == 1
+    assert {result["id"] for result in results} == {terminal_rows[0]["id"]}
 
 
 def test_real_emitter_db_chain_normalizes_legal_increasing_events(dbs):
@@ -230,5 +300,6 @@ def test_generator_emits_heartbeat_while_active():
         nonlocal calls
         calls += 1
         return {"status": "processing" if calls <= 10 else "completed"}
-    chunks = list(stream_v1_events("task", 0, lambda _id, since_id=0: [], get_task, sleep_fn=lambda _: None))
+    rows = []
+    chunks = list(stream_v1_events("task", 0, lambda _id, since_id=0: [row for row in rows if row["id"] > since_id], get_task, sleep_fn=lambda _: None, ensure_terminal_fn=_memory_terminal_ensure(rows)))
     assert ": heartbeat\n\n" in chunks
