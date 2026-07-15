@@ -1,5 +1,7 @@
 import os
+import io
 import tempfile
+import threading
 
 import pytest
 from werkzeug.security import generate_password_hash
@@ -92,3 +94,103 @@ def test_other_enterprise_task_is_hidden(client):
     _login(client, "outsider")
 
     assert client.get("/api/v1/tasks/task-secret").status_code == 404
+
+
+def test_upload_drawing_returns_initial_v1_snapshot(client, monkeypatch):
+    _enterprise_user("uploader")
+    _login(client, "uploader")
+    monkeypatch.setattr("backend.api.upload.threading.Thread.start", lambda self: None)
+
+    response = client.post(
+        "/api/v1/tasks",
+        data={"file": (io.BytesIO(b"\x89PNG\r\n\x1a\n"), "drawing.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 202
+    snapshot = response.get_json()
+    assert snapshot["schema_version"] == "1.0"
+    assert snapshot["drawing"]["name"] == "drawing.png"
+
+
+def _live_task(enterprise, task_id, status):
+    from backend.api import upload as upload_api
+
+    task_store.insert_task(
+        task_id, pdf_name="drawing.png", enterprise_id=enterprise["id"]
+    )
+    task_store.update_task_status(task_id, status, 35)
+    task = {
+        "task_id": task_id,
+        "pdf_name": "drawing.png",
+        "status": status,
+        "progress": 35,
+        "enterprise_id": enterprise["id"],
+        "annotation_event": threading.Event(),
+        "review_event": threading.Event(),
+    }
+    upload_api.tasks[task_id] = task
+    return task
+
+
+def test_finalize_annotations_returns_updated_snapshot(client):
+    enterprise = _enterprise_user("annotator")
+    task = _live_task(enterprise, "task-annotation", "awaiting_annotation")
+    _login(client, "annotator")
+
+    response = client.post("/api/v1/tasks/task-annotation/annotations/finalize")
+
+    assert response.status_code == 200
+    assert task["annotation_event"].is_set()
+    assert response.get_json()["task"]["id"] == "task-annotation"
+
+
+def test_review_returns_updated_snapshot(client):
+    enterprise = _enterprise_user("reviewer")
+    task = _live_task(enterprise, "task-review", "awaiting_review")
+    _login(client, "reviewer")
+
+    response = client.post(
+        "/api/v1/tasks/task-review/review", json={"review_text": "confirmed"}
+    )
+
+    assert response.status_code == 200
+    assert task["review_event"].is_set()
+    assert response.get_json()["review"]["raw_text"] == "confirmed"
+
+
+def test_cancel_returns_cancelled_snapshot(client):
+    enterprise = _enterprise_user("canceller")
+    _live_task(enterprise, "task-cancel", "processing")
+    _login(client, "canceller")
+
+    response = client.post("/api/v1/tasks/task-cancel/cancel")
+
+    assert response.status_code == 200
+    assert response.get_json()["task"]["state"] == "cancelled"
+
+
+def test_export_delegates_to_existing_export_behavior(client, monkeypatch):
+    enterprise = _enterprise_user("exporter")
+    _live_task(enterprise, "task-export", "completed")
+    _login(client, "exporter")
+    monkeypatch.setattr(
+        "backend.api.export.export_result", lambda task_id: (b"workbook", 200)
+    )
+
+    response = client.get("/api/v1/tasks/task-export/export?format=xlsx")
+
+    assert response.status_code == 200
+    assert response.data == b"workbook"
+
+
+def test_command_errors_use_exact_v1_envelope(client):
+    _enterprise_user("missing-command")
+    _login(client, "missing-command")
+
+    response = client.post("/api/v1/tasks/missing/cancel")
+
+    assert response.status_code == 404
+    error = response.get_json()["error"]
+    assert set(error) == {"code", "message", "retryable", "phase", "details"}
+    assert error["code"] == "TASK_NOT_FOUND"

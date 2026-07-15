@@ -1,4 +1,4 @@
-"""Authenticated v1 task read endpoints."""
+"""Authenticated v1 task command and read endpoints."""
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
@@ -12,19 +12,126 @@ from .._utils import assert_task_access
 tasks_v1_bp = Blueprint("tasks_v1", __name__)
 
 
+def _snapshot(task_id):
+    """Build a snapshot from persisted data plus richer live workflow state."""
+    from ..upload import tasks
+
+    persisted = build_task_dict(task_id)
+    if persisted is None:
+        return None
+    task = {**persisted, **(tasks.get(task_id) or {})}
+    stored = get_task(task_id)
+    if stored is not None:
+        task["updated_at"] = stored.get("updated_at")
+    result = dict(task.get("result") or {})
+    if task.get("review_text") is not None:
+        result.setdefault("feature_text", task["review_text"])
+    return build_task_snapshot(task_id, task, result)
+
+
+def _response_status(response):
+    flask_response = response[0] if isinstance(response, tuple) else response
+    status = response[1] if isinstance(response, tuple) else flask_response.status_code
+    return flask_response, status
+
+
+def _error_response(response, task_id=None):
+    flask_response, status = _response_status(response)
+    body = flask_response.get_json(silent=True) or {}
+    legacy_error = body.get("error")
+    if isinstance(legacy_error, dict):
+        code = legacy_error.get("code", "COMMAND_FAILED")
+        message = legacy_error.get("message", "Command failed")
+        details = legacy_error.get("details", legacy_error.get("detail", {}))
+        retryable = bool(legacy_error.get("retryable", False))
+        phase = legacy_error.get("phase")
+    else:
+        code = "TASK_NOT_FOUND" if status == 404 else "INVALID_TASK_STATE"
+        message = str(legacy_error or body.get("message") or "Command failed")
+        details = {}
+        retryable = False
+        phase = None
+    if phase is None and task_id:
+        snapshot = _snapshot(task_id)
+        phase = snapshot["task"]["phase"] if snapshot else None
+    return jsonify({"error": {
+        "code": code,
+        "message": message,
+        "retryable": retryable,
+        "phase": phase,
+        "details": details,
+    }}), status
+
+
+def _command_snapshot(task_id, response):
+    _flask_response, status = _response_status(response)
+    if status >= 400:
+        return _error_response(response, task_id)
+    return jsonify(_snapshot(task_id)), status
+
+
+@tasks_v1_bp.post("/tasks")
+@login_required
+def create_task():
+    # The legacy handler owns validation, quota, persistence, and pipeline
+    # selection. Calling its Python entry point preserves those semantics and
+    # avoids a loopback HTTP request.
+    from ..upload import upload_drawing
+
+    response = upload_drawing()
+    flask_response, status = _response_status(response)
+    if status >= 400:
+        return _error_response(response)
+    task_id = flask_response.get_json()["task_id"]
+    return jsonify(_snapshot(task_id)), 202
+
+
+@tasks_v1_bp.post("/tasks/<task_id>/annotations/finalize")
+@login_required
+def finalize_task_annotations(task_id):
+    from ..annotations import finalize_annotations
+
+    return _command_snapshot(task_id, finalize_annotations(task_id))
+
+
+@tasks_v1_bp.post("/tasks/<task_id>/review")
+@login_required
+def review_task(task_id):
+    from ..upload import review_visual_features
+
+    return _command_snapshot(task_id, review_visual_features(task_id))
+
+
+@tasks_v1_bp.post("/tasks/<task_id>/cancel")
+@login_required
+def cancel_task(task_id):
+    from ..upload import cancel_task_route
+
+    return _command_snapshot(task_id, cancel_task_route(task_id))
+
+
+@tasks_v1_bp.route("/tasks/<task_id>/export", methods=["GET", "POST"])
+@login_required
+def export_task(task_id):
+    from ..export import export_result
+
+    response = export_result(task_id)
+    _flask_response, status = _response_status(response)
+    if status >= 400:
+        return _error_response(response, task_id)
+    return response
+
+
 @tasks_v1_bp.get("/tasks/<task_id>")
 @login_required
 def get_task_snapshot(task_id):
     ok, error = assert_task_access(task_id)
     if not ok:
         return error
-    task = build_task_dict(task_id)
-    if task is None:
+    snapshot = _snapshot(task_id)
+    if snapshot is None:
         return jsonify({"error": "Task not found"}), 404
-    persisted = get_task(task_id)
-    if persisted is not None:
-        task["updated_at"] = persisted.get("updated_at")
-    return jsonify(build_task_snapshot(task_id, task))
+    return jsonify(snapshot)
 
 
 @tasks_v1_bp.get("/tasks/<task_id>/events")
