@@ -57,6 +57,33 @@ def test_owned_task_returns_v1_snapshot(client):
     assert response.get_json()["schema_version"] == "1.0"
 
 
+def test_snapshot_maps_persisted_result_and_preserves_full_envelope(client):
+    enterprise = _enterprise_user("result")
+    task_store.insert_task("task-result", pdf_name="drawing.pdf", enterprise_id=enterprise["id"])
+    task_store.save_result("task-result", {
+        "features": [{"id": "feature-1", "kind": "hole", "label": "M8"}],
+        "process_operations": [["10", "车削", "粗车", "CNC", "5min"]],
+    })
+    _login(client, "result")
+
+    snapshot = client.get("/api/v1/tasks/task-result").get_json()
+
+    assert set(snapshot) == {
+        "schema_version", "task", "drawing", "features", "review",
+        "process_operations", "reuse_candidates", "capabilities",
+    }
+    assert snapshot["features"][0]["id"] == "feature-1"
+    assert snapshot["process_operations"][0]["code"] == "10"
+    assert snapshot["task"]["updated_at"] is not None
+
+
+def test_build_task_dict_preserves_updated_at(client):
+    enterprise = _enterprise_user("timestamp")
+    task_store.insert_task("task-time", pdf_name="drawing.pdf", enterprise_id=enterprise["id"])
+    persisted = task_store.get_task("task-time")
+    assert task_store.build_task_dict("task-time")["updated_at"] == persisted["updated_at"]
+
+
 def test_other_enterprise_task_is_hidden(client):
     owner = _enterprise_user("owner")
     _enterprise_user("outsider")

@@ -36,4 +36,19 @@
 
 - The repository `.venv` lacks pytest, so verification used an existing Python 3.11 environment with the project dependencies; nothing was installed.
 - `backend/test_data_isolation.py` passes but emits one pre-existing background-thread warning because Onshape credentials are absent and its batch cleanup races the test fixture.
-- The v1 stream deliberately does not synthesize terminal events; it replays persisted terminal events, avoiding duplicate terminal delivery while keeping legacy stream behavior untouched.
+- The v1 stream performs three bounded 50 ms grace reads after observing terminal status. If no persisted terminal arrives, it synthesizes one at `max(persisted id)+1`; reconnect cursors and subsequently persisted terminal rows suppress duplication.
+
+## Critical/Important Review Fix RED
+
+- Event/snapshot expansion command initially failed collection because `V1_EVENT_TYPES` did not exist.
+- Snapshot-only RED: `2 failed, 3 passed`; both failures showed `build_task_dict()` discarded persisted `updated_at`.
+- Terminal reconnect RED: `1 failed`; when a persisted terminal later claimed the prior synthetic sequence, reconnect incorrectly synthesized a second terminal.
+
+## Critical/Important Review Fix GREEN
+
+- Added legal-type adaptation for real legacy types and unknown types; raw process chunks are `phase_progress`, while only structured operations with a stable ID become `operation_upserted`.
+- Added bounded terminal drain, stable synthesis, duplicate stored-terminal suppression, status-before-save coverage, and reconnect idempotence.
+- Added route authentication/isolation, query/header cursor, malformed JSON, heartbeat, real emitter persistence, route-level legacy/v1 smoke, strict sequence/envelope, and full persisted snapshot coverage.
+- Preserved `updated_at` in the authoritative `build_task_dict()` reconstruction path.
+- Final command: `/Users/caojiayuan/Projects/work/test/.venv/bin/python -m pytest backend/test_tasks_api_v1.py backend/test_task_events_v1.py backend/test_sse_events.py backend/test_data_isolation.py -q`
+  - `44 passed, 1 warning in 7.42s`.
