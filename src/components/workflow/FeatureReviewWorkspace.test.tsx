@@ -19,6 +19,15 @@ const feature: WorkflowFeature = {
   missing_reason: null,
 };
 
+const secondFeature: WorkflowFeature = {
+  ...feature,
+  id: "feature-2",
+  label: "螺纹规格",
+  value: "M115×3-6g",
+  unit: null,
+  source: { ...feature.source, evidence_text: "M115×3-6g" },
+};
+
 test("renders structured evidence and explicit missing values without invented confidence", () => {
   const html = renderToStaticMarkup(
     <FeatureReviewWorkspace
@@ -41,6 +50,44 @@ test("renders structured evidence and explicit missing values without invented c
   assert.match(html, /未提供/);
   assert.match(html, /未审阅/);
   assert.doesNotMatch(html, /85%|90%|95%/);
+});
+
+test("shows one active feature with pager controls instead of stacking every feature form", () => {
+  const html = renderToStaticMarkup(
+    <FeatureReviewWorkspace
+      mode="review"
+      features={[feature, secondFeature]}
+      preview={<div>图纸预览</div>}
+      busy={false}
+      onConfirm={() => {}}
+    />,
+  );
+
+  assert.match(html, /data-testid="feature-pager"/);
+  assert.match(html, /第 1 \/ 2 项/);
+  assert.match(html, /上一项/);
+  assert.match(html, /下一项/);
+  assert.match(html, /查看第 2 项特征：螺纹规格/);
+  assert.match(html, /外圆直径/);
+  assert.doesNotMatch(html, /M115×3-6g/);
+  assert.equal((html.match(/data-testid="feature-row"/g) ?? []).length, 1);
+});
+
+test("empty feature review shows a clear disabled state", () => {
+  const html = renderToStaticMarkup(
+    <FeatureReviewWorkspace
+      mode="annotation"
+      features={[]}
+      preview={null}
+      busy={false}
+      onConfirm={() => {}}
+    />,
+  );
+
+  assert.match(html, /data-testid="feature-empty"/);
+  assert.match(html, /暂无可审阅特征/);
+  assert.match(html, /确认标注/);
+  assert.match(html, /disabled/);
 });
 
 test("shows missing reason and mode-accurate actions without a skip command", () => {

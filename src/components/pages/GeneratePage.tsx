@@ -240,7 +240,7 @@ function V1GeneratePage() {
         <WorkflowFeedback state={snapshot?.task.state ?? null} connection={state.connection} error={feedbackError} />
       ) : null}
 
-      <div className="forge-workflow__active" data-step={viewStep}>{workspace}</div>
+      <div className="forge-workflow__active" data-step={viewStep} key={viewStep}>{workspace}</div>
     </main>
   );
 }

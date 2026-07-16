@@ -31,6 +31,7 @@
 
 .forge-workflow .forge-workflow__active {
   padding-top: var(--gap);
+  animation: forge-workspace-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .forge-workflow .forge-stepper {
@@ -317,9 +318,81 @@
   font-size: 0.72rem;
 }
 
-.forge-workflow .forge-feature-review__rows {
+.forge-workflow .forge-feature-review__pager {
   display: grid;
   gap: 14px;
+}
+
+.forge-workflow .forge-feature-review__pager-bar {
+  display: grid;
+  grid-template-columns: minmax(88px, auto) minmax(0, 1fr) minmax(88px, auto);
+  align-items: center;
+  gap: 10px;
+}
+
+.forge-workflow .forge-feature-review__pager-bar button,
+.forge-workflow .forge-feature-review__index button {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  transition: border-color var(--duration-fast) var(--ease-snappy), color var(--duration-fast) var(--ease-snappy), background var(--duration-fast) var(--ease-snappy), transform var(--duration-fast) var(--ease-snappy);
+}
+
+.forge-workflow .forge-feature-review__pager-bar button:not(:disabled):hover,
+.forge-workflow .forge-feature-review__index button:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+  transform: translateY(-1px);
+}
+
+.forge-workflow .forge-feature-review__pager-bar button:disabled,
+.forge-workflow .forge-feature-review__index button:disabled {
+  cursor: not-allowed;
+  color: var(--text-ghost);
+  opacity: 0.55;
+}
+
+.forge-workflow .forge-feature-review__pager-bar output {
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.76rem;
+  text-align: center;
+}
+
+.forge-workflow .forge-feature-review__index {
+  display: flex;
+  gap: 7px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+}
+
+.forge-workflow .forge-feature-review__index button {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+}
+
+.forge-workflow .forge-feature-review__index button[aria-selected="true"] {
+  border-color: var(--accent-bright);
+  color: var(--bg-base);
+  background: var(--accent-bright);
+}
+
+.forge-workflow .forge-feature-review__empty {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-ghost);
+  background: var(--bg-surface);
 }
 
 .forge-workflow .forge-feature {
@@ -327,6 +400,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-surface);
+  animation: forge-feature-enter 190ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .forge-workflow .forge-feature__fields,
@@ -586,6 +660,9 @@
 .forge-workflow .forge-upload__field input[type="file"]:focus-visible,
 .forge-workflow .forge-upload__primary:focus-visible,
 .forge-workflow .forge-drawing button:focus-visible,
+.forge-workflow .forge-feature-review button:focus-visible,
+.forge-workflow .forge-feature-review input:focus-visible,
+.forge-workflow .forge-feature-review select:focus-visible,
 .forge-drawing-dialog button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -593,6 +670,28 @@
 
 @keyframes forge-feedback-pulse {
   50% { opacity: 0.35; }
+}
+
+@keyframes forge-workspace-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes forge-feature-enter {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @media (max-width: 900px) {
@@ -626,6 +725,10 @@
 
   .forge-workflow .forge-feature__fields,
   .forge-workflow .forge-feature__evidence {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .forge-workflow .forge-feature-review__pager-bar {
     grid-template-columns: minmax(0, 1fr);
   }
 
