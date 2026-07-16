@@ -9,6 +9,7 @@ export interface DrawingWorkflowController {
   cancel(): Promise<void>;
   exportUrl(): string;
   loadPreview(url: string): Promise<string>;
+  reset(): void;
   getState(): WorkflowState;
   subscribe(listener: (state: WorkflowState) => void): () => void;
   dispose(): void;
@@ -154,6 +155,14 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
       const previous = previewUrls.get(url);
       if (previous) revokeObjectURL(previous);
       const objectUrl = createObjectURL(blob); previewUrls.set(url, objectUrl); return objectUrl;
+    },
+    reset() {
+      generation += 1;
+      cleanup();
+      activeTask = null;
+      terminal = false;
+      reconnectAttempt = 0;
+      publish(createInitialWorkflowState());
     },
     getState: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },

@@ -78,6 +78,15 @@ test("a cancelled snapshot is terminal and does not open a stream", async () => 
   assert.equal(connections.length, 0);
 });
 
+test("reset clears a cancelled active task so a new upload can start", async () => {
+  const { client } = harness(async (id) => snapshot(id, "cancelled"));
+  const controller = createDrawingWorkflowController(client);
+  await controller.start("old-task");
+  controller.reset();
+  assert.equal(controller.getState().snapshot, null);
+  assert.equal(controller.getState().connection, "idle");
+});
+
 test("nonretryable auth errors enter state and stop reconnect", async () => {
   const scheduled: Array<() => void> = []; const { client, connections } = harness();
   const controller = createDrawingWorkflowController(client, { scheduleReconnect: (callback) => { scheduled.push(callback); return () => {}; } });

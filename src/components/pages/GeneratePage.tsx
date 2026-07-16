@@ -41,6 +41,12 @@ function V1GeneratePage() {
     return () => { active = false }
   }, [state.snapshot?.drawing.preview_urls])
 
+  useEffect(() => {
+    if (state.snapshot?.task.state !== 'cancelled') return
+    localStorage.removeItem(activeTaskKey)
+    controllerRef.current?.reset()
+  }, [state.snapshot?.task.state])
+
   const run = async (action: (controller: DrawingWorkflowController) => Promise<void>) => {
     const controller = controllerRef.current
     if (!controller) return
