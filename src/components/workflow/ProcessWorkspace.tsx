@@ -47,15 +47,15 @@ export function ProcessWorkspace({
   const normalizedProgress = Math.min(100, Math.max(0, progress));
 
   return (
-    <section className="forge-process" aria-labelledby="forge-process-title">
+    <section className="forge-process" aria-labelledby="forge-process-title" data-testid="workflow-status">
       <header className="forge-process__header">
         <div>
           <p className="forge-eyebrow">PROCESS / ROUTE</p>
           <h2 id="forge-process-title">结构化工艺路线</h2>
-          <p>{phaseLabels[phase]}</p>
+          <p data-testid="workflow-phase" data-phase={phase}>{phaseLabels[phase]}</p>
         </div>
         <div className="forge-process__progress">
-          <span>完成度 {normalizedProgress}%</span>
+          <span data-testid="workflow-progress-value">完成度 {normalizedProgress}%</span>
           <progress value={normalizedProgress} max={100}>{normalizedProgress}%</progress>
         </div>
       </header>
@@ -95,7 +95,7 @@ export function ProcessWorkspace({
       {completed ? (
         <footer className="forge-process__actions">
           <span>共 {operations.length} 道工序</span>
-          <button type="button" onClick={onExport}>导出 PDF</button>
+          <button data-testid="download-export" type="button" onClick={onExport}>导出 PDF</button>
         </footer>
       ) : null}
     </section>

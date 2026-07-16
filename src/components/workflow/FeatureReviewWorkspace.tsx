@@ -134,7 +134,7 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
           {features.map((feature) => {
             const draft = draftFor(feature);
             return (
-              <article className="forge-feature" key={feature.id}>
+              <article className="forge-feature" data-testid="feature-row" key={feature.id}>
                 <div className="forge-feature__fields">
                   <label>特征名称<input value={draft.label} onChange={(event) => updateDraft(feature, { label: event.target.value })} /></label>
                   <label>值<input value={draft.value} placeholder="未提供" onChange={(event) => updateDraft(feature, { value: event.target.value })} /></label>
@@ -153,7 +153,7 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
                   <div><dt>来源方式</dt><dd>{feature.source.method ?? "未提供"}</dd></div>
                   <div><dt>来源页码</dt><dd>{feature.source.page === null ? "页码未提供" : `第 ${feature.source.page} 页`}</dd></div>
                   <div className="forge-feature__evidence-text"><dt>证据文本</dt><dd>{feature.source.evidence_text ?? "未提供"}</dd></div>
-                  <div><dt>置信度</dt><dd>{feature.confidence === null ? "未提供" : `${feature.confidence}（原始值）`}</dd></div>
+                  <div><dt>置信度</dt><dd data-testid="feature-confidence">{feature.confidence === null ? "未提供" : `${feature.confidence}（原始值）`}</dd></div>
                   <div><dt>缺失原因</dt><dd>{feature.missing_reason ?? "无"}</dd></div>
                   <div><dt>审阅状态</dt><dd>{reviewStatusLabels[feature.review_status]}</dd></div>
                 </dl>
@@ -163,7 +163,13 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
         </div>
 
         {canConfirm ? (
-          <button className="forge-feature-review__primary" type="submit" disabled={busy} aria-busy={busy}>
+          <button
+            className="forge-feature-review__primary"
+            data-testid={mode === "annotation" ? "finalize-annotations" : "confirm-review"}
+            type="submit"
+            disabled={busy}
+            aria-busy={busy}
+          >
             {mode === "annotation" ? "确认标注" : "确认审阅并生成工艺"}
           </button>
         ) : <p className="forge-feature-review__readonly">此步骤已完成，当前为回看模式。</p>}

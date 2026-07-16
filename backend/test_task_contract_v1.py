@@ -70,6 +70,37 @@ def test_real_process_flow_data_maps_to_structured_operations():
     assert snapshot["process_operations"][0]["content"] == "下料棒料"
 
 
+def test_two_column_legacy_process_row_treats_second_column_as_content():
+    snapshot = build_task_snapshot(
+        "task-legacy-row",
+        {},
+        {"process_flow": {"data": [["0010", "下料棒料"]]}},
+    )
+
+    operation = snapshot["process_operations"][0]
+    assert operation["trade"] is None
+    assert operation["content"] == "下料棒料"
+
+
+def test_fenced_process_flow_data_is_recovered_from_raw_markdown():
+    snapshot = build_task_snapshot(
+        "task-fenced-row",
+        {},
+        {
+            "process_flow": {
+                "data": [["0010", "料", "```", "锯床/下料机", "0.5h"]],
+                "raw": "好的，我们首先开始第一道工序的编制。\n\n```markdown\n- 0010: 按图号D660T-274000A002备料，毛坯为棒料，规格为φ228×1480 （工种：料）\n```",
+            }
+        },
+    )
+
+    operation = snapshot["process_operations"][0]
+    assert operation["code"] == "0010"
+    assert operation["trade"] == "料"
+    assert operation["content"] == "按图号D660T-274000A002备料，毛坯为棒料，规格为φ228×1480"
+    assert operation["content"] != "```"
+
+
 def test_real_preview_image_urls_are_preserved():
     snapshot = build_task_snapshot("task-preview", {}, {"preview_image_urls": ["/api/result/task-preview/asset/pages/test.png"]})
     assert snapshot["drawing"]["preview_urls"] == ["/api/result/task-preview/asset/pages/test.png"]

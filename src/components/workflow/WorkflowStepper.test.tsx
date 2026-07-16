@@ -15,7 +15,7 @@ test("marks the current, completed, and unavailable workflow steps", () => {
     }),
   );
 
-  assert.match(html, /aria-label="图纸分析步骤"/);
+  assert.match(html, /aria-label="工艺生成步骤"/);
   assert.match(html, /aria-current="step"/);
   assert.match(html, />01</);
   assert.match(html, />上传图纸</);

@@ -43,7 +43,7 @@ export function DrawingWorkspace({ drawing, previewUrls, activePage, onPageChang
         {previewUrl ? (
           // The parent supplies transient object URLs, so Next image optimization is not applicable.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={previewUrl} alt={alt} />
+          <img data-testid="drawing-preview" src={previewUrl} alt={alt} />
         ) : (
           <div className="forge-drawing__placeholder" role="img" aria-label={`${alt}，预览生成中`}>
             预览生成中

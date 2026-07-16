@@ -34,6 +34,7 @@ export function UploadWorkspace({ file, busy, onFileChange, onStart }: UploadWor
         <label htmlFor="forge-drawing-file">选择图纸文件</label>
         <input
           id="forge-drawing-file"
+          data-testid="drawing-upload"
           type="file"
           accept={ACCEPTED_DRAWINGS}
           disabled={busy}
@@ -54,6 +55,7 @@ export function UploadWorkspace({ file, busy, onFileChange, onStart }: UploadWor
       </div>
 
       <button
+        data-testid="start-analysis"
         className="forge-upload__primary"
         type="button"
         disabled={!file || busy}

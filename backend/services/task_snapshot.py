@@ -30,13 +30,63 @@ def _duration_minutes(value):
         return None
 
 
+def _is_fence_text(value):
+    return isinstance(value, str) and value.strip().strip("`").lower() in {"", "markdown"}
+
+
+def _parse_process_rows_from_raw(raw_text):
+    if not isinstance(raw_text, str):
+        return []
+
+    rows = []
+    normalized_text = raw_text.replace("ENDD$$", " ")
+    for line in normalized_text.strip().splitlines():
+        current = line.strip()
+        if (
+            not current
+            or current.startswith(("#", "|", "---", "==="))
+            or _is_fence_text(current)
+        ):
+            continue
+        content = current[2:].strip() if current.startswith(("- ", "* ")) else current
+        match = re.match(r"^(\d{4})\s*[@:：\-\|,，;；\s]*\s*(.+)$", content)
+        if not match:
+            continue
+
+        code, description = match.groups()
+        trade = None
+        trade_match = re.search(r"[（(]\s*工种\s*[：:]\s*([^）)]+)\s*[）)]\s*$", description)
+        if trade_match:
+            trade = trade_match.group(1).strip()
+            description = description[:trade_match.start()].strip()
+        rows.append([code, trade, description, "", ""])
+    return rows
+
+
+def _rows_need_raw_reparse(rows):
+    if not isinstance(rows, list) or not rows:
+        return False
+    for row in rows:
+        if isinstance(row, (list, tuple)) and len(row) > 2 and _is_fence_text(row[2]):
+            return True
+        if isinstance(row, dict) and _is_fence_text(row.get("content")):
+            return True
+    return False
+
+
 def _normalize_operation(row, index):
     if isinstance(row, (list, tuple)):
         code = row[0] if row else ""
-        trade = row[1] if len(row) > 1 else None
-        content = row[2] if len(row) > 2 else ""
-        equipment = [row[3]] if len(row) > 3 and row[3] else []
-        duration = row[4] if len(row) > 4 else None
+        if len(row) == 2:
+            trade = None
+            content = row[1]
+            equipment = []
+            duration = None
+        else:
+            trade = row[1] if len(row) > 1 else None
+            content = row[2] if len(row) > 2 else ""
+            equipment = [row[3]] if len(row) > 3 and row[3] else []
+            duration = row[4] if len(row) > 4 else None
         identifier, parameters, note, status = None, [], None, "complete"
     else:
         getter = row.get if isinstance(row, dict) else lambda key, default=None: getattr(row, key, default)
@@ -154,6 +204,11 @@ def build_task_snapshot(task_id: str, task: dict, result: dict | None = None) ->
     if not isinstance(rows, list):
         process_flow = result.get("process_flow")
         rows = process_flow.get("data", []) if isinstance(process_flow, dict) else []
+    process_flow = result.get("process_flow")
+    if isinstance(process_flow, dict) and _rows_need_raw_reparse(rows):
+        reparsed_rows = _parse_process_rows_from_raw(process_flow.get("raw"))
+        if reparsed_rows:
+            rows = reparsed_rows
     features = _structured_features(result)
     if features is None:
         features = _legacy_features(result.get("feature_text"))

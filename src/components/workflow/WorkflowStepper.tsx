@@ -10,7 +10,7 @@ export interface WorkflowStepperProps {
 
 export function WorkflowStepper({ current, reached, onSelect, busy }: WorkflowStepperProps) {
   return (
-    <nav className="forge-stepper" aria-label="图纸分析步骤">
+    <nav className="forge-stepper" aria-label="工艺生成步骤">
       <ol className="forge-stepper__list">
         {WORKFLOW_STEPS.map((step) => {
           const isCurrent = step.id === current;
