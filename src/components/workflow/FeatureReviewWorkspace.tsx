@@ -96,6 +96,12 @@ function toleranceLabel(feature: WorkflowFeature) {
   return "未提供";
 }
 
+function confidenceLabel(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "未提供";
+  const normalized = value > 1 ? value / 100 : value;
+  return `${Math.round(Math.max(0, Math.min(normalized, 1)) * 100)}%`;
+}
+
 export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfirm = true, onConfirm }: FeatureReviewWorkspaceProps) {
   const [draftEdits, setDraftEdits] = useState<Record<string, Partial<FeatureDraft>>>({});
   const [activeFeatureIndex, setActiveFeatureIndex] = useState(0);
@@ -193,7 +199,7 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
                     <div><dt>来源方式</dt><dd>{feature.source.method ?? "未提供"}</dd></div>
                     <div><dt>来源页码</dt><dd>{feature.source.page === null ? "页码未提供" : `第 ${feature.source.page} 页`}</dd></div>
                     <div className="forge-feature__evidence-text"><dt>证据文本</dt><dd>{feature.source.evidence_text ?? "未提供"}</dd></div>
-                    <div><dt>置信度</dt><dd data-testid="feature-confidence">{feature.confidence === null ? "未提供" : `${feature.confidence}（原始值）`}</dd></div>
+                    <div><dt>置信度</dt><dd data-testid="feature-confidence">{confidenceLabel(feature.confidence)}</dd></div>
                     <div><dt>缺失原因</dt><dd>{feature.missing_reason ?? "无"}</dd></div>
                     <div><dt>审阅状态</dt><dd>{reviewStatusLabels[feature.review_status]}</dd></div>
                   </dl>

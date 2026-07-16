@@ -52,6 +52,21 @@ test("renders structured evidence and explicit missing values without invented c
   assert.doesNotMatch(html, /85%|90%|95%/);
 });
 
+test("renders provided confidence as a percentage without extra judgment copy", () => {
+  const html = renderToStaticMarkup(
+    <FeatureReviewWorkspace
+      mode="review"
+      features={[feature]}
+      preview={<div>图纸预览</div>}
+      busy={false}
+      onConfirm={() => {}}
+    />,
+  );
+
+  assert.match(html, /87%/);
+  assert.doesNotMatch(html, /AI判断|87%（/);
+});
+
 test("shows one active feature with pager controls instead of stacking every feature form", () => {
   const html = renderToStaticMarkup(
     <FeatureReviewWorkspace

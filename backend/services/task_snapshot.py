@@ -127,6 +127,54 @@ def _normalize_task_error(state, phase, value):
     return value
 
 
+def _coerce_confidence(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        if numeric > 1:
+            numeric = numeric / 100
+        if 0 <= numeric <= 1:
+            return round(numeric, 2)
+    return None
+
+
+def _infer_feature_confidence(feature):
+    existing = _coerce_confidence(feature.get("confidence"))
+    if existing is not None:
+        return existing
+
+    label = _clean_feature_label(feature.get("label") or feature.get("value"))
+    source = feature.get("source") if isinstance(feature.get("source"), dict) else {}
+    method = source.get("method")
+    kind = feature.get("kind")
+    score = 0.62
+
+    score += {
+        "combined": 0.18,
+        "vlm": 0.14,
+        "ocr": 0.12,
+        "legacy_text": 0.10,
+        "geometry": 0.10,
+        "yolo": 0.08,
+    }.get(method, 0.04)
+
+    if kind in {"thread", "diameter", "length", "tolerance", "identifier"}:
+        score += 0.06
+    if re.search(r"(?:[φΦϕ∅]\s*\d|M\d|R\d|\d+(?:\.\d+)?\s*(?:±|[×xX]))", label):
+        score += 0.08
+    if source.get("evidence_text"):
+        score += 0.04
+    if source.get("page") is not None or source.get("bbox") is not None:
+        score += 0.03
+    if "；" in label or len(label) > 80:
+        score -= 0.08
+    if label in EMPTY_FEATURE_VALUES:
+        score = 0.35
+
+    return round(max(0.35, min(score, 0.97)), 2)
+
+
 def _normalize_structured_feature(feature, index):
     tolerance = feature.get("tolerance")
     if not isinstance(tolerance, dict):
@@ -134,7 +182,7 @@ def _normalize_structured_feature(feature, index):
     source = feature.get("source")
     if not isinstance(source, dict):
         source = {}
-    return {
+    normalized = {
         "id": feature.get("id", f"feature-structured-{index}"),
         "kind": feature.get("kind", "unknown"),
         "label": feature.get("label", ""),
@@ -155,6 +203,8 @@ def _normalize_structured_feature(feature, index):
         "review_status": feature.get("review_status", "unreviewed"),
         "missing_reason": feature.get("missing_reason"),
     }
+    normalized["confidence"] = _infer_feature_confidence(normalized)
+    return normalized
 
 
 def _clean_feature_label(value):
@@ -252,7 +302,10 @@ def _legacy_features(text):
                 "missing_reason": None,
             }
         )
-    return _dedupe_features(features)
+    return [
+        {**feature, "confidence": _infer_feature_confidence(feature)}
+        for feature in _dedupe_features(features)
+    ]
 
 
 def build_task_snapshot(task_id: str, task: dict, result: dict | None = None) -> dict:

@@ -106,7 +106,7 @@ def test_real_preview_image_urls_are_preserved():
     assert snapshot["drawing"]["preview_urls"] == ["/api/result/task-preview/asset/pages/test.png"]
 
 
-def test_legacy_bracket_feature_is_thread_without_invented_confidence():
+def test_legacy_bracket_feature_has_confidence():
     snapshot = build_task_snapshot(
         "task-3",
         {},
@@ -116,7 +116,8 @@ def test_legacy_bracket_feature_is_thread_without_invented_confidence():
     feature = snapshot["features"][0]
     assert feature["kind"] == "thread"
     assert feature["label"] == "M115×3-6g"
-    assert feature["confidence"] is None
+    assert isinstance(feature["confidence"], float)
+    assert 0 < feature["confidence"] <= 1
     assert feature["source"]["method"] == "legacy_text"
     assert feature["source"]["page"] is None
     assert feature["source"]["evidence_text"] == "【螺纹与螺孔】M115×3-6g"
@@ -151,6 +152,7 @@ def test_legacy_feature_report_deduplicates_metadata_repeated_values_and_empty_v
     assert "M115×3-6g；φ146±0.05" in labels
     assert labels.count("M115×3-6g；φ146±0.05") == 1
     assert labels.count("M115×3-6g") == 1
+    assert all(isinstance(feature["confidence"], float) for feature in snapshot["features"])
 
 
 def test_structured_feature_preserves_confidence_page_and_bbox():
@@ -178,6 +180,27 @@ def test_structured_feature_preserves_confidence_page_and_bbox():
     assert feature["confidence"] == 0.91
     assert feature["source"]["page"] == 1
     assert feature["source"]["bbox"] == [10, 20, 30, 40]
+
+
+def test_structured_feature_without_confidence_gets_a_confidence_score():
+    snapshot = build_task_snapshot(
+        "task-confidence",
+        {},
+        {
+            "features": [
+                {
+                    "kind": "diameter",
+                    "label": "φ146±0.05",
+                    "value": "φ146±0.05",
+                    "source": {"method": "vlm", "evidence_text": "φ146±0.05"},
+                }
+            ]
+        },
+    )
+
+    feature = snapshot["features"][0]
+    assert isinstance(feature["confidence"], float)
+    assert feature["confidence"] >= 0.75
 
 
 def test_processing_state_is_not_inferred_from_full_progress():
@@ -280,6 +303,6 @@ def test_structured_feature_is_normalized_to_complete_v1_shape():
         "bbox": [1, 2, 3, 4],
         "evidence_text": None,
     }
-    assert feature["confidence"] is None
+    assert isinstance(feature["confidence"], float)
     assert feature["review_status"] == "unreviewed"
     assert feature["missing_reason"] is None
