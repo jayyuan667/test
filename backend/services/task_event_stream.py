@@ -48,6 +48,15 @@ LEGACY_DEFAULT_POSITIONS = {
     "log": ("drawing_analysis", 5),
     "yolo_progress": ("drawing_analysis", 30),
 }
+V1_DEFAULT_POSITIONS = {
+    "phase_started": ("upload", 0),
+    "phase_progress": ("drawing_analysis", 0),
+    "feature_ready": ("drawing_analysis", 35),
+    "operation_upserted": ("process_generation", 75),
+    "phase_completed": ("drawing_analysis", 20),
+    "task_completed": ("done", 100),
+    "task_failed": ("drawing_analysis", 0),
+}
 
 
 def _canonical_position(legacy_type, payload):
@@ -66,7 +75,7 @@ def _canonical_position(legacy_type, payload):
     if legacy_type == "error":
         phase, progress = phase or "drawing_analysis", progress if progress is not None else 0
     default_phase, default_progress = LEGACY_DEFAULT_POSITIONS.get(
-        legacy_type, ("drawing_analysis", 0)
+        legacy_type, V1_DEFAULT_POSITIONS.get(legacy_type, ("drawing_analysis", 0))
     )
     phase = phase or default_phase
     progress = progress if progress is not None else default_progress

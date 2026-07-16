@@ -115,6 +115,22 @@ def test_sparse_real_events_still_have_non_nullable_canonical_positions():
         assert (event["phase"], event["progress"]) == position
 
 
+def test_direct_v1_event_types_have_semantic_default_positions():
+    expected = {
+        "phase_started": ("upload", 0),
+        "phase_progress": ("drawing_analysis", 0),
+        "feature_ready": ("drawing_analysis", 35),
+        "operation_upserted": ("process_generation", 75),
+        "phase_completed": ("drawing_analysis", 20),
+        "task_completed": ("done", 100),
+        "task_failed": ("drawing_analysis", 0),
+    }
+    assert set(expected) == V1_EVENT_TYPES - {"heartbeat"}
+    for index, (event_type, position) in enumerate(expected.items(), start=1):
+        event = normalize_event("task", {"id": index, "type": event_type, "data": "{}"})
+        assert (event["phase"], event["progress"]) == position
+
+
 def test_process_stream_chunk_is_progress_not_operation():
     event = normalize_event(
         "task", {"id": 2, "type": "process_stream", "data": json.dumps({"chunk": "10 | 车削"})}
