@@ -123,11 +123,125 @@
 }
 
 .forge-workflow .forge-upload,
-.forge-workflow .forge-drawing {
+.forge-workflow .forge-drawing,
+.forge-workflow .forge-feature-review__panel,
+.forge-workflow .forge-feature-review__preview {
   padding: clamp(20px, 3vw, 32px);
   border: 1px solid var(--border);
   color: var(--text-primary);
   background: var(--bg-raised);
+}
+
+.forge-workflow .forge-feature-review {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+  gap: var(--gap);
+}
+
+.forge-workflow .forge-feature-review__preview {
+  min-height: 560px;
+}
+
+.forge-workflow .forge-feature-review__preview > * {
+  max-width: 100%;
+}
+
+.forge-workflow .forge-feature-review__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.forge-workflow .forge-feature-review__header h2 {
+  margin: 0;
+  font-size: clamp(1.1rem, 2vw, 1.4rem);
+}
+
+.forge-workflow .forge-feature-review__header > span {
+  color: var(--text-ghost);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+}
+
+.forge-workflow .forge-feature-review__rows {
+  display: grid;
+  gap: 14px;
+}
+
+.forge-workflow .forge-feature {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+
+.forge-workflow .forge-feature__fields,
+.forge-workflow .forge-feature__evidence {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.forge-workflow .forge-feature__fields label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.forge-workflow .forge-feature__fields input,
+.forge-workflow .forge-feature__fields select {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--bg-base);
+}
+
+.forge-workflow .forge-feature__evidence {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.forge-workflow .forge-feature__evidence div {
+  min-width: 0;
+}
+
+.forge-workflow .forge-feature__evidence dt {
+  color: var(--text-ghost);
+  font-size: 0.68rem;
+}
+
+.forge-workflow .forge-feature__evidence dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.74rem;
+}
+
+.forge-workflow .forge-feature__evidence-text {
+  grid-column: 1 / -1;
+}
+
+.forge-workflow .forge-feature-review__primary {
+  width: 100%;
+  margin-top: 18px;
+  padding: 12px 18px;
+  border-radius: var(--radius-sm);
+  color: var(--bg-base);
+  font-weight: 700;
+  background: var(--accent-bright);
+}
+
+.forge-workflow .forge-feature-review__primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .forge-workflow .forge-eyebrow {
@@ -333,6 +447,10 @@
   .forge-workflow .forge-workspace {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .forge-workflow .forge-feature-review {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 640px) {
@@ -342,6 +460,15 @@
     justify-content: center;
     gap: 2px;
     padding-inline: 8px;
+  }
+
+  .forge-workflow .forge-feature__fields,
+  .forge-workflow .forge-feature__evidence {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .forge-workflow .forge-feature__evidence-text {
+    grid-column: auto;
   }
 }
 
