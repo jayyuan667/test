@@ -145,3 +145,34 @@ test("ignores late finalize and cancel responses after dispose", async () => {
   assert.equal(controller.getState().connection, "closed");
   assert.equal(controller.getState().snapshot?.task.revision, 1);
 });
+
+test("refreshes snapshot on task_failed before closing the stream", async () => {
+  let reads = 0;
+  const structured = { code: "VLM_TIMEOUT", message: "timeout", retryable: true, phase: "drawing_analysis" as const, details: { checkpoint: "page-2" } };
+  const { client, connections } = harness(async (id) => {
+    reads += 1;
+    return reads === 1 ? snapshot(id) : { ...snapshot(id, "failed"), task: { ...snapshot(id, "failed").task, progress: 38, revision: 9, error: structured } };
+  });
+  const controller = createDrawingWorkflowController(client);
+  await controller.start("task-1");
+  connections[0].emit({ ...progress("task-1", 2), type: "task_failed", progress: 38, payload: { error: structured, checkpoint: "page-2" } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(reads, 2);
+  assert.deepEqual(controller.getState().snapshot?.task.error, structured);
+});
+
+test("replaces and revokes an obsolete preview object URL", async () => {
+  const revoked: string[] = [];
+  let serial = 0;
+  const { client } = harness();
+  const controller = createDrawingWorkflowController(client, {
+    createObjectURL: () => `blob:preview-${++serial}`,
+    revokeObjectURL: (url) => revoked.push(url),
+  });
+  await controller.start("task-1");
+  assert.equal(await controller.loadPreview("/preview/page-1.png"), "blob:preview-1");
+  assert.equal(await controller.loadPreview("/preview/page-1.png"), "blob:preview-2");
+  assert.deepEqual(revoked, ["blob:preview-1"]);
+  controller.dispose();
+  assert.deepEqual(revoked, ["blob:preview-1", "blob:preview-2"]);
+});

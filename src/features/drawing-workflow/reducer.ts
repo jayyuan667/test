@@ -13,6 +13,11 @@ export type WorkflowAction =
   | { type: "connection_changed"; connection: WorkflowConnection }
   | { type: "error_received"; error: WorkflowError | null };
 
+const phaseOrder: Record<TaskSnapshot["task"]["phase"], number> = {
+  upload: 0, drawing_analysis: 1, annotation: 2, feature_review: 3,
+  process_generation: 4, export: 5, done: 6,
+};
+
 export function createInitialWorkflowState(snapshot: TaskSnapshot | null = null): WorkflowState {
   const operations = snapshot?.process_operations ?? [];
   return {
@@ -75,7 +80,10 @@ export function reduceWorkflowState(state: WorkflowState, action: WorkflowAction
   }
 
   if (action.type === "phase_started" || action.type === "phase_progress" || action.type === "phase_completed") {
-    next = { ...next, snapshot: updateSnapshotTask(next.snapshot, { phase: action.phase, progress: action.progress }) };
+    const current = next.snapshot?.task;
+    const phase = current && phaseOrder[action.phase] < phaseOrder[current.phase] ? current.phase : action.phase;
+    const progress = current ? Math.max(current.progress, action.progress) : action.progress;
+    next = { ...next, snapshot: updateSnapshotTask(next.snapshot, { phase, progress }) };
   } else if (action.type === "task_completed") {
     next = {
       ...next,
@@ -84,9 +92,10 @@ export function reduceWorkflowState(state: WorkflowState, action: WorkflowAction
     };
   } else if (action.type === "task_failed") {
     const error = action.payload.error ?? null;
+    const current = next.snapshot?.task;
     next = {
       ...next,
-      snapshot: updateSnapshotTask(next.snapshot, { state: action.payload.status === "cancelled" || action.payload.state === "cancelled" ? "cancelled" : "failed", phase: action.phase, progress: action.progress, error }),
+      snapshot: updateSnapshotTask(next.snapshot, { state: action.payload.status === "cancelled" || action.payload.state === "cancelled" ? "cancelled" : "failed", phase: current && phaseOrder[action.phase] < phaseOrder[current.phase] ? current.phase : action.phase, progress: current ? Math.max(current.progress, action.progress) : action.progress, error }),
       error,
     };
   }

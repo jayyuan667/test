@@ -38,7 +38,7 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
   let reconnectBase = 1_000;
   let disposed = false;
   let terminal = false;
-  const previewUrls = new Set<string>();
+  const previewUrls = new Map<string, string>();
   const createObjectURL = options.createObjectURL ?? ((blob) => URL.createObjectURL(blob));
   const revokeObjectURL = options.revokeObjectURL ?? ((url) => URL.revokeObjectURL(url));
 
@@ -62,7 +62,7 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
       if (disposed || terminal || expectedGeneration !== generation || event.task_id !== taskId) return;
       publish(reduceWorkflowState(state, event));
       const legacyType = event.payload.legacy_type;
-      if (legacyType === "annotation_required" || legacyType === "review_required" || event.type === "task_completed") {
+      if (legacyType === "annotation_required" || legacyType === "review_required" || event.type === "task_completed" || event.type === "task_failed") {
         void refreshSnapshot(taskId, expectedGeneration);
       }
       const taskState = state.snapshot?.task.state;
@@ -148,7 +148,9 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
       const taskId = activeTask;
       const blob = await client.getAsset(taskId, url);
       if (disposed || expectedGeneration !== generation) return "";
-      const objectUrl = createObjectURL(blob); previewUrls.add(objectUrl); return objectUrl;
+      const previous = previewUrls.get(url);
+      if (previous) revokeObjectURL(previous);
+      const objectUrl = createObjectURL(blob); previewUrls.set(url, objectUrl); return objectUrl;
     },
     getState: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },

@@ -14,7 +14,7 @@ const number = (value: unknown, fallback = 0) => typeof value === "number" && Nu
 const nullableString = (value: unknown) => typeof value === "string" ? value : null;
 
 function normalizeError(value: unknown): WorkflowError | null {
-  if (value == null) return null;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const item = record(value);
   return { code: string(item.code, "TASK_FAILED"), message: string(item.message, "Task failed"), retryable: item.retryable === true, phase: phases.has(item.phase as TaskPhase) ? item.phase as TaskPhase : null, details: record(item.details) };
 }
@@ -38,9 +38,10 @@ function normalizeOperation(value: unknown, index: number): ProcessOperation {
 export function normalizeTaskSnapshot(value: unknown): TaskSnapshot | null {
   const root = record(value); const task = record(root.task); const drawing = record(root.drawing); const review = record(root.review);
   if (root.schema_version !== "1.0" || typeof task.id !== "string") return null;
+  const state = states.has(task.state as TaskState) ? task.state as TaskState : "pending";
   return {
     schema_version: "1.0",
-    task: { id: task.id, state: states.has(task.state as TaskState) ? task.state as TaskState : "pending", phase: phases.has(task.phase as TaskPhase) ? task.phase as TaskPhase : "upload", progress: typeof task.progress === "number" && Number.isFinite(task.progress) && task.progress >= 0 && task.progress <= 100 ? task.progress : 0, revision: typeof task.revision === "number" && Number.isInteger(task.revision) && task.revision >= 0 ? task.revision : 0, created_at: nullableString(task.created_at), updated_at: nullableString(task.updated_at), error: normalizeError(task.error) },
+    task: { id: task.id, state, phase: phases.has(task.phase as TaskPhase) ? task.phase as TaskPhase : "upload", progress: typeof task.progress === "number" && Number.isFinite(task.progress) && task.progress >= 0 && task.progress <= 100 ? task.progress : 0, revision: typeof task.revision === "number" && Number.isInteger(task.revision) && task.revision >= 0 ? task.revision : 0, created_at: nullableString(task.created_at), updated_at: nullableString(task.updated_at), error: state === "completed" ? null : normalizeError(task.error) },
     drawing: { name: string(drawing.name), source_kind: sourceKinds.has(drawing.source_kind as TaskSnapshot["drawing"]["source_kind"]) ? drawing.source_kind as TaskSnapshot["drawing"]["source_kind"] : "unknown", page_count: typeof drawing.page_count === "number" && Number.isInteger(drawing.page_count) && drawing.page_count > 0 ? drawing.page_count : 1, preview_urls: Array.isArray(drawing.preview_urls) ? drawing.preview_urls.filter((entry): entry is string => typeof entry === "string") : [] },
     features: Array.isArray(root.features) ? root.features.map(normalizeFeature) : [], review: { status: reviewStatuses.has(review.status as TaskSnapshot["review"]["status"]) ? review.status as TaskSnapshot["review"]["status"] : "not_ready", raw_text: nullableString(review.raw_text) },
     process_operations: Array.isArray(root.process_operations) ? root.process_operations.map(normalizeOperation) : [], reuse_candidates: Array.isArray(root.reuse_candidates) ? root.reuse_candidates : [], capabilities: record(root.capabilities),

@@ -12,6 +12,13 @@ test("normalizes nullable backend collections without inventing confidence", () 
   assert.equal(snapshot.features[0].source.method, null);
 });
 
+test("accepts only structured workflow errors and never invents failure for success", () => {
+  const completed = normalizeTaskSnapshot({ schema_version: "1.0", task: { id: "done", state: "completed", phase: "done", progress: 100, revision: 2, error: { code: "STALE", message: "stale legacy error" } }, drawing: {} });
+  const failed = normalizeTaskSnapshot({ schema_version: "1.0", task: { id: "bad", state: "failed", phase: "drawing_analysis", progress: 30, revision: 3, error: "plain string" }, drawing: {} });
+  assert.equal(completed?.task.error, null);
+  assert.equal(failed?.task.error, null);
+});
+
 test("rejects invalid events and defaults nullable progress to a number", () => {
   assert.equal(normalizeTaskEvent({ seq: null, task_id: "t" }), null);
   const event = normalizeTaskEvent({ schema_version: "1.0", seq: 1, task_id: "t", type: "heartbeat", phase: "drawing_analysis", progress: null, timestamp: null, payload: null });

@@ -31,18 +31,50 @@ def _duration_minutes(value):
 
 
 def _normalize_operation(row, index):
-    code = row[0]
+    if isinstance(row, (list, tuple)):
+        code = row[0] if row else ""
+        trade = row[1] if len(row) > 1 else None
+        content = row[2] if len(row) > 2 else ""
+        equipment = [row[3]] if len(row) > 3 and row[3] else []
+        duration = row[4] if len(row) > 4 else None
+        identifier, parameters, note, status = None, [], None, "complete"
+    else:
+        getter = row.get if isinstance(row, dict) else lambda key, default=None: getattr(row, key, default)
+        code, trade, content = getter("code", ""), getter("trade"), getter("content", "")
+        equipment = getter("equipment", [])
+        if isinstance(equipment, str):
+            equipment = [equipment] if equipment else []
+        elif not isinstance(equipment, list):
+            equipment = []
+        duration = getter("duration_minutes", getter("duration"))
+        identifier, parameters = getter("id"), getter("parameters", [])
+        note, status = getter("note"), getter("status", "complete")
+    duration_minutes = duration if isinstance(duration, int) and not isinstance(duration, bool) else _duration_minutes(duration)
     return {
-        "id": f"op-{code}-{index}",
+        "id": identifier or f"op-{code}-{index}",
         "code": code,
-        "trade": row[1] if len(row) > 1 else None,
-        "content": row[2] if len(row) > 2 else "",
-        "equipment": [row[3]] if len(row) > 3 and row[3] else [],
-        "duration_minutes": _duration_minutes(row[4]) if len(row) > 4 else None,
-        "parameters": [],
-        "note": None,
-        "status": "complete",
+        "trade": trade,
+        "content": content,
+        "equipment": equipment,
+        "duration_minutes": duration_minutes,
+        "parameters": parameters if isinstance(parameters, list) else [],
+        "note": note,
+        "status": status if status in {"draft", "streaming", "complete", "modified"} else "complete",
     }
+
+
+def _normalize_task_error(state, phase, value):
+    if state == "completed" or value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if isinstance(value, str):
+        return {
+            "code": "TASK_FAILED",
+            "message": value,
+            "retryable": False,
+            "phase": phase,
+            "details": {},
+        }
+    return value
 
 
 def _normalize_structured_feature(feature, index):
@@ -138,7 +170,7 @@ def build_task_snapshot(task_id: str, task: dict, result: dict | None = None) ->
             "revision": task.get("revision", 0),
             "created_at": task.get("created_at"),
             "updated_at": task.get("updated_at"),
-            "error": task.get("error"),
+            "error": _normalize_task_error(state, phase, task.get("error")),
         },
         "drawing": {
             "name": task.get("drawing_name", task.get("pdf_name", "")),

@@ -83,3 +83,24 @@ test("preserves cancelled terminal state and clears completion errors", () => {
   assert.equal(completed.snapshot?.task.error, null);
   assert.equal(cancelled.snapshot?.task.state, "cancelled");
 });
+
+test("real legacy fixture sequence never regresses phase or progress on unknown values", () => {
+  let state = createInitialWorkflowState({ schema_version: "1.0", task: { id: "task-1", state: "processing", phase: "drawing_analysis", progress: 20, revision: 1, created_at: null, updated_at: null, error: null }, drawing: { name: "x", source_kind: "png", page_count: 1, preview_urls: [] }, features: [], review: { status: "not_ready", raw_text: null }, process_operations: [], reuse_candidates: [], capabilities: {} });
+  const fixture: TaskEvent[] = [
+    { ...operationEvent(2, "unused"), type: "phase_progress", phase: "annotation", progress: 45, payload: { legacy_type: "annotation_required" } },
+    { ...operationEvent(3, "unused"), type: "heartbeat", phase: "drawing_analysis", progress: 0, payload: { legacy_type: "unknown" } },
+    { ...operationEvent(4, "unused"), type: "phase_progress", phase: "feature_review", progress: 60, payload: { legacy_type: "review_required" } },
+    { ...operationEvent(5, "unused"), type: "phase_progress", phase: "process_generation", progress: 75, payload: { legacy_type: "process_stream" } },
+  ];
+  for (const event of fixture) state = reduceWorkflowState(state, event);
+  assert.equal(state.snapshot?.task.phase, "process_generation");
+  assert.equal(state.snapshot?.task.progress, 75);
+});
+
+test("task_failed preserves the structured payload error and checkpoint", () => {
+  const base = createInitialWorkflowState({ schema_version: "1.0", task: { id: "task-1", state: "processing", phase: "drawing_analysis", progress: 38, revision: 1, created_at: null, updated_at: null, error: null }, drawing: { name: "x", source_kind: "png", page_count: 1, preview_urls: [] }, features: [], review: { status: "not_ready", raw_text: null }, process_operations: [], reuse_candidates: [], capabilities: {} });
+  const error = { code: "VLM_TIMEOUT", message: "timeout", retryable: true, phase: "drawing_analysis" as const, details: { checkpoint: "page-2" } };
+  const next = reduceWorkflowState(base, { schema_version: "1.0", seq: 2, task_id: "task-1", type: "task_failed", phase: "drawing_analysis", progress: 38, timestamp: "", payload: { error, checkpoint: "page-2" } });
+  assert.deepEqual(next.snapshot?.task.error, error);
+  assert.equal(next.snapshot?.task.progress, 38);
+});

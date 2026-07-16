@@ -1,6 +1,17 @@
 from backend.services.task_snapshot import build_task_snapshot
 
 
+class OperationObject:
+    code = "0030"
+    trade = "车工"
+    content = "精车外圆"
+    equipment = ["数控车床"]
+    duration_minutes = 12
+    parameters = [{"speed": 800}]
+    note = "首件检验"
+    status = "modified"
+
+
 def test_five_column_process_row_maps_by_position():
     snapshot = build_task_snapshot(
         "task-1",
@@ -25,6 +36,28 @@ def test_three_column_process_row_has_no_equipment_or_duration():
     operation = snapshot["process_operations"][0]
     assert operation["equipment"] == []
     assert operation["duration_minutes"] is None
+
+
+def test_operation_adapter_accepts_dict_and_attribute_objects_without_500():
+    snapshot = build_task_snapshot("task-objects", {}, {"process_operations": [
+        {"id": "op-dict", "code": "0020", "trade": "铣工", "content": "铣平面",
+         "equipment": "加工中心", "duration": "15min", "parameters": [], "status": "complete"},
+        OperationObject(),
+    ]})
+
+    first, second = snapshot["process_operations"]
+    assert first["id"] == "op-dict"
+    assert first["equipment"] == ["加工中心"]
+    assert first["duration_minutes"] == 15
+    assert second["code"] == "0030"
+    assert second["equipment"] == ["数控车床"]
+    assert second["parameters"] == [{"speed": 800}]
+    assert second["status"] == "modified"
+
+
+def test_empty_error_is_null_and_success_never_carries_a_stale_error():
+    assert build_task_snapshot("empty", {"status": "failed", "error": ""})["task"]["error"] is None
+    assert build_task_snapshot("done", {"status": "completed", "error": "stale"})["task"]["error"] is None
 
 
 def test_real_process_flow_data_maps_to_structured_operations():
@@ -119,7 +152,13 @@ def test_legacy_error_status_normalizes_without_key_error():
 
     assert snapshot["task"]["state"] == "failed"
     assert snapshot["task"]["phase"] == "drawing_analysis"
-    assert snapshot["task"]["error"] == "vision failed"
+    assert snapshot["task"]["error"] == {
+        "code": "TASK_FAILED",
+        "message": "vision failed",
+        "retryable": False,
+        "phase": "drawing_analysis",
+        "details": {},
+    }
 
 
 def test_nested_task_result_is_used_when_result_argument_is_omitted():

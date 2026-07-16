@@ -108,10 +108,56 @@ def test_process_stream_chunk_is_progress_not_operation():
     assert event["payload"]["process_chunk"] == "10 | 车削"
 
 
+def test_process_stream_does_not_fabricate_operation_from_identifier_only():
+    event = normalize_event(
+        "task", {"id": 3, "type": "process_stream", "data": json.dumps({"operation": {"id": "op-empty"}})}
+    )
+    assert event["type"] == "phase_progress"
+    assert "operation" not in event["payload"]
+    assert event["payload"]["legacy_type"] == "process_stream"
+
+
 def test_payload_normalization_does_not_mutate_input_dict():
     payload = {"phase": "drawing_analysis"}
     normalize_event("task", {"id": 1, "type": "log", "data": payload, "message": "hello"})
     assert payload == {"phase": "drawing_analysis"}
+
+
+def test_real_legacy_event_sequence_derives_monotonic_canonical_progress():
+    rows = [
+        {"id": 1, "type": "step_start", "data": json.dumps({"step": 1, "name": "图纸解析"})},
+        {"id": 2, "type": "log", "data": json.dumps({"step": 1, "message": "第 1/1 页已转换"})},
+        {"id": 3, "type": "step_complete", "data": json.dumps({"step": 1, "name": "图纸解析"})},
+        {"id": 4, "type": "annotation_required", "data": json.dumps({"pages": 1})},
+        {"id": 5, "type": "review_required", "data": json.dumps({"feature_text": "M115×3-6g"})},
+        {"id": 6, "type": "process_stream", "data": json.dumps({"chunk": "0010 | 下料"})},
+        {"id": 7, "type": "complete", "data": json.dumps({"message": "处理完成"})},
+    ]
+    events = [normalize_event("task-real", row) for row in rows]
+
+    assert [event["phase"] for event in events] == [
+        "drawing_analysis", "drawing_analysis", "drawing_analysis", "annotation",
+        "feature_review", "process_generation", "done",
+    ]
+    assert [event["progress"] for event in events] == [5, 5, 20, 45, 60, 75, 100]
+
+
+def test_failed_event_preserves_structured_error_and_checkpoint():
+    event = normalize_event("task", {
+        "id": 9, "type": "error", "data": json.dumps({
+            "message": "VLM timeout", "retryable": True, "phase": "drawing_analysis",
+            "progress": 38, "checkpoint": "page-2",
+        }),
+    })
+
+    assert event["type"] == "task_failed"
+    assert event["phase"] == "drawing_analysis"
+    assert event["progress"] == 38
+    assert event["payload"]["checkpoint"] == "page-2"
+    assert event["payload"]["error"] == {
+        "code": "TASK_FAILED", "message": "VLM timeout", "retryable": True,
+        "phase": "drawing_analysis", "details": {"checkpoint": "page-2"},
+    }
 
 
 def test_pack_v1_sse_has_full_envelope():

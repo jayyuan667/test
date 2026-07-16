@@ -33,6 +33,38 @@ DIRECT_TYPE_MAP = {
 TERMINAL_TYPES = frozenset({"task_completed", "task_failed"})
 TERMINAL_STATES = frozenset({"completed", "error", "failed", "cancelled"})
 TERMINAL_GRACE_READS = 3
+VALID_PHASES = frozenset({"upload", "drawing_analysis", "annotation", "feature_review", "process_generation", "export", "done"})
+LEGACY_TRANSITIONS = {
+    "annotation_required": ("annotation", 45),
+    "review_required": ("feature_review", 60),
+    "process_stream": ("process_generation", 75),
+    "complete": ("done", 100),
+}
+
+
+def _canonical_position(legacy_type, payload):
+    phase = payload.get("phase") if payload.get("phase") in VALID_PHASES else None
+    progress = payload.get("progress")
+    if not isinstance(progress, (int, float)) or isinstance(progress, bool) or not 0 <= progress <= 100:
+        progress = None
+    transition = LEGACY_TRANSITIONS.get(legacy_type)
+    if transition:
+        phase, progress = phase or transition[0], progress if progress is not None else transition[1]
+    step = payload.get("step")
+    if isinstance(step, int) and legacy_type in {"step_start", "step_complete", "log", "yolo_progress"}:
+        phase = phase or "drawing_analysis"
+        if progress is None:
+            progress = min(95, max(5, step * 20 - (0 if legacy_type == "step_complete" else 15)))
+    if legacy_type == "error":
+        phase, progress = phase or "drawing_analysis", progress if progress is not None else 0
+    return phase, progress
+
+
+def _structured_failure(payload, phase):
+    if isinstance(payload.get("error"), dict):
+        return payload["error"]
+    details = {"checkpoint": payload["checkpoint"]} if payload.get("checkpoint") is not None else {}
+    return {"code": payload.get("code") or "TASK_FAILED", "message": payload.get("message") or "Task failed", "retryable": payload.get("retryable") is True, "phase": phase, "details": details}
 
 
 def _payload(event):
@@ -54,9 +86,10 @@ def _payload(event):
 def _adapt_type(legacy_type, payload):
     if legacy_type == "process_stream":
         operation = payload.get("operation")
-        if isinstance(operation, dict) and operation.get("id"):
+        if isinstance(operation, dict) and operation.get("id") and operation.get("code") and operation.get("content"):
             payload["operation"] = dict(operation)
             return "operation_upserted"
+        payload.pop("operation", None)
         if "chunk" in payload:
             payload["process_chunk"] = payload.pop("chunk")
         payload["legacy_type"] = legacy_type
@@ -72,14 +105,18 @@ def _adapt_type(legacy_type, payload):
 def normalize_event(task_id, event):
     """Convert one SQLite task_events row to the stable v1 event shape."""
     payload = _payload(event)
-    event_type = _adapt_type(event.get("type"), payload)
+    legacy_type = event.get("type")
+    event_type = _adapt_type(legacy_type, payload)
+    phase, progress = _canonical_position(legacy_type, payload)
+    if event_type == "task_failed":
+        payload["error"] = _structured_failure(payload, phase)
     return {
         "schema_version": SCHEMA_VERSION,
         "seq": int(event["id"]),
         "task_id": task_id,
         "type": event_type,
-        "phase": payload.get("phase"),
-        "progress": payload.get("progress"),
+        "phase": phase,
+        "progress": progress,
         "timestamp": event.get("created_at"),
         "payload": payload,
     }
