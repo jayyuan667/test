@@ -40,6 +40,14 @@ LEGACY_TRANSITIONS = {
     "process_stream": ("process_generation", 75),
     "complete": ("done", 100),
 }
+LEGACY_DEFAULT_POSITIONS = {
+    "step_start": ("drawing_analysis", 5),
+    "step_complete": ("drawing_analysis", 20),
+    "image_ready": ("drawing_analysis", 35),
+    "preview_updated": ("annotation", 45),
+    "log": ("drawing_analysis", 5),
+    "yolo_progress": ("drawing_analysis", 30),
+}
 
 
 def _canonical_position(legacy_type, payload):
@@ -57,6 +65,11 @@ def _canonical_position(legacy_type, payload):
             progress = min(95, max(5, step * 20 - (0 if legacy_type == "step_complete" else 15)))
     if legacy_type == "error":
         phase, progress = phase or "drawing_analysis", progress if progress is not None else 0
+    default_phase, default_progress = LEGACY_DEFAULT_POSITIONS.get(
+        legacy_type, ("drawing_analysis", 0)
+    )
+    phase = phase or default_phase
+    progress = progress if progress is not None else default_progress
     return phase, progress
 
 

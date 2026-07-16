@@ -95,8 +95,24 @@ def test_all_legacy_types_adapt_to_approved_v1_types(legacy_type, v1_type):
     normalized = normalize_event("task", {"id": 1, "type": legacy_type, "data": "{}"})
     assert normalized["type"] == v1_type
     assert normalized["type"] in V1_EVENT_TYPES
+    assert normalized["phase"] in {"upload", "drawing_analysis", "annotation", "feature_review", "process_generation", "export", "done"}
+    assert isinstance(normalized["progress"], (int, float))
+    assert 0 <= normalized["progress"] <= 100
     if legacy_type not in {"step_start", "step_complete"}:
         assert normalized["payload"]["legacy_type"] == legacy_type
+
+
+def test_sparse_real_events_still_have_non_nullable_canonical_positions():
+    expected = {
+        "image_ready": ("drawing_analysis", 35),
+        "preview_updated": ("annotation", 45),
+        "log": ("drawing_analysis", 5),
+        "yolo_progress": ("drawing_analysis", 30),
+        "unexpected_plugin_event": ("drawing_analysis", 0),
+    }
+    for index, (legacy_type, position) in enumerate(expected.items(), start=1):
+        event = normalize_event("task", {"id": index, "type": legacy_type, "data": "{}"})
+        assert (event["phase"], event["progress"]) == position
 
 
 def test_process_stream_chunk_is_progress_not_operation():
