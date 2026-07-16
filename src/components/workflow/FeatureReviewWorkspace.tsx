@@ -103,6 +103,7 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
   const featureCount = features.length;
   const activeIndex = featureCount === 0 ? 0 : Math.min(activeFeatureIndex, featureCount - 1);
   const activeFeature = features[activeIndex];
+  const canSubmit = !busy && (mode === "annotation" || featureCount > 0);
 
   useEffect(() => {
     submissionGate.observeBusy(busy);
@@ -118,7 +119,7 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
 
   function confirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || featureCount === 0) return;
+    if (!canSubmit) return;
     submissionGate.submit(() => onConfirm(features.map((feature) => mergeFeatureDraft(feature, draftFor(feature)))));
   }
 
@@ -202,7 +203,7 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
           </div>
         ) : (
           <div className="forge-feature-review__empty" data-testid="feature-empty">
-            暂无可审阅特征，等待图纸解析结果。
+            {mode === "annotation" ? "未检测到自动特征，可确认标注后继续视觉分析。" : "暂无可审阅特征，等待图纸解析结果。"}
           </div>
         )}
 
@@ -211,7 +212,7 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
             className="forge-feature-review__primary"
             data-testid={mode === "annotation" ? "finalize-annotations" : "confirm-review"}
             type="submit"
-            disabled={busy || featureCount === 0}
+            disabled={!canSubmit}
             aria-busy={busy}
           >
             {mode === "annotation" ? "确认标注" : "确认审阅并生成工艺"}

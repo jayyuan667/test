@@ -73,7 +73,7 @@ test("shows one active feature with pager controls instead of stacking every fea
   assert.equal((html.match(/data-testid="feature-row"/g) ?? []).length, 1);
 });
 
-test("empty feature review shows a clear disabled state", () => {
+test("empty annotation can still be confirmed so zero YOLO detections do not block the workflow", () => {
   const html = renderToStaticMarkup(
     <FeatureReviewWorkspace
       mode="annotation"
@@ -85,8 +85,24 @@ test("empty feature review shows a clear disabled state", () => {
   );
 
   assert.match(html, /data-testid="feature-empty"/);
-  assert.match(html, /暂无可审阅特征/);
+  assert.match(html, /未检测到自动特征，可确认标注后继续视觉分析/);
   assert.match(html, /确认标注/);
+  assert.doesNotMatch(html, /disabled/);
+});
+
+test("empty review shows a clear disabled state", () => {
+  const html = renderToStaticMarkup(
+    <FeatureReviewWorkspace
+      mode="review"
+      features={[]}
+      preview={null}
+      busy={false}
+      onConfirm={() => {}}
+    />,
+  );
+
+  assert.match(html, /data-testid="feature-empty"/);
+  assert.match(html, /确认审阅并生成工艺/);
   assert.match(html, /disabled/);
 });
 
