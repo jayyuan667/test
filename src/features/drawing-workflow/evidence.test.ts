@@ -8,7 +8,9 @@ test("recursively removes secret keys and redacts sensitive string values", () =
     task: {
       id: "task-1",
       Authorization: "Bearer secret",
-      nested: [{ token: "secret", password: "p@ss", api_key: "key", cookie: "sid=x", credential: "cred" }],
+      nested: [{ token: "secret", accessToken: "secret", password: "p@ss", api_key: "key", cookie: "sid=x", credential: "cred" }],
+      previewUrl: "s3://private-bucket/object",
+      filePath: String.raw`D:\private\drawing.png`,
     },
     notes: [
       "safe",
@@ -30,6 +32,9 @@ test("recursively removes secret keys and redacts sensitive string values", () =
     { value: "https://private.example" },
     { password: "p@ss" },
     { apiKey: "key" },
+    { accessToken: "token" },
+    { previewUrl: "s3://private-bucket/object" },
+    { filePath: String.raw`D:\private\drawing.png` },
     { cookie: "sid=x" },
     { credential: "cred" },
     { note: "Bearer abc.def" },

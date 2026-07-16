@@ -1,13 +1,18 @@
 const SENSITIVE_KEY = /(?:^|[_-])(?:access[_-]?key|api[_-]?key|authorization|cookie|credential|password|passphrase|private[_-]?key|secret|session|token|url|path)(?:$|[_-])/i;
 const SENSITIVE_VALUE = /https?:\/\/|\/(?:Users|home)\/|[A-Z]:\\Users\\|\bBearer\s+\S+/i;
 
+function isSensitiveKey(key: string): boolean {
+  const normalized = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+  return SENSITIVE_KEY.test(normalized);
+}
+
 export function sanitizeEvidence(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitizeEvidence);
   if (typeof value === "string" && SENSITIVE_VALUE.test(value)) return "[REDACTED]";
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
-      .filter(([key]) => !SENSITIVE_KEY.test(key))
+      .filter(([key]) => !isSensitiveKey(key))
       .map(([key, item]) => [key, sanitizeEvidence(item)]),
   );
 }
@@ -23,7 +28,7 @@ export function assertEvidenceClean(value: unknown): void {
   }
   if (!value || typeof value !== "object") return;
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    if (SENSITIVE_KEY.test(key)) throw new Error("Evidence QA found sensitive content");
+    if (isSensitiveKey(key)) throw new Error("Evidence QA found sensitive content");
     assertEvidenceClean(item);
   }
 }
