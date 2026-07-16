@@ -9,9 +9,11 @@ test("GeneratePage delegates transport and stream ownership to the v1 controller
     assert.equal(source.includes(forbidden), false, `must not contain ${forbidden}`);
   }
 
-  assert.match(source, /controller\.loadPreview/);
+  assert.match(source, /controller\s*\.loadPreview/);
   assert.match(source, /Promise\.all/);
   assert.match(source, /reachedStepForSnapshot/);
   assert.match(source, /followLatest/);
+  assert.match(source, /actionInFlightRef/);
+  assert.match(source, /\.finally\(\(\) => \{[\s\S]*previewPromisesRef\.current\.delete/);
   assert.equal(/connection\}[\s\S]*seq|seq[\s\S]*connection\}/.test(source), false);
 });

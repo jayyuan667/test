@@ -6,6 +6,7 @@
 - Replaced the validation-card page with the four-step fused workstation.
 - Reused the v1 workflow controller for upload, recovery, SSE state, commands, authenticated preview assets, and export URL ownership.
 - Added ordered multi-page preview loading with task/snapshot epoch guards and per-source pending-request deduplication.
+- Hardened command dispatch with a synchronous in-flight latch, so two clicks in the same React render cannot issue duplicate uploads or workflow commands.
 - Added backward inspection (`reachedStep`, `selectedStep`, `followLatest`) without replaying completed commands.
 - Extended feature review with an explicit read-only historical mode.
 
@@ -24,9 +25,11 @@ The first tests failed because:
 - Real task phase and bounded progress remain visible while process operations stream in.
 - Preview components receive object URLs only; they never fetch or own persistence.
 - All preview source URLs are passed to `controller.loadPreview` in source order. A task/revision/source signature plus load epoch prevents stale state publication; pending deduplication prevents overlapping snapshot refreshes from revoking a newer URL for the same page.
+- Preview deduplication is pending-only: each settled promise removes itself with an identity guard, so a later revision can reload the same source without reusing a stale object URL.
 - Explicit backend states take precedence in step mapping: an annotation snapshot containing features remains on step 02, and `process_generation` reaches step 04 before the first operation arrives.
 - Selecting an earlier step disables follow-latest. Starting upload/finalize/review restores it. Historical feature steps do not render an owning command.
 - Static architecture guards reject direct fetch, EventSource, polling, Markdown parsing, and query-token transport in `GeneratePage`.
+- Static architecture guards also require the synchronous action latch and settled preview-request cleanup.
 
 ## Verification
 

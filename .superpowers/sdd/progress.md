@@ -6,3 +6,4 @@ Task 1: complete (commits 9f9c39d..b6f4cb4, review clean; focused 2/2, workflow 
 Task 2: complete (commits bd3cc54..427e955, review clean; component tests 4/4, ESLint and TypeScript passed)
 Task 3: complete (commits aff11ab..1743e3d, review clean; component tests 3/3, ESLint and TypeScript passed; Minor: dialog/page callbacks rely on final browser E2E coverage)
 Task 4: complete (commits 1f7847d..401cb8e, review clean after duplicate-submit fix; component tests 5/5, ESLint and TypeScript passed; Minor: mounted-form wiring and busy/rejection interleave left for integration review)
+Task 5: implementation complete (structured process workstation + four-step legacy-shell/v1 composition; hardened same-render action dedupe and pending-only preview cache; workflow 45/45, components 18/18, scoped ESLint, TypeScript, and production build passed; independent review retry pending)

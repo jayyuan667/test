@@ -40,6 +40,7 @@ function V1GeneratePage() {
   const previewLoadRef = useRef(0);
   const previewTaskRef = useRef<string | null>(null);
   const previewPromisesRef = useRef(new Map<string, Promise<string>>());
+  const actionInFlightRef = useRef(false);
   const [state, setState] = useState<WorkflowState>(initialState);
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,10 +84,14 @@ function V1GeneratePage() {
       previewSources.map((source) => {
         const pending = previewPromisesRef.current.get(source);
         if (pending) return pending;
-        const request = controller.loadPreview(source).catch(() => {
-          previewPromisesRef.current.delete(source);
-          return "";
-        });
+        const request = controller
+          .loadPreview(source)
+          .catch(() => "")
+          .finally(() => {
+            if (previewPromisesRef.current.get(source) === request) {
+              previewPromisesRef.current.delete(source);
+            }
+          });
         previewPromisesRef.current.set(source, request);
         return request;
       }),
@@ -118,7 +123,8 @@ function V1GeneratePage() {
 
   async function run(action: (controller: DrawingWorkflowController) => Promise<void>) {
     const controller = controllerRef.current;
-    if (!controller || busy) return;
+    if (!controller || actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -128,6 +134,7 @@ function V1GeneratePage() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "操作失败");
     } finally {
+      actionInFlightRef.current = false;
       setBusy(false);
     }
   }
