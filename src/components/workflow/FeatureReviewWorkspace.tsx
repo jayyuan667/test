@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import type { WorkflowFeature } from "@/services";
 
@@ -17,7 +17,41 @@ interface FeatureReviewWorkspaceProps {
   features: WorkflowFeature[];
   preview: ReactNode;
   busy: boolean;
-  onConfirm: (features: WorkflowFeature[]) => void;
+  onConfirm: (features: WorkflowFeature[]) => void | Promise<void>;
+}
+
+export interface SubmissionGate {
+  submit: (command: () => void | Promise<void>) => boolean;
+  observeBusy: (busy: boolean) => void;
+}
+
+export function createSubmissionGate(): SubmissionGate {
+  let locked = false;
+  let observedBusy = false;
+
+  return {
+    submit(command) {
+      if (locked) return false;
+      locked = true;
+      try {
+        void Promise.resolve(command()).catch(() => {
+          locked = false;
+        });
+      } catch {
+        locked = false;
+      }
+      return true;
+    },
+    observeBusy(busy) {
+      if (busy) {
+        observedBusy = true;
+        locked = true;
+      } else if (observedBusy) {
+        observedBusy = false;
+        locked = false;
+      }
+    },
+  };
 }
 
 const reviewStatusLabels: Record<WorkflowFeature["review_status"], string> = {
@@ -63,6 +97,11 @@ function toleranceLabel(feature: WorkflowFeature) {
 
 export function FeatureReviewWorkspace({ mode, features, preview, busy, onConfirm }: FeatureReviewWorkspaceProps) {
   const [draftEdits, setDraftEdits] = useState<Record<string, Partial<FeatureDraft>>>({});
+  const [submissionGate] = useState(createSubmissionGate);
+
+  useEffect(() => {
+    submissionGate.observeBusy(busy);
+  }, [busy, submissionGate]);
 
   function draftFor(feature: WorkflowFeature): FeatureDraft {
     return { ...draftFromFeature(feature), ...draftEdits[feature.id] };
@@ -75,7 +114,7 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, onConfir
   function confirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
-    onConfirm(features.map((feature) => mergeFeatureDraft(feature, draftFor(feature))));
+    submissionGate.submit(() => onConfirm(features.map((feature) => mergeFeatureDraft(feature, draftFor(feature)))));
   }
 
   return (

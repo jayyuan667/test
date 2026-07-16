@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import type { WorkflowFeature } from "@/services";
 
-import { FeatureReviewWorkspace, mergeFeatureDraft } from "./FeatureReviewWorkspace.tsx";
+import { createSubmissionGate, FeatureReviewWorkspace, mergeFeatureDraft } from "./FeatureReviewWorkspace.tsx";
 
 const feature: WorkflowFeature = {
   id: "feature-1",
@@ -84,4 +84,32 @@ test("merges editable draft fields while preserving immutable evidence", () => {
     review_status: "modified",
   });
   assert.equal(merged.source, feature.source);
+});
+
+test("submission gate synchronously rejects duplicate submit events from the same render", () => {
+  const gate = createSubmissionGate();
+  let calls = 0;
+
+  assert.equal(gate.submit(() => { calls += 1; }), true);
+  assert.equal(gate.submit(() => { calls += 1; }), false);
+  assert.equal(calls, 1);
+});
+
+test("submission gate unlocks after rejection and after a completed parent busy cycle", async () => {
+  const gate = createSubmissionGate();
+  let calls = 0;
+
+  gate.submit(async () => {
+    calls += 1;
+    throw new Error("提交失败");
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(gate.submit(() => { calls += 1; }), true);
+  assert.equal(calls, 2);
+
+  gate.observeBusy(true);
+  assert.equal(gate.submit(() => { calls += 1; }), false);
+  gate.observeBusy(false);
+  assert.equal(gate.submit(() => { calls += 1; }), true);
+  assert.equal(calls, 3);
 });
