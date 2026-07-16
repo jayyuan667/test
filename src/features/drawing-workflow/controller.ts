@@ -121,6 +121,9 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
       const snapshot = await client.finalizeAnnotations(taskId, body);
       if (disposed || expectedGeneration !== generation || activeTask !== taskId) return;
       publish(reduceWorkflowState(state, { type: "snapshot_received", snapshot }));
+      if (state.snapshot?.task.state === "awaiting_annotation") {
+        publish(reduceWorkflowState(state, { type: "command_transitioned", state: "processing", phase: "drawing_analysis", progress: 40 }));
+      }
     },
     async submitReview(body) {
       if (!activeTask) throw new Error("No active workflow task");

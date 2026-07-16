@@ -146,6 +146,18 @@ test("ignores late finalize and cancel responses after dispose", async () => {
   assert.equal(controller.getState().snapshot?.task.revision, 1);
 });
 
+test("hides annotation confirmation immediately after an accepted finalize command", async () => {
+  const awaiting = { ...snapshot("task-1", "awaiting_annotation"), task: { ...snapshot("task-1", "awaiting_annotation").task, phase: "annotation" as const, progress: 35 } };
+  const { client } = harness(async () => awaiting);
+  client.finalizeAnnotations = async () => awaiting;
+  const controller = createDrawingWorkflowController(client);
+  await controller.start("task-1");
+  await controller.finalizeAnnotations();
+  assert.equal(controller.getState().snapshot?.task.state, "processing");
+  assert.equal(controller.getState().snapshot?.task.phase, "drawing_analysis");
+  assert.equal(controller.getState().snapshot?.task.progress, 40);
+});
+
 test("refreshes snapshot on task_failed before closing the stream", async () => {
   let reads = 0;
   const structured = { code: "VLM_TIMEOUT", message: "timeout", retryable: true, phase: "drawing_analysis" as const, details: { checkpoint: "page-2" } };

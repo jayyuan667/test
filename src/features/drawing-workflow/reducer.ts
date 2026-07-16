@@ -11,7 +11,8 @@ export type WorkflowAction =
   | TaskEvent
   | { type: "snapshot_received"; snapshot: TaskSnapshot }
   | { type: "connection_changed"; connection: WorkflowConnection }
-  | { type: "error_received"; error: WorkflowError | null };
+  | { type: "error_received"; error: WorkflowError | null }
+  | { type: "command_transitioned"; state: TaskSnapshot["task"]["state"]; phase: TaskSnapshot["task"]["phase"]; progress: number };
 
 const phaseOrder: Record<TaskSnapshot["task"]["phase"], number> = {
   upload: 0, drawing_analysis: 1, annotation: 2, feature_review: 3,
@@ -63,6 +64,9 @@ export function reduceWorkflowState(state: WorkflowState, action: WorkflowAction
   if (action.type === "snapshot_received") return replaceSnapshot(state, action.snapshot);
   if (action.type === "connection_changed") return { ...state, connection: action.connection };
   if (action.type === "error_received") return { ...state, error: action.error };
+  if (action.type === "command_transitioned") {
+    return { ...state, snapshot: updateSnapshotTask(state.snapshot, { state: action.state, phase: action.phase, progress: Math.max(state.snapshot?.task.progress ?? 0, action.progress) }) };
+  }
   if (action.seq <= state.lastSeq) return state;
 
   let next = { ...state, lastSeq: action.seq };
