@@ -7,6 +7,7 @@ import type {
 } from "@/features/drawing-workflow/types";
 
 import { WorkflowFeedback } from "./WorkflowFeedback";
+import { WorkflowWaitingPanel } from "./WorkflowWaitingPanel";
 
 interface ProcessWorkspaceProps {
   operations: ProcessOperation[];
@@ -61,6 +62,9 @@ export function ProcessWorkspace({
       </header>
 
       <WorkflowFeedback state={taskState} connection={connection} error={error} />
+      {taskState === "processing" ? (
+        <WorkflowWaitingPanel phase={phase} progress={normalizedProgress} connection={connection} />
+      ) : null}
 
       <div className="forge-process__table-wrap">
         <table className="forge-process__table" data-testid="operation-table">

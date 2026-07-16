@@ -56,6 +56,9 @@ test("keeps the workstation visible while processing and reports real progress",
 
   assert.match(html, /正在生成工艺/);
   assert.match(html, /完成度 63%/);
+  assert.match(html, /data-testid="workflow-waiting-panel"/);
+  assert.match(html, /工艺路线正在生成/);
+  assert.match(html, /系统会自动刷新工序表/);
   assert.match(html, /结构化工序将在生成后显示/);
   assert.doesNotMatch(html, /导出 PDF/);
 });

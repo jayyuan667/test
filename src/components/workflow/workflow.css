@@ -187,12 +187,143 @@
 .forge-workflow .forge-upload,
 .forge-workflow .forge-drawing,
 .forge-workflow .forge-process,
+.forge-workflow .forge-waiting,
 .forge-workflow .forge-feature-review__panel,
 .forge-workflow .forge-feature-review__preview {
   padding: clamp(20px, 3vw, 32px);
   border: 1px solid var(--border);
   color: var(--text-primary);
   background: var(--bg-raised);
+}
+
+.forge-workflow .forge-waiting {
+  position: relative;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: center;
+  gap: 22px;
+  overflow: hidden;
+}
+
+.forge-workflow .forge-waiting::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 16%, transparent), transparent),
+    radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 30%);
+  opacity: 0.5;
+  animation: forge-waiting-breathe 2.4s ease-in-out infinite;
+}
+
+.forge-workflow .forge-waiting__visual {
+  position: relative;
+  display: grid;
+  width: 96px;
+  height: 96px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  isolation: isolate;
+}
+
+.forge-workflow .forge-waiting__orb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-bright);
+  box-shadow: 0 0 28px color-mix(in srgb, var(--accent-bright) 70%, transparent);
+  animation: forge-waiting-orb 1.35s ease-in-out infinite;
+}
+
+.forge-workflow .forge-waiting__scanner {
+  position: absolute;
+  inset: 10px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 72%, color-mix(in srgb, var(--accent-bright) 74%, transparent) 86%, transparent 100%);
+  mask: radial-gradient(circle, transparent 0 52%, #000 54% 100%);
+  animation: forge-waiting-scan 1.8s linear infinite;
+}
+
+.forge-workflow .forge-waiting__content {
+  position: relative;
+  z-index: 1;
+}
+
+.forge-workflow .forge-waiting__content h2 {
+  margin: 0;
+  font-size: clamp(1.1rem, 2vw, 1.42rem);
+  letter-spacing: -0.025em;
+}
+
+.forge-workflow .forge-waiting__content p {
+  max-width: 62ch;
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.forge-workflow .forge-waiting__content ul {
+  display: grid;
+  gap: 7px;
+  margin: 16px 0 0;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  list-style: none;
+}
+
+.forge-workflow .forge-waiting__content li {
+  position: relative;
+  padding-left: 16px;
+}
+
+.forge-workflow .forge-waiting__content li::before {
+  position: absolute;
+  top: 0.72em;
+  left: 0;
+  width: 6px;
+  height: 1px;
+  content: "";
+  background: var(--accent);
+}
+
+.forge-workflow .forge-waiting__meter {
+  display: grid;
+  gap: 8px;
+  max-width: 460px;
+  margin-top: 18px;
+}
+
+.forge-workflow .forge-waiting__meter span {
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.74rem;
+}
+
+.forge-workflow .forge-waiting__meter progress {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-surface);
+}
+
+.forge-workflow .forge-waiting__meter progress::-webkit-progress-bar {
+  background: var(--bg-surface);
+}
+
+.forge-workflow .forge-waiting__meter progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+}
+
+.forge-workflow .forge-waiting__meter progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
 }
 
 .forge-workflow .forge-feature-review__readonly {
@@ -725,6 +856,21 @@
   }
 }
 
+@keyframes forge-waiting-scan {
+  to { transform: rotate(1turn); }
+}
+
+@keyframes forge-waiting-orb {
+  50% {
+    transform: scale(1.28);
+    opacity: 0.58;
+  }
+}
+
+@keyframes forge-waiting-breathe {
+  50% { opacity: 0.22; }
+}
+
 @media (max-width: 900px) {
   .forge-workflow .forge-workspace {
     grid-template-columns: minmax(0, 1fr);
@@ -732,6 +878,15 @@
 
   .forge-workflow .forge-feature-review {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .forge-workflow .forge-waiting {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .forge-workflow .forge-waiting__visual {
+    width: 76px;
+    height: 76px;
   }
 }
 

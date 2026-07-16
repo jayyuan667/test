@@ -7,6 +7,7 @@ import { FeatureReviewWorkspace } from "@/components/workflow/FeatureReviewWorks
 import { ProcessWorkspace } from "@/components/workflow/ProcessWorkspace";
 import { UploadWorkspace } from "@/components/workflow/UploadWorkspace";
 import { WorkflowFeedback } from "@/components/workflow/WorkflowFeedback";
+import { WorkflowWaitingPanel } from "@/components/workflow/WorkflowWaitingPanel";
 import { WorkflowStepper } from "@/components/workflow/WorkflowStepper";
 import {
   canInspectStep,
@@ -192,7 +193,12 @@ function V1GeneratePage() {
       />
     );
   } else if (snapshot && viewStep === "annotation") {
-    workspace = (
+    workspace = snapshot.task.state === "processing" ? (
+      <section className="forge-feature-review" aria-labelledby="forge-waiting-title">
+        <div className="forge-feature-review__preview">{drawingWorkspace()}</div>
+        <WorkflowWaitingPanel phase={snapshot.task.phase} progress={snapshot.task.progress} connection={state.connection} />
+      </section>
+    ) : (
       <FeatureReviewWorkspace
         mode="annotation"
         features={snapshot.features}
@@ -206,7 +212,12 @@ function V1GeneratePage() {
       />
     );
   } else if (snapshot && viewStep === "review") {
-    workspace = (
+    workspace = snapshot.task.state === "processing" ? (
+      <section className="forge-feature-review" aria-labelledby="forge-waiting-title">
+        <div className="forge-feature-review__preview">{drawingWorkspace()}</div>
+        <WorkflowWaitingPanel phase={snapshot.task.phase} progress={snapshot.task.progress} connection={state.connection} />
+      </section>
+    ) : (
       <FeatureReviewWorkspace
         mode="review"
         features={snapshot.features}
