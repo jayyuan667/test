@@ -122,6 +122,37 @@ def test_legacy_bracket_feature_is_thread_without_invented_confidence():
     assert feature["source"]["evidence_text"] == "【螺纹与螺孔】M115×3-6g"
 
 
+def test_legacy_feature_report_deduplicates_metadata_repeated_values_and_empty_values():
+    snapshot = build_task_snapshot(
+        "task-dedup",
+        {},
+        {
+            "feature_text": "\n".join([
+                "【报告名称】多页特征提取报告",
+                "【页数】1",
+                "【图号】：D660T-274000A002",
+                "【图号】：D660T-274000A002",
+                "【零件名称】：调节阀杆",
+                "【毛坯类型】：无；棒料（圆）",
+                "【关键尺寸】：M115×3-6g；φ146±0.05；M115×3-6g",
+                "【螺纹与螺孔】：M115×3-6g",
+                "【第1页摘要】图号：D660T-274000A002；零件名称：调节阀杆",
+            ])
+        },
+    )
+
+    labels = [feature["label"] for feature in snapshot["features"]]
+    assert "多页特征提取报告" not in labels
+    assert "1" not in labels
+    assert "无" not in labels
+    assert labels.count("D660T-274000A002") == 1
+    assert labels.count("调节阀杆") == 1
+    assert "棒料（圆）" in labels
+    assert "M115×3-6g；φ146±0.05" in labels
+    assert labels.count("M115×3-6g；φ146±0.05") == 1
+    assert labels.count("M115×3-6g") == 1
+
+
 def test_structured_feature_preserves_confidence_page_and_bbox():
     snapshot = build_task_snapshot(
         "task-4",

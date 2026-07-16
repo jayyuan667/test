@@ -157,30 +157,88 @@ def _normalize_structured_feature(feature, index):
     }
 
 
+def _clean_feature_label(value):
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"\s+", " ", value.strip().lstrip("：:;；,，").strip())
+
+
+def _feature_identity(value):
+    label = _clean_feature_label(value).lower()
+    label = re.sub(r"\s+", "", label)
+    label = label.replace("φ", "Φ").replace("ϕ", "Φ")
+    return label
+
+
+def _dedupe_features(features):
+    seen = set()
+    deduped = []
+    for feature in features:
+        label = _clean_feature_label(feature.get("label"))
+        value = _clean_feature_label(feature.get("value"))
+        key = _feature_identity(value or label)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append({**feature, "label": label, "value": value or None})
+    return deduped
+
+
 def _structured_features(result):
     features = result.get("features")
     if not isinstance(features, list):
         return None
-    return [
+    return _dedupe_features([
         _normalize_structured_feature(feature, index)
         for index, feature in enumerate(features)
         if isinstance(feature, dict)
-    ]
+    ])
+
+
+NON_FEATURE_CATEGORIES = {"报告名称", "页数", "第1页摘要", "摘要"}
+EMPTY_FEATURE_VALUES = {"", "无", "无。", "无；无", "无;无"}
+
+
+def _clean_legacy_feature_value(label):
+    cleaned = _clean_feature_label(label)
+    parts = [_clean_feature_label(part) for part in re.split(r"[;；]", cleaned)]
+    seen = set()
+    values = []
+    for part in parts:
+        if part in EMPTY_FEATURE_VALUES or re.fullmatch(r"\d+(\.\d+)?", part):
+            continue
+        key = _feature_identity(part)
+        if key in seen:
+            continue
+        seen.add(key)
+        values.append(part)
+    return "；".join(values)
+
+
+def _legacy_feature_kind(category, value):
+    if category == "螺纹与螺孔" or re.search(r"\bM\d+[×xX]", value):
+        return "thread"
+    return "unknown"
 
 
 def _legacy_features(text):
     if not isinstance(text, str):
         return []
     features = []
-    for index, match in enumerate(re.finditer(r"【([^】]+)】([^\r\n]+)", text)):
+    for match in re.finditer(r"【([^】]+)】([^\r\n]+)", text):
         category, label = match.groups()
+        if category in NON_FEATURE_CATEGORIES:
+            continue
         evidence = match.group(0)
+        value = _clean_legacy_feature_value(label)
+        if not value:
+            continue
         features.append(
             {
-                "id": f"feature-legacy-{index}",
-                "kind": "thread" if category == "螺纹与螺孔" else "unknown",
-                "label": label,
-                "value": label,
+                "id": f"feature-legacy-{len(features)}",
+                "kind": _legacy_feature_kind(category, value),
+                "label": value,
+                "value": value,
                 "unit": None,
                 "tolerance": {"upper": None, "lower": None, "text": None},
                 "source": {
@@ -194,7 +252,7 @@ def _legacy_features(text):
                 "missing_reason": None,
             }
         )
-    return features
+    return _dedupe_features(features)
 
 
 def build_task_snapshot(task_id: str, task: dict, result: dict | None = None) -> dict:
