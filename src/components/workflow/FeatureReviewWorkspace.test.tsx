@@ -66,6 +66,22 @@ test("shows missing reason and mode-accurate actions without a skip command", ()
   assert.match(review, /disabled/);
 });
 
+test("historical inspection is read-only and cannot replay an owning command", () => {
+  const html = renderToStaticMarkup(
+    <FeatureReviewWorkspace
+      mode="annotation"
+      features={[feature]}
+      preview={null}
+      busy={false}
+      canConfirm={false}
+      onConfirm={() => {}}
+    />,
+  );
+
+  assert.match(html, /此步骤已完成，当前为回看模式/);
+  assert.doesNotMatch(html, />确认标注<\/button>/);
+});
+
 test("merges editable draft fields while preserving immutable evidence", () => {
   const merged = mergeFeatureDraft(feature, {
     label: "精车外圆",

@@ -1,89 +1,47 @@
-# Task 5 Report: Typed frontend workflow module
+# Task 5 Report: Structured Process Workstation and Page Composition
 
-## Status
+## Scope
 
-Complete. Added the typed v1 workflow contract, reducer, HTTP/SSE client, reconnecting controller, mock adapter, and focused tests without modifying `GeneratePage`.
+- Added the structured `ProcessWorkspace` with semantic desktop table and labeled narrow-screen rows.
+- Replaced the validation-card page with the four-step fused workstation.
+- Reused the v1 workflow controller for upload, recovery, SSE state, commands, authenticated preview assets, and export URL ownership.
+- Added ordered multi-page preview loading with task/snapshot epoch guards and per-source pending-request deduplication.
+- Added backward inspection (`reachedStep`, `selectedStep`, `followLatest`) without replaying completed commands.
+- Extended feature review with an explicit read-only historical mode.
 
-## TDD evidence
+## RED
 
-- Reducer RED: `npm run test:workflow` exited 1 because `reducer.ts` did not exist.
-- Reducer GREEN: 2 tests passed for stale-sequence identity and operation upsert replacement.
-- Client/controller/mock RED: `npm run test:workflow` exited 1 because `api.ts`, `controller.ts`, and `mock.ts` did not exist; the reducer tests remained green.
-- First implementation run identified unsupported TypeScript parameter-property syntax under Node strip-only mode; explicit fields fixed that runner compatibility issue.
-- Final focused suite covers v1/Bearer requests, structured 403 errors, shared 401 handling, resumable authenticated SSE, controller cleanup/reconnect, mock confidence parity, sequence idempotence, operation upsert, and snapshot revision ordering.
+The first tests failed because:
 
-## Contract and security decisions
+1. `ProcessWorkspace.tsx` did not exist.
+2. `GeneratePage.tsx` loaded only the first preview URL and had no `Promise.all` multi-page path.
+3. `GeneratePage.tsx` had no four-step reached/view/follow-latest composition.
+4. The old page exposed the technical `connection · seq` status.
 
-- HTTP requests use `Authorization: Bearer <token>`.
-- Native `EventSource` cannot set request headers, so SSE uses the backend's existing `?token=` fallback together with `after=<lastSeq>`. The module does not log URLs, tokens, request headers, or errors containing credentials.
-- The controller owns the live connection, closes the failed instance, and reconnects using reducer state `lastSeq`.
-- Mock legacy-derived features use `confidence: null`; no synthetic confidence is generated.
+## GREEN
+
+- Process rows render only structured operation fields. Missing trade, equipment, duration, and source/notes are explicit and never inferred.
+- Real task phase and bounded progress remain visible while process operations stream in.
+- Preview components receive object URLs only; they never fetch or own persistence.
+- All preview source URLs are passed to `controller.loadPreview` in source order. A task/revision/source signature plus load epoch prevents stale state publication; pending deduplication prevents overlapping snapshot refreshes from revoking a newer URL for the same page.
+- Explicit backend states take precedence in step mapping: an annotation snapshot containing features remains on step 02, and `process_generation` reaches step 04 before the first operation arrives.
+- Selecting an earlier step disables follow-latest. Starting upload/finalize/review restores it. Historical feature steps do not render an owning command.
+- Static architecture guards reject direct fetch, EventSource, polling, Markdown parsing, and query-token transport in `GeneratePage`.
 
 ## Verification
 
-- `npm run test:workflow`: 9 passed, 0 failed (Node reports the repository's module-type warning).
-- `npx eslint src/features/drawing-workflow`: exit 0, no errors or warnings.
-- `git diff --check`: exit 0.
+- `npm run test:workflow`: 45 passed.
+- `npx -y tsx --test src/components/workflow/*.test.ts src/components/workflow/*.test.tsx`: 18 passed.
+- `npx eslint src/components/pages/GeneratePage.tsx src/components/workflow`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed (Next.js 16.2.10 production build).
 
-## Concerns
+The plan's raw `node --test --experimental-strip-types ...*.tsx` command is not executable on the installed Node 26.3.0 (and was reproduced on Node 22.23.1) because native type stripping does not register the `.tsx` extension. The transient `tsx` runner was used for the same test files without changing project dependencies.
 
-- Query-string SSE authentication is required by the current backend/native EventSource combination but is less secure than header auth because URLs can be exposed by surrounding infrastructure. A future backend-issued short-lived stream ticket or cookie-only same-origin transport would reduce exposure.
-- An additional `npx tsc --noEmit` check reports TS5097 for the `.ts` import suffixes required by the configured Node test command because `allowImportingTsExtensions` is not enabled. The prescribed Task 5 test and lint gates pass; changing shared package/tsconfig files was explicitly outside this task's allowed scope.
+## Self-review
 
-## Rejection corrections (2026-07-15)
-
-The preceding SSE and TypeScript concerns are superseded by this correction.
-
-### RED evidence
-
-- Production type check reproduced TS5097 plus the incomplete `DrawingWorkflowClient` test cast.
-- Transport/reducer RED: 4 failures proved the default native EventSource dependency, missing feature merge, uncleared completion error, and lost cancelled terminal state.
-- Controller RED: 3 failures proved cross-task event contamination, terminal reconnect scheduling, and absent backoff delays.
-- Normalizer RED: the new contract suite failed because no runtime normalization boundary existed.
-- SSE parser RED: a named frame with `id: 7` and `event: phase_progress` incorrectly retained conflicting JSON `seq/type` values.
-
-### GREEN changes
-
-- Default streaming now uses `fetch` plus `ReadableStream` and Bearer auth. It parses SSE comments, retry, id, event, multiline data, ignores malformed JSON, preserves structured HTTP errors, invokes the 401 hook, and aborts idempotently without logging credentials or URLs.
-- An injectable `StreamTransport` keeps deterministic transport tests without weakening the secure default.
-- Runtime snapshot/event normalizers make nullable wire collections and numbers safe, reject invalid envelope identities, and preserve absent confidence as `null`.
-- Controller start now cancels prior timers/streams, resets per-task state, isolates async generations and task IDs, seals all terminal states, and uses capped exponential backoff with injectable scheduler/randomness.
-- Reducer now upserts `feature_ready`, clears snapshot errors on completion, and preserves cancelled terminal state.
-- `allowImportingTsExtensions` is enabled alongside the existing `noEmit`, resolving the configured Node test imports without changing runtime output.
-
-### Final verification
-
-- `npm run test:workflow`: 21 passed, 0 failed; the existing package module-type warning remains informational.
-- `npx eslint src/features/drawing-workflow`: exit 0.
-- `npx tsc --noEmit --pretty false`: exit 0.
-- `npm run build`: exit 0; Next.js production build and static generation completed.
-- `git diff --check`: exit 0.
-
-### Remaining concern
-
-- The Node test runner reports `MODULE_TYPELESS_PACKAGE_JSON` because the shared package is not declared ESM. Adding `type: module` could affect unrelated application tooling, so this correction leaves the harmless warning in place; all requested gates pass.
-
-## Stream and wire-contract re-review corrections
-
-### RED
-
-- Byte-split SSE tests lost the EOF frame when CR/LF delimiters were split across chunks.
-- Canonical `task_failed.payload.status="cancelled"` produced `failed`.
-- Invalid enum/range fixtures leaked negative revision/duration, invalid source kinds/statuses, out-of-range confidence, and a `snapshot: null` payload key.
-- Typed HTTP status tests showed stream disconnects did not expose 403 to the controller.
-
-### GREEN
-
-- Replaced delimiter search with an incremental line parser that preserves a trailing CR between reads, handles CRLF/LF/CR, multiline data and comments, and flushes the final frame at EOF. The test exercises every possible byte split in a mixed-delimiter stream plus one-byte chunks.
-- `StreamDisconnect` now carries typed `status`, `WorkflowError`, retryability, and optional server `retryMs`. HTTP 401 still calls the unauthorized hook once; 401/403/nonretryable failures dispatch `error_received` and permanently close that controller stream. Only retryable/transport disconnects schedule reconnects.
-- Valid SSE `retry:` updates the controller's exponential base, capped by `maxReconnectDelay`.
-- Normalizers now membership-check all contract enums and range-check finite progress, confidence, revision, page count, duration, page and bbox numbers. Invalid nested snapshots are omitted rather than assigned null.
-- Reducer accepts canonical `payload.status="cancelled"` while retaining compatibility with `payload.state`.
-
-### Verification
-
-- `npm run test:workflow`: 27 passed, 0 failed.
-- `npx eslint src/features/drawing-workflow`: exit 0.
-- `npx tsc --noEmit --pretty false`: exit 0.
-- `npm run build`: exit 0.
-- `git diff --check`: exit 0.
+- No legacy transport or state logic was copied.
+- No unrelated dirty files were staged.
+- CSS remains scoped beneath `.forge-workflow` except the existing drawing dialog portal selectors.
+- Export remains delegated to `controller.exportUrl`; the workstation component only invokes a callback.
+- The v1 operation schema has no dedicated source field. The UI therefore labels the final column `依据 / 备注`, renders the real `note` when present, and otherwise says `来源未提供`.

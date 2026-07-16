@@ -17,6 +17,7 @@ interface FeatureReviewWorkspaceProps {
   features: WorkflowFeature[];
   preview: ReactNode;
   busy: boolean;
+  canConfirm?: boolean;
   onConfirm: (features: WorkflowFeature[]) => void | Promise<void>;
 }
 
@@ -95,7 +96,7 @@ function toleranceLabel(feature: WorkflowFeature) {
   return "未提供";
 }
 
-export function FeatureReviewWorkspace({ mode, features, preview, busy, onConfirm }: FeatureReviewWorkspaceProps) {
+export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfirm = true, onConfirm }: FeatureReviewWorkspaceProps) {
   const [draftEdits, setDraftEdits] = useState<Record<string, Partial<FeatureDraft>>>({});
   const [submissionGate] = useState(createSubmissionGate);
 
@@ -161,9 +162,11 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, onConfir
           })}
         </div>
 
-        <button className="forge-feature-review__primary" type="submit" disabled={busy} aria-busy={busy}>
-          {mode === "annotation" ? "确认标注" : "确认审阅并生成工艺"}
-        </button>
+        {canConfirm ? (
+          <button className="forge-feature-review__primary" type="submit" disabled={busy} aria-busy={busy}>
+            {mode === "annotation" ? "确认标注" : "确认审阅并生成工艺"}
+          </button>
+        ) : <p className="forge-feature-review__readonly">此步骤已完成，当前为回看模式。</p>}
       </form>
     </section>
   );

@@ -65,8 +65,14 @@ test("maps backend states to the highest reached workstation step", () => {
   assert.equal(reachedStepForSnapshot(snapshot("processing")), "upload");
   assert.equal(reachedStepForSnapshot(snapshot("processing", ["/preview.png"])), "annotation");
   assert.equal(reachedStepForSnapshot(snapshot("awaiting_annotation", ["/preview.png"])), "annotation");
+  assert.equal(reachedStepForSnapshot(snapshot("awaiting_annotation", ["/preview.png"], [feature])), "annotation");
   assert.equal(reachedStepForSnapshot(snapshot("awaiting_review", [], [feature])), "review");
   assert.equal(reachedStepForSnapshot(snapshot("completed", [], [], [operation])), "process");
+
+  const generating = snapshot("processing", [], [feature]);
+  generating.task.phase = "process_generation";
+  generating.task.progress = 67;
+  assert.equal(reachedStepForSnapshot(generating), "process");
 });
 
 test("allows inspecting completed steps but never future steps", () => {

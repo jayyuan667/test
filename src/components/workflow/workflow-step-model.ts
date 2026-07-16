@@ -15,9 +15,18 @@ const order = Object.fromEntries(
 
 export function reachedStepForSnapshot(snapshot: TaskSnapshot | null): WorkflowStepId {
   if (!snapshot) return "upload";
-  if (snapshot.task.state === "completed" || snapshot.process_operations.length > 0) return "process";
-  if (snapshot.task.state === "awaiting_review" || snapshot.features.length > 0) return "review";
-  if (snapshot.task.state === "awaiting_annotation" || snapshot.drawing.preview_urls.length > 0) return "annotation";
+  if (
+    snapshot.task.state === "completed"
+    || snapshot.task.phase === "process_generation"
+    || snapshot.task.phase === "export"
+    || snapshot.task.phase === "done"
+    || snapshot.process_operations.length > 0
+  ) return "process";
+  // Explicit command-owning states win over collection presence. Annotation
+  // snapshots normally already contain features, but must stay on step 02.
+  if (snapshot.task.state === "awaiting_annotation" || snapshot.task.phase === "annotation") return "annotation";
+  if (snapshot.task.state === "awaiting_review" || snapshot.task.phase === "feature_review" || snapshot.features.length > 0) return "review";
+  if (snapshot.drawing.preview_urls.length > 0) return "annotation";
   return "upload";
 }
 
