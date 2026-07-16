@@ -1,0 +1,6 @@
+Task 1: complete (commits a9a4be9..139b19a, review clean; non-blocking backend thread warning recorded)
+Task 2: complete (commits 139b19a..bd15354, review clean; 12 tests passed)
+Task 3: complete (commits bd15354..f371f8a, review clean; 47 tests passed, one known warning)
+Task 4: complete (commits f371f8a..72457c7, review clean; 39 relevant tests passed, one pre-existing capability-test mismatch recorded)
+Task 5: complete (commits 72457c7..ac0a2f7, review clean; 27 workflow tests, lint, typecheck and production build passed)
+Task 6: complete (commits ac0a2f7..bd6791d, review clean; 78 backend tests, 38 workflow tests, build/lint and real drawing E2E passed; missing user-owned runtime-smoke module recorded as a baseline limitation)
