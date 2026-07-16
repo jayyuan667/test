@@ -144,6 +144,21 @@ function V1GeneratePage() {
     setFollowLatest(step === reachedStep);
   }
 
+  function clearCurrentTask() {
+    if (busy) return;
+    previewLoadRef.current += 1;
+    previewTaskRef.current = null;
+    previewPromisesRef.current.clear();
+    localStorage.removeItem(activeTaskKey);
+    controllerRef.current?.reset();
+    setFile(null);
+    setLoadedPreviews({ signature: "", urls: [] });
+    setActivePage(0);
+    setSelectedStep("upload");
+    setFollowLatest(true);
+    setMessage(null);
+  }
+
   function drawingWorkspace() {
     if (!snapshot) return null;
     return (
@@ -231,7 +246,20 @@ function V1GeneratePage() {
           <p className="forge-eyebrow">AI PROCESS PLANNING</p>
           <h1>工艺生成</h1>
         </div>
-        {snapshot ? <p className="forge-workflow__drawing-name">{snapshot.drawing.name}</p> : null}
+        {snapshot ? (
+          <div className="forge-workflow__task-actions">
+            <p className="forge-workflow__drawing-name">{snapshot.drawing.name}</p>
+            <button
+              className="forge-workflow__clear-task"
+              data-testid="clear-workflow-task"
+              disabled={busy}
+              onClick={clearCurrentTask}
+              type="button"
+            >
+              清除当前任务
+            </button>
+          </div>
+        ) : null}
       </header>
 
       <WorkflowStepper current={viewStep} reached={reachedStep} onSelect={selectStep} busy={busy} />
