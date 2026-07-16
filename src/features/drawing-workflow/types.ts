@@ -144,7 +144,7 @@ export interface StreamDisconnect {
 export interface DrawingWorkflowClient {
   upload(file: File | Blob): Promise<TaskSnapshot>;
   getSnapshot(taskId: string): Promise<TaskSnapshot>;
-  getAsset(url: string): Promise<Blob>;
+  getAsset(taskId: string, url: string): Promise<Blob>;
   connect(taskId: string, after: number, onEvent: (event: TaskEvent) => void, onDisconnect?: (disconnect: StreamDisconnect) => void): EventConnection;
   finalizeAnnotations(taskId: string, body?: unknown): Promise<TaskSnapshot>;
   submitReview(taskId: string, body: unknown): Promise<TaskSnapshot>;

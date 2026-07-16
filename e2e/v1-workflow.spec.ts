@@ -1,20 +1,12 @@
 import { expect, test } from '@playwright/test'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { assertEvidenceClean, sanitizeEvent, sanitizeEvidence } from '../src/features/drawing-workflow/evidence'
 
 const fixture = process.env.FORGE_E2E_FIXTURE || '/Users/caojiayuan/Documents/测试包/drawing/test.png'
 const evidenceDir = process.env.FORGE_E2E_EVIDENCE_DIR || '/tmp/forge-v1-evidence'
 const apiBase = process.env.FORGE_E2E_API_BASE || 'http://localhost:5390'
 const username = process.env.FORGE_E2E_USERNAME || 'test'
 const password = process.env.FORGE_E2E_PASSWORD || 'test123'
-
-function sanitized(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sanitized)
-  if (!value || typeof value !== 'object') return value
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key]) => !/token|url|path/i.test(key)).map(([key, item]) => [key, sanitized(item)]))
-}
-function sanitizeEvent(event: Record<string, unknown>) {
-  return { seq: event.seq, type: event.type, phase: event.phase, progress: event.progress, timestamp: event.timestamp, payload: sanitized(event.payload) }
-}
 
 test('real v1 drawing workflow resumes and exports structured data', async ({ page }) => {
   test.setTimeout(20 * 60 * 1000)
@@ -73,8 +65,11 @@ test('real v1 drawing workflow resumes and exports structured data', async ({ pa
     const events = wire.split(/\r?\n\r?\n/).map((frame) => frame.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n')).filter(Boolean).map((data) => JSON.parse(data))
     return { snapshot, events }
   }, { id: taskId, api: apiBase })
-  await writeFile(`${evidenceDir}/final-snapshot.json`, JSON.stringify(artifacts.snapshot, null, 2))
-  await writeFile(`${evidenceDir}/events-sanitized.json`, JSON.stringify(artifacts.events.map(sanitizeEvent), null, 2))
+  const cleanSnapshot = sanitizeEvidence(artifacts.snapshot)
+  const cleanEvents = artifacts.events.map(sanitizeEvent)
+  assertEvidenceClean(cleanSnapshot); assertEvidenceClean(cleanEvents)
+  await writeFile(`${evidenceDir}/final-snapshot.json`, JSON.stringify(cleanSnapshot, null, 2))
+  await writeFile(`${evidenceDir}/events-sanitized.json`, JSON.stringify(cleanEvents, null, 2))
 
   const downloadPromise = page.waitForEvent('download'); const exportResponse = page.waitForResponse((response) => response.url().includes(`/api/v1/tasks/${taskId}/export`))
   await page.getByTestId('download-export').click()

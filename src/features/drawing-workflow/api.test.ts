@@ -159,10 +159,30 @@ test("loads a preview asset with Bearer auth through the workflow client", async
     url = String(input); authorization = new Headers(init?.headers).get("Authorization");
     return new Response(new Blob(["image"], { type: "image/png" }), { status: 200 });
   }, streamTransport: () => ({ close() {} }) });
-  const blob = await client.getAsset("/api/result/task/asset/pages/test.png");
+  const blob = await client.getAsset("task", "/api/result/task/asset/pages/test.png");
   assert.equal(url, "https://forge.example/api/result/task/asset/pages/test.png");
   assert.equal(authorization, "Bearer preview-token");
   assert.equal(blob.type, "image/png");
+});
+
+test("rejects untrusted asset URLs before fetch or Authorization creation", async () => {
+  let fetchCalls = 0; let tokenCalls = 0;
+  const client = createDrawingWorkflowClient({
+    apiBase: "https://forge.example/api",
+    getToken: () => { tokenCalls += 1; return "must-not-leak"; },
+    fetchImpl: async () => { fetchCalls += 1; throw new Error("fetch must not run"); },
+  });
+  const invalid = [
+    "https://evil.example/api/result/task-1/asset/pages/a.png",
+    "/api/result/other-task/asset/pages/a.png",
+    "/api/result/task-1/not-asset/pages/a.png",
+    "/api/result/task-1/asset/../secret.txt",
+    "/api/result/task-1/asset/%2e%2e%2fsecret.txt",
+    "/api/result/task-1/asset/",
+  ];
+  for (const url of invalid) await assert.rejects(client.getAsset("task-1", url), /Untrusted workflow asset URL/);
+  assert.equal(fetchCalls, 0);
+  assert.equal(tokenCalls, 0);
 });
 
 test("SSE parser survives every byte split around CRLF frames and flushes EOF", async () => {

@@ -136,6 +136,25 @@ export const fetchStreamTransport: StreamTransport = (request) => {
 function baseUrl(apiBase: string): string { return apiBase.replace(/\/$/, ""); }
 function taskUrl(apiBase: string, taskId: string, suffix = ""): string { return `${baseUrl(apiBase)}/v1/tasks/${encodeURIComponent(taskId)}${suffix}`; }
 
+function trustedAssetUrl(apiBase: string, taskId: string, value: string): string {
+  const browserOrigin = globalThis.location?.origin ?? "http://localhost";
+  const api = new URL(baseUrl(apiBase), browserOrigin);
+  const target = new URL(value, api.origin);
+  const assetPrefix = `${api.pathname.replace(/\/$/, "")}/result/${encodeURIComponent(taskId)}/asset/`;
+  let relativePath = "";
+  try { relativePath = decodeURIComponent(target.pathname.slice(assetPrefix.length)); } catch { throw new Error("Untrusted workflow asset URL"); }
+  const invalid = target.origin !== api.origin
+    || target.username !== "" || target.password !== ""
+    || target.search !== "" || target.hash !== ""
+    || !target.pathname.startsWith(assetPrefix)
+    || relativePath === ""
+    || relativePath.includes("\\")
+    || relativePath.includes("\0")
+    || relativePath.split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+  if (invalid) throw new Error("Untrusted workflow asset URL");
+  return target.toString();
+}
+
 export function createDrawingWorkflowClient(options: DrawingWorkflowClientOptions): DrawingWorkflowClient {
   const fetchImpl = options.fetchImpl ?? fetch;
   const streamTransport = options.streamTransport ?? fetchStreamTransport;
@@ -156,8 +175,8 @@ export function createDrawingWorkflowClient(options: DrawingWorkflowClientOption
   return {
     upload(file) { const form = new FormData(); form.append("file", file, file instanceof File ? file.name : "drawing"); return request(`${baseUrl(options.apiBase)}/v1/tasks`, { method: "POST", body: form }); },
     getSnapshot(taskId) { return request(taskUrl(options.apiBase, taskId)); },
-    async getAsset(url) {
-      const target = new URL(url, `${baseUrl(options.apiBase)}/`).toString();
+    async getAsset(taskId, url) {
+      const target = trustedAssetUrl(options.apiBase, taskId, url);
       const headers = new Headers(); const token = options.getToken();
       if (token) headers.set("Authorization", `Bearer ${token}`);
       const response = await fetchImpl(target, { headers });

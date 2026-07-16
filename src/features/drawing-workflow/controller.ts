@@ -143,8 +143,10 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
       return client.exportUrl(activeTask);
     },
     async loadPreview(url) {
+      if (!activeTask) throw new Error("No active workflow task");
       const expectedGeneration = generation;
-      const blob = await client.getAsset(url);
+      const taskId = activeTask;
+      const blob = await client.getAsset(taskId, url);
       if (disposed || expectedGeneration !== generation) return "";
       const objectUrl = createObjectURL(blob); previewUrls.add(objectUrl); return objectUrl;
     },
