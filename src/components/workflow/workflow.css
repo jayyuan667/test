@@ -557,12 +557,51 @@
   background: var(--bg-surface);
 }
 
+.forge-workflow .forge-feature-review__motion-shell {
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+
 .forge-workflow .forge-feature {
+  position: relative;
+  overflow: hidden;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-surface);
   animation: forge-feature-enter 190ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.forge-workflow .forge-feature-review__motion-shell[data-feature-transition="next"] .forge-feature {
+  animation-name: forge-feature-enter-next;
+  animation-duration: 220ms;
+}
+
+.forge-workflow .forge-feature-review__motion-shell[data-feature-transition="previous"] .forge-feature {
+  animation-name: forge-feature-enter-previous;
+  animation-duration: 220ms;
+}
+
+.forge-workflow .forge-feature-review__motion-shell[data-feature-transition="jump"] .forge-feature {
+  animation-name: forge-feature-enter-jump;
+  animation-duration: 180ms;
+}
+
+.forge-workflow .forge-feature__scanline {
+  position: absolute;
+  top: 0;
+  left: -34%;
+  width: 34%;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent-bright) 82%, transparent), transparent);
+  opacity: 0;
+  transform: translateX(0);
+}
+
+.forge-workflow .forge-feature-review__motion-shell:not([data-feature-transition="idle"]) .forge-feature__scanline {
+  animation: forge-feature-scanline 520ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .forge-workflow .forge-feature__trust {
@@ -593,6 +632,7 @@
 }
 
 .forge-workflow .forge-feature__confidence {
+  position: relative;
   display: grid;
   min-width: 96px;
   place-items: center;
@@ -600,6 +640,8 @@
   border: 1px solid currentColor;
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, currentColor 12%, transparent);
+  isolation: isolate;
+  overflow: hidden;
 }
 
 .forge-workflow .forge-feature__confidence span {
@@ -611,6 +653,19 @@
   margin-top: 2px;
   font-family: "JetBrains Mono", monospace;
   font-size: 1.08rem;
+}
+
+.forge-workflow .forge-feature__confidence-pulse {
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+}
+
+.forge-workflow .forge-feature-review__motion-shell:not([data-feature-transition="idle"]) .forge-feature__confidence-pulse {
+  animation: forge-confidence-pulse 360ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .forge-workflow .forge-feature__confidence--high {
@@ -917,6 +972,70 @@
   }
 }
 
+@keyframes forge-feature-enter-next {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateX(18px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes forge-feature-enter-previous {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateX(-18px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes forge-feature-enter-jump {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+}
+
+@keyframes forge-feature-scanline {
+  0% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  18% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(390%);
+  }
+}
+
+@keyframes forge-confidence-pulse {
+  0% {
+    opacity: 0.2;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+
 @keyframes forge-waiting-scan {
   to { transform: rotate(1turn); }
 }
@@ -1040,10 +1159,28 @@
   }
 }
 
+@keyframes forge-feature-reduced-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .forge-workflow *, .forge-workflow *::before, .forge-workflow *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+  }
+
+  .forge-workflow .forge-feature,
+  .forge-workflow .forge-feature-review__motion-shell[data-feature-transition="next"] .forge-feature,
+  .forge-workflow .forge-feature-review__motion-shell[data-feature-transition="previous"] .forge-feature,
+  .forge-workflow .forge-feature-review__motion-shell[data-feature-transition="jump"] .forge-feature {
+    animation: forge-feature-reduced-enter 80ms linear !important;
+    filter: none;
+  }
+
+  .forge-workflow .forge-feature-review__motion-shell:not([data-feature-transition="idle"]) .forge-feature__scanline,
+  .forge-workflow .forge-feature-review__motion-shell:not([data-feature-transition="idle"]) .forge-feature__confidence-pulse {
+    animation: none !important;
   }
 }

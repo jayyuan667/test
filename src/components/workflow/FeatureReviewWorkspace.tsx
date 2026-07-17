@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
 import type { WorkflowFeature } from "@/services";
 
@@ -117,13 +117,30 @@ const confidenceToneLabels: Record<ReturnType<typeof confidenceTone>, string> = 
   unknown: "未知",
 };
 
+type FeatureTransition = "idle" | "previous" | "next" | "jump";
+
+function confidenceSortValue(feature: WorkflowFeature) {
+  const value = feature.confidence;
+  if (value === null || !Number.isFinite(value)) return -1;
+  const normalized = value > 1 ? value / 100 : value;
+  return Math.max(0, Math.min(normalized, 1));
+}
+
 export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfirm = true, onConfirm }: FeatureReviewWorkspaceProps) {
   const [draftEdits, setDraftEdits] = useState<Record<string, Partial<FeatureDraft>>>({});
   const [activeFeatureIndex, setActiveFeatureIndex] = useState(0);
+  const [featureTransition, setFeatureTransition] = useState<FeatureTransition>("idle");
   const [submissionGate] = useState(createSubmissionGate);
-  const featureCount = features.length;
+  const sortedFeatures = useMemo(
+    () => features
+      .map((feature, index) => ({ feature, index }))
+      .sort((a, b) => confidenceSortValue(a.feature) - confidenceSortValue(b.feature) || a.index - b.index)
+      .map(({ feature }) => feature),
+    [features],
+  );
+  const featureCount = sortedFeatures.length;
   const activeIndex = featureCount === 0 ? 0 : Math.min(activeFeatureIndex, featureCount - 1);
-  const activeFeature = features[activeIndex];
+  const activeFeature = sortedFeatures[activeIndex];
   const canSubmit = !busy && (mode === "annotation" || featureCount > 0);
 
   useEffect(() => {
@@ -141,12 +158,15 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
   function confirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmit) return;
-    submissionGate.submit(() => onConfirm(features.map((feature) => mergeFeatureDraft(feature, draftFor(feature)))));
+    submissionGate.submit(() => onConfirm(sortedFeatures.map((feature) => mergeFeatureDraft(feature, draftFor(feature)))));
   }
 
   function selectFeature(index: number) {
     if (busy || featureCount === 0) return;
-    setActiveFeatureIndex(Math.min(Math.max(index, 0), featureCount - 1));
+    const nextIndex = Math.min(Math.max(index, 0), featureCount - 1);
+    if (nextIndex === activeIndex) return;
+    setFeatureTransition(nextIndex > activeIndex ? (nextIndex === activeIndex + 1 ? "next" : "jump") : (nextIndex === activeIndex - 1 ? "previous" : "jump"));
+    setActiveFeatureIndex(nextIndex);
   }
 
   return (
@@ -176,7 +196,7 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
             </div>
 
             <div className="forge-feature-review__index" role="tablist" aria-label="特征分页">
-              {features.map((feature, index) => (
+              {sortedFeatures.map((feature, index) => (
                 <button
                   aria-label={`查看第 ${index + 1} 项特征：${feature.label}`}
                   aria-selected={index === activeIndex}
@@ -196,41 +216,45 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
               const draft = draftFor(feature);
               const tone = confidenceTone(feature.confidence);
               return (
-                <article className="forge-feature" data-testid="feature-row" key={feature.id}>
-                  <div className="forge-feature__trust">
-                    <div>
-                      <p className="forge-feature__trust-label">当前特征</p>
-                      <h3>{feature.label || "未命名特征"}</h3>
+                <div className="forge-feature-review__motion-shell" data-feature-transition={featureTransition}>
+                  <article className="forge-feature" data-testid="feature-row" key={feature.id}>
+                    <span className="forge-feature__scanline" aria-hidden="true" />
+                    <div className="forge-feature__trust">
+                      <div>
+                        <p className="forge-feature__trust-label">当前特征</p>
+                        <h3>{feature.label || "未命名特征"}</h3>
+                      </div>
+                      <div
+                        className={`forge-feature__confidence forge-feature__confidence--${tone}`}
+                        data-testid="feature-confidence-badge"
+                      >
+                        <span>置信度 · {confidenceToneLabels[tone]}</span><strong>{confidenceLabel(feature.confidence)}</strong>
+                        <i className="forge-feature__confidence-pulse" aria-hidden="true" />
+                      </div>
                     </div>
-                    <div
-                      className={`forge-feature__confidence forge-feature__confidence--${tone}`}
-                      data-testid="feature-confidence-badge"
-                    >
-                      <span>置信度 · {confidenceToneLabels[tone]}</span><strong>{confidenceLabel(feature.confidence)}</strong>
+                    <div className="forge-feature__fields">
+                      <label>特征名称<input value={draft.label} onChange={(event) => updateDraft(feature, { label: event.target.value })} /></label>
+                      <label>值<input value={draft.value} placeholder="未提供" onChange={(event) => updateDraft(feature, { value: event.target.value })} /></label>
+                      <label>单位<input value={draft.unit} placeholder="未提供" onChange={(event) => updateDraft(feature, { unit: event.target.value })} /></label>
+                      <label>公差<input value={draft.toleranceText} placeholder="未提供" onChange={(event) => updateDraft(feature, { toleranceText: event.target.value })} /></label>
+                      <label>审阅状态
+                        <select value={draft.reviewStatus} onChange={(event) => updateDraft(feature, { reviewStatus: event.target.value as FeatureDraft["reviewStatus"] })}>
+                          {Object.entries(reviewStatusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+                        </select>
+                      </label>
                     </div>
-                  </div>
-                  <div className="forge-feature__fields">
-                    <label>特征名称<input value={draft.label} onChange={(event) => updateDraft(feature, { label: event.target.value })} /></label>
-                    <label>值<input value={draft.value} placeholder="未提供" onChange={(event) => updateDraft(feature, { value: event.target.value })} /></label>
-                    <label>单位<input value={draft.unit} placeholder="未提供" onChange={(event) => updateDraft(feature, { unit: event.target.value })} /></label>
-                    <label>公差<input value={draft.toleranceText} placeholder="未提供" onChange={(event) => updateDraft(feature, { toleranceText: event.target.value })} /></label>
-                    <label>审阅状态
-                      <select value={draft.reviewStatus} onChange={(event) => updateDraft(feature, { reviewStatus: event.target.value as FeatureDraft["reviewStatus"] })}>
-                        {Object.entries(reviewStatusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-                      </select>
-                    </label>
-                  </div>
 
-                  <dl className="forge-feature__evidence">
-                    <div><dt>原始值</dt><dd>{feature.value ?? "未提供"}{feature.unit ? ` ${feature.unit}` : ""}</dd></div>
-                    <div><dt>原始公差</dt><dd>{toleranceLabel(feature)}</dd></div>
-                    <div><dt>来源方式</dt><dd>{feature.source.method ?? "未提供"}</dd></div>
-                    <div><dt>来源页码</dt><dd>{feature.source.page === null ? "页码未提供" : `第 ${feature.source.page} 页`}</dd></div>
-                    <div className="forge-feature__evidence-text"><dt>证据文本</dt><dd>{feature.source.evidence_text ?? "未提供"}</dd></div>
-                    <div><dt>缺失原因</dt><dd>{feature.missing_reason ?? "无"}</dd></div>
-                    <div><dt>审阅状态</dt><dd>{reviewStatusLabels[feature.review_status]}</dd></div>
-                  </dl>
-                </article>
+                    <dl className="forge-feature__evidence">
+                      <div><dt>原始值</dt><dd>{feature.value ?? "未提供"}{feature.unit ? ` ${feature.unit}` : ""}</dd></div>
+                      <div><dt>原始公差</dt><dd>{toleranceLabel(feature)}</dd></div>
+                      <div><dt>来源方式</dt><dd>{feature.source.method ?? "未提供"}</dd></div>
+                      <div><dt>来源页码</dt><dd>{feature.source.page === null ? "页码未提供" : `第 ${feature.source.page} 页`}</dd></div>
+                      <div className="forge-feature__evidence-text"><dt>证据文本</dt><dd>{feature.source.evidence_text ?? "未提供"}</dd></div>
+                      <div><dt>缺失原因</dt><dd>{feature.missing_reason ?? "无"}</dd></div>
+                      <div><dt>审阅状态</dt><dd>{reviewStatusLabels[feature.review_status]}</dd></div>
+                    </dl>
+                  </article>
+                </div>
               );
             })()}
           </div>

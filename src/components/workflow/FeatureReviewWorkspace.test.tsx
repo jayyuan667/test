@@ -105,6 +105,54 @@ test("shows one active feature with pager controls instead of stacking every fea
   assert.equal((html.match(/data-testid="feature-row"/g) ?? []).length, 1);
 });
 
+test("orders feature review from lowest confidence to highest confidence", () => {
+  const lowestConfidence: WorkflowFeature = {
+    ...feature,
+    id: "feature-low",
+    label: "低置信度倒角",
+    confidence: 0.21,
+  };
+  const missingConfidence: WorkflowFeature = {
+    ...feature,
+    id: "feature-missing",
+    label: "缺失置信度槽宽",
+    confidence: null,
+  };
+
+  const html = renderToStaticMarkup(
+    <FeatureReviewWorkspace
+      mode="review"
+      features={[feature, lowestConfidence, missingConfidence]}
+      preview={<div>图纸预览</div>}
+      busy={false}
+      onConfirm={() => {}}
+    />,
+  );
+
+  assert.match(html, /<h3>缺失置信度槽宽<\/h3>/);
+  assert.match(html, /置信度 · 未知<\/span><strong>未提供<\/strong>/);
+  assert.match(html, /查看第 1 项特征：缺失置信度槽宽/);
+  assert.match(html, /查看第 2 项特征：低置信度倒角/);
+  assert.match(html, /查看第 3 项特征：外圆直径/);
+});
+
+test("adds direction-aware motion hooks for feature page transitions", () => {
+  const html = renderToStaticMarkup(
+    <FeatureReviewWorkspace
+      mode="review"
+      features={[feature, secondFeature]}
+      preview={<div>图纸预览</div>}
+      busy={false}
+      onConfirm={() => {}}
+    />,
+  );
+
+  assert.match(html, /data-feature-transition="idle"/);
+  assert.match(html, /forge-feature-review__motion-shell/);
+  assert.match(html, /forge-feature__scanline/);
+  assert.match(html, /forge-feature__confidence-pulse/);
+});
+
 test("empty annotation can still be confirmed so zero YOLO detections do not block the workflow", () => {
   const html = renderToStaticMarkup(
     <FeatureReviewWorkspace
