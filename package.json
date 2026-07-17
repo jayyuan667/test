@@ -4,8 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "dev:frontend": "next dev --webpack -p 3002",
     "build": "next build",
     "start": "next start",
+    "start:frontend": "next start -p 3002",
+    "start:backend": "./start-backend.sh",
     "lint": "eslint",
     "lint:src": "eslint src e2e",
     "test:workflow": "node --test --experimental-strip-types src/features/drawing-workflow/*.test.ts"
