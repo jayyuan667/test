@@ -351,9 +351,6 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
                     "process_stream", {"chunk": _stream_buf})
 
     emit_log(task_id, event_data, event_locks, 4, "工艺生成完成，正在保存...")
-    task["progress"] = 100
-    task["status"] = "completed"
-    update_task_status(task_id, "completed", 100)
 
     # Enrich process data with equipment & time based on trade type
     TRADE_EQUIP_TIME = {
@@ -426,6 +423,10 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     clear_pending_review(task_id, output_dir)
+
+    task["progress"] = 100
+    task["status"] = "completed"
+    update_task_status(task_id, "completed", 100)
 
     emit_complete(task_id, event_data, event_locks, "处理完成！")
     _history_ent_id = task.get("enterprise_id")

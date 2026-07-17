@@ -1,4 +1,6 @@
-from backend.api.upload import _operation_event_from_enriched_row
+import inspect
+
+from backend.api.upload import _finalize_processing, _operation_event_from_enriched_row
 
 
 def test_operation_event_from_enriched_row_matches_v1_shape():
@@ -19,3 +21,10 @@ def test_operation_event_from_enriched_row_matches_v1_shape():
         "note": None,
         "status": "streaming",
     }
+
+
+def test_finalize_processing_marks_completed_after_result_is_saved():
+    source = inspect.getsource(_finalize_processing)
+
+    assert source.index("save_result(task_id, result)") < source.index('task["status"] = "completed"')
+    assert source.index('task["status"] = "completed"') < source.index("emit_complete(")
