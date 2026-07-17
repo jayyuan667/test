@@ -13,7 +13,6 @@ interface ProcessWorkspaceProps {
   operations: ProcessOperation[];
   taskState: TaskState;
   phase: TaskPhase;
-  progress: number;
   connection: WorkflowConnection;
   error: WorkflowError | null;
   onExport: () => void;
@@ -39,13 +38,11 @@ export function ProcessWorkspace({
   operations,
   taskState,
   phase,
-  progress,
   connection,
   error,
   onExport,
 }: ProcessWorkspaceProps) {
   const completed = taskState === "completed";
-  const normalizedProgress = Math.min(100, Math.max(0, progress));
 
   return (
     <section className="forge-process" aria-labelledby="forge-process-title" data-testid="workflow-status">
@@ -55,15 +52,15 @@ export function ProcessWorkspace({
           <h2 id="forge-process-title">结构化工艺路线</h2>
           <p data-testid="workflow-phase" data-phase={phase}>{phaseLabels[phase]}</p>
         </div>
-        <div className="forge-process__progress">
-          <span data-testid="workflow-progress-value">完成度 {normalizedProgress}%</span>
-          <progress value={normalizedProgress} max={100}>{normalizedProgress}%</progress>
+        <div className="forge-process__stage" data-testid="workflow-stage-summary">
+          <span>当前阶段</span>
+          <strong>{completed ? "已完成" : "阶段进行中"}</strong>
         </div>
       </header>
 
       <WorkflowFeedback state={taskState} connection={connection} error={error} />
       {taskState === "processing" ? (
-        <WorkflowWaitingPanel phase={phase} progress={normalizedProgress} connection={connection} />
+        <WorkflowWaitingPanel phase={phase} connection={connection} />
       ) : null}
 
       <div className="forge-process__table-wrap">

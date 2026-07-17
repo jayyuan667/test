@@ -290,40 +290,54 @@
   background: var(--accent);
 }
 
-.forge-workflow .forge-waiting__meter {
+.forge-workflow .forge-waiting__stage {
+  position: relative;
   display: grid;
-  gap: 8px;
-  max-width: 460px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  width: min(100%, 460px);
+  min-height: 38px;
+  gap: 10px 14px;
   margin-top: 18px;
-}
-
-.forge-workflow .forge-waiting__meter span {
-  color: var(--text-secondary);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.74rem;
-}
-
-.forge-workflow .forge-waiting__meter progress {
-  width: 100%;
-  height: 7px;
   overflow: hidden;
-  border: 0;
-  border-radius: 999px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   background: var(--bg-surface);
 }
 
-.forge-workflow .forge-waiting__meter progress::-webkit-progress-bar {
-  background: var(--bg-surface);
+.forge-workflow .forge-waiting__stage::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent-bright) 20%, transparent), transparent);
+  transform: translateX(-100%);
+  animation: forge-stage-sweep 1.9s cubic-bezier(0.16, 1, 0.3, 1) infinite;
 }
 
-.forge-workflow .forge-waiting__meter progress::-webkit-progress-value {
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+.forge-workflow .forge-waiting__stage-label,
+.forge-workflow .forge-process__stage span {
+  color: var(--text-ghost);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
 }
 
-.forge-workflow .forge-waiting__meter progress::-moz-progress-bar {
+.forge-workflow .forge-waiting__stage strong,
+.forge-workflow .forge-process__stage strong {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.forge-workflow .forge-waiting__stage i {
+  grid-column: 1 / -1;
+  height: 2px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 35%, transparent), var(--accent-bright), color-mix(in srgb, var(--accent) 35%, transparent));
+  opacity: 0.72;
+  animation: forge-stage-breathe 1.35s ease-in-out infinite;
 }
 
 .forge-workflow .forge-feature-review__readonly {
@@ -355,24 +369,15 @@
   font-size: 0.78rem;
 }
 
-.forge-workflow .forge-process__progress {
+.forge-workflow .forge-process__stage {
   display: grid;
-  width: min(260px, 35vw);
-  gap: 8px;
-  color: var(--text-secondary);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.72rem;
+  min-width: 148px;
+  gap: 4px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
   text-align: right;
-}
-
-.forge-workflow .forge-process__progress progress {
-  width: 100%;
-  height: 6px;
-  overflow: hidden;
-  border: 0;
-  border-radius: 999px;
-  accent-color: var(--accent-bright);
-  background: var(--bg-base);
 }
 
 .forge-workflow .forge-process__table-wrap {
@@ -972,6 +977,27 @@
   }
 }
 
+@keyframes forge-stage-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  24% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+@keyframes forge-stage-breathe {
+  50% {
+    opacity: 0.36;
+    transform: scaleX(0.92);
+  }
+}
+
 @keyframes forge-feature-enter-next {
   from {
     opacity: 0;
@@ -1116,7 +1142,7 @@
     flex-direction: column;
   }
 
-  .forge-workflow .forge-process__progress {
+  .forge-workflow .forge-process__stage {
     width: 100%;
     text-align: left;
   }

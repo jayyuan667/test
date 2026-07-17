@@ -2,7 +2,6 @@ import type { TaskPhase, WorkflowConnection } from "@/features/drawing-workflow/
 
 interface WorkflowWaitingPanelProps {
   phase: TaskPhase;
-  progress: number;
   connection: WorkflowConnection;
 }
 
@@ -44,8 +43,7 @@ const waitingCopy: Record<TaskPhase, { title: string; detail: string; next: stri
   },
 };
 
-export function WorkflowWaitingPanel({ phase, progress, connection }: WorkflowWaitingPanelProps) {
-  const normalizedProgress = Math.min(100, Math.max(0, progress));
+export function WorkflowWaitingPanel({ phase, connection }: WorkflowWaitingPanelProps) {
   const copy = waitingCopy[phase];
   const recovering = connection === "reconnecting" || connection === "connecting";
 
@@ -65,9 +63,10 @@ export function WorkflowWaitingPanel({ phase, progress, connection }: WorkflowWa
           <li>{copy.next}</li>
           <li>{recovering ? "不会重复提交当前任务。" : "页面会在结果就绪后自动切换。"}</li>
         </ul>
-        <div className="forge-waiting__meter">
-          <span>完成度 {normalizedProgress}%</span>
-          <progress value={normalizedProgress} max={100}>{normalizedProgress}%</progress>
+        <div className="forge-waiting__stage" data-testid="workflow-stage-indicator">
+          <span className="forge-waiting__stage-label">当前阶段</span>
+          <strong>{recovering ? "实时连接恢复中" : "阶段进行中"}</strong>
+          <i aria-hidden="true" />
         </div>
       </div>
     </section>

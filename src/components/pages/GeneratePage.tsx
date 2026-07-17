@@ -196,7 +196,7 @@ function V1GeneratePage() {
     workspace = snapshot.task.state === "processing" ? (
       <section className="forge-feature-review" aria-labelledby="forge-waiting-title">
         <div className="forge-feature-review__preview">{drawingWorkspace()}</div>
-        <WorkflowWaitingPanel phase={snapshot.task.phase} progress={snapshot.task.progress} connection={state.connection} />
+        <WorkflowWaitingPanel phase={snapshot.task.phase} connection={state.connection} />
       </section>
     ) : (
       <FeatureReviewWorkspace
@@ -215,7 +215,7 @@ function V1GeneratePage() {
     workspace = snapshot.task.state === "processing" ? (
       <section className="forge-feature-review" aria-labelledby="forge-waiting-title">
         <div className="forge-feature-review__preview">{drawingWorkspace()}</div>
-        <WorkflowWaitingPanel phase={snapshot.task.phase} progress={snapshot.task.progress} connection={state.connection} />
+        <WorkflowWaitingPanel phase={snapshot.task.phase} connection={state.connection} />
       </section>
     ) : (
       <FeatureReviewWorkspace
@@ -239,7 +239,6 @@ function V1GeneratePage() {
         operations={operations}
         taskState={snapshot.task.state}
         phase={snapshot.task.phase}
-        progress={snapshot.task.progress}
         connection={state.connection}
         error={feedbackError}
         onExport={() => {

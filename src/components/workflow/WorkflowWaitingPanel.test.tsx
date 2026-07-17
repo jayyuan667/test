@@ -4,11 +4,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { WorkflowWaitingPanel } from "./WorkflowWaitingPanel.tsx";
 
-test("explains visual analysis waiting state with visible motion affordances", () => {
+test("explains visual analysis waiting state with visible motion affordances instead of fake percentages", () => {
   const html = renderToStaticMarkup(
     <WorkflowWaitingPanel
       phase="drawing_analysis"
-      progress={40}
       connection="connected"
     />,
   );
@@ -19,14 +18,16 @@ test("explains visual analysis waiting state with visible motion affordances", (
   assert.match(html, /完成后将自动进入审阅确认/);
   assert.match(html, /forge-waiting__scanner/);
   assert.match(html, /forge-waiting__orb/);
-  assert.match(html, /完成度 40%/);
+  assert.match(html, /当前阶段/);
+  assert.match(html, /阶段进行中/);
+  assert.doesNotMatch(html, /完成度 40%/);
+  assert.doesNotMatch(html, /<progress/);
 });
 
 test("shows realtime recovery copy when the event stream is reconnecting", () => {
   const html = renderToStaticMarkup(
     <WorkflowWaitingPanel
       phase="feature_review"
-      progress={50}
       connection="reconnecting"
     />,
   );
