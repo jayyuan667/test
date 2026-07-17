@@ -102,6 +102,21 @@ function confidenceLabel(value: number | null) {
   return `${Math.round(Math.max(0, Math.min(normalized, 1)) * 100)}%`;
 }
 
+function confidenceTone(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "unknown";
+  const normalized = value > 1 ? value / 100 : value;
+  if (normalized >= 0.8) return "high";
+  if (normalized >= 0.6) return "medium";
+  return "low";
+}
+
+const confidenceToneLabels: Record<ReturnType<typeof confidenceTone>, string> = {
+  high: "高",
+  medium: "中",
+  low: "低",
+  unknown: "未知",
+};
+
 export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfirm = true, onConfirm }: FeatureReviewWorkspaceProps) {
   const [draftEdits, setDraftEdits] = useState<Record<string, Partial<FeatureDraft>>>({});
   const [activeFeatureIndex, setActiveFeatureIndex] = useState(0);
@@ -179,8 +194,21 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
             {(() => {
               const feature = activeFeature;
               const draft = draftFor(feature);
+              const tone = confidenceTone(feature.confidence);
               return (
                 <article className="forge-feature" data-testid="feature-row" key={feature.id}>
+                  <div className="forge-feature__trust">
+                    <div>
+                      <p className="forge-feature__trust-label">当前特征</p>
+                      <h3>{feature.label || "未命名特征"}</h3>
+                    </div>
+                    <div
+                      className={`forge-feature__confidence forge-feature__confidence--${tone}`}
+                      data-testid="feature-confidence-badge"
+                    >
+                      <span>置信度 · {confidenceToneLabels[tone]}</span><strong>{confidenceLabel(feature.confidence)}</strong>
+                    </div>
+                  </div>
                   <div className="forge-feature__fields">
                     <label>特征名称<input value={draft.label} onChange={(event) => updateDraft(feature, { label: event.target.value })} /></label>
                     <label>值<input value={draft.value} placeholder="未提供" onChange={(event) => updateDraft(feature, { value: event.target.value })} /></label>
@@ -199,7 +227,6 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
                     <div><dt>来源方式</dt><dd>{feature.source.method ?? "未提供"}</dd></div>
                     <div><dt>来源页码</dt><dd>{feature.source.page === null ? "页码未提供" : `第 ${feature.source.page} 页`}</dd></div>
                     <div className="forge-feature__evidence-text"><dt>证据文本</dt><dd>{feature.source.evidence_text ?? "未提供"}</dd></div>
-                    <div><dt>置信度</dt><dd data-testid="feature-confidence">{confidenceLabel(feature.confidence)}</dd></div>
                     <div><dt>缺失原因</dt><dd>{feature.missing_reason ?? "无"}</dd></div>
                     <div><dt>审阅状态</dt><dd>{reviewStatusLabels[feature.review_status]}</dd></div>
                   </dl>

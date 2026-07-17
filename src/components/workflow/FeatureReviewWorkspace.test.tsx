@@ -67,6 +67,23 @@ test("renders provided confidence as a percentage without extra judgment copy", 
   assert.doesNotMatch(html, /AI判断|87%（/);
 });
 
+test("promotes confidence as a color-coded trust badge above the evidence list", () => {
+  const html = renderToStaticMarkup(
+    <FeatureReviewWorkspace
+      mode="review"
+      features={[feature]}
+      preview={<div>图纸预览</div>}
+      busy={false}
+      onConfirm={() => {}}
+    />,
+  );
+
+  assert.match(html, /data-testid="feature-confidence-badge"/);
+  assert.match(html, /forge-feature__confidence--high/);
+  assert.match(html, /置信度 · 高<\/span><strong>87%<\/strong>/);
+  assert.equal((html.match(/data-testid="feature-confidence"/g) ?? []).length, 0);
+});
+
 test("shows one active feature with pager controls instead of stacking every feature form", () => {
   const html = renderToStaticMarkup(
     <FeatureReviewWorkspace
