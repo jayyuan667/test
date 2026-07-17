@@ -302,6 +302,20 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
     _stream_last = 0.0
     _STREAM_INTERVAL = 0.04  # emit at most every 40 ms (~25 chunks/s)
     _stream_emit_count = 0
+    _operation_emit_keys: set[tuple[str, str, str]] = set()
+
+    # Equipment/time enrichment is used by both provisional streaming rows and
+    # the final saved process table.
+    TRADE_EQUIP_TIME = {
+        "料": ("锯床/下料机", "0.5h"), "车": ("卧式车床 CW61100", "2h"),
+        "铣": ("铣床", "1.5h"), "钻": ("钻床 Z3040", "0.5h"),
+        "镗": ("镗床 T68", "1h"), "磨": ("磨床", "1h"),
+        "钳": ("钳工台", "1h"), "检": ("检验台/三坐标", "0.5h"),
+        "热": ("热处理炉", "3h"), "数铣": ("CNC 加工中心", "2h"),
+        "翻面": ("翻转台", "0.3h"), "焊": ("焊机", "1h"),
+        "线切割": ("线切割机", "1.5h"), "插": ("插床", "1h"),
+        "滚齿": ("滚齿机", "2h"), "拉": ("拉床", "0.5h"),
+    }
 
     def stream_callback(chunk):
         nonlocal _stream_buf, _stream_last, _stream_emit_count
@@ -314,6 +328,25 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
                         "process_stream", {"chunk": _stream_buf})
             _stream_buf = ""
             _stream_last = now
+
+    def process_row_callback(row: list, index: int):
+        if not row:
+            return
+        code = row[0] if len(row) > 0 else ""
+        trade = row[1] if len(row) > 1 else ""
+        content = row[2] if len(row) > 2 else (row[1] if len(row) > 1 else "")
+        key = (str(code), str(trade), str(content))
+        if key in _operation_emit_keys:
+            return
+        _operation_emit_keys.add(key)
+        equip, est_time = TRADE_EQUIP_TIME.get(trade, ("—", "—"))
+        emit_custom(
+            task_id,
+            event_data,
+            event_locks,
+            "process_stream",
+            {"operation": _operation_event_from_enriched_row(task_id, [code, trade, content, equip, est_time], index)},
+        )
 
     # Flush any remaining buffer after generate() returns
 
@@ -342,6 +375,7 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
             library_key=library_key,
             geo_data=geo_data,
             force_llm=force_llm,
+            process_row_callback=process_row_callback,
         )
 
     logger.info("[_finalize_processing] generate() done, stream_emit_count=%d, buf_len=%d", _stream_emit_count, len(_stream_buf))
@@ -353,16 +387,6 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
     emit_log(task_id, event_data, event_locks, 4, "工艺生成完成，正在保存...")
 
     # Enrich process data with equipment & time based on trade type
-    TRADE_EQUIP_TIME = {
-        "料": ("锯床/下料机", "0.5h"), "车": ("卧式车床 CW61100", "2h"),
-        "铣": ("铣床", "1.5h"), "钻": ("钻床 Z3040", "0.5h"),
-        "镗": ("镗床 T68", "1h"), "磨": ("磨床", "1h"),
-        "钳": ("钳工台", "1h"), "检": ("检验台/三坐标", "0.5h"),
-        "热": ("热处理炉", "3h"), "数铣": ("CNC 加工中心", "2h"),
-        "翻面": ("翻转台", "0.3h"), "焊": ("焊机", "1h"),
-        "线切割": ("线切割机", "1.5h"), "插": ("插床", "1h"),
-        "滚齿": ("滚齿机", "2h"), "拉": ("拉床", "0.5h"),
-    }
     enriched = []
     for index, row in enumerate(process_data or []):
         code = row[0] if len(row) > 0 else ""

@@ -199,6 +199,28 @@ class ProcessGenerator:
                 log_callback(chunk)
             time.sleep(delay)
 
+    def _emit_incremental_process_rows(self, raw_text: str, emitted_keys: set, process_row_callback=None) -> None:
+        """Emit complete parsed process rows while the LLM is still streaming.
+
+        These rows are provisional UI feedback. The final post-checked process
+        flow is still saved and emitted by the API after generation completes.
+        """
+        if not process_row_callback or not raw_text:
+            return
+
+        section = self._extract_process_section(raw_text)
+        for index, row in enumerate(self._parse_markdown_process(section)):
+            if len(row) < 3:
+                continue
+            tag, trade, content = str(row[0]).strip(), str(row[1]).strip(), str(row[2]).strip()
+            if not tag or not trade or not content:
+                continue
+            key = (tag, trade, content)
+            if key in emitted_keys:
+                continue
+            emitted_keys.add(key)
+            process_row_callback(row, index)
+
     def _normalize_standard_process_rows(self, rows: List[Any]) -> List[List[str]]:
         """Normalize stored DB process rows into [tag, content] pairs.
 
@@ -256,6 +278,7 @@ class ProcessGenerator:
         geo_data: Optional[dict] = None,
         force_llm: bool = False,
         confidence: float = 0.5,
+        process_row_callback=None,
     ) -> tuple[str, list[list[str]], dict | None]:
         """Generate process specifications with constraint-aware assembly."""
         fused_description = self._replace_placeholder_tokens(self._fuse_descriptions(descriptions))
@@ -325,6 +348,9 @@ class ProcessGenerator:
             # ⚠️ 蓝本精确匹配 → 直接输出，不进行后校验（避免拆分改动）
             if stream_callback and proc_raw:
                 self._emit_process_stream_lines(proc_raw, stream_callback=stream_callback, log_callback=log_callback, delay=0.15)
+            if process_row_callback and proc_raw:
+                emitted_keys = set()
+                self._emit_incremental_process_rows(proc_raw, emitted_keys, process_row_callback)
             return proc_raw, self._parse_markdown_process(proc_raw), rag_results
 
         if not rag_context:
@@ -362,7 +388,9 @@ class ProcessGenerator:
         if log_callback:
             log_callback("🧠 开始流式生成工艺规程...")
         process_flow_raw = self._stream_llm_response(
-            prompt, log_callback=log_callback
+            prompt,
+            log_callback=log_callback,
+            process_row_callback=process_row_callback,
         )
         process_flow_raw = self._extract_process_section(process_flow_raw)
 
@@ -615,7 +643,7 @@ class ProcessGenerator:
         parts = raw_text.split("## 生成的工艺规程")
         return parts[-1].strip() if len(parts) > 1 else raw_text
 
-    def _stream_llm_response(self, prompt: str, log_callback=None) -> str:
+    def _stream_llm_response(self, prompt: str, log_callback=None, process_row_callback=None) -> str:
         """Stream LLM response chunk by chunk and collect final text.
 
         Note: stream_callback is NOT used here — raw LLM output is collected
@@ -630,11 +658,17 @@ class ProcessGenerator:
         try:
             chunks = []
             buffered_for_log = ""
+            emitted_row_keys = set()
             for chunk in self.llm_client.stream(messages):
                 delta = getattr(chunk, "content", "") or ""
                 if not delta:
                     continue
                 chunks.append(delta)
+                self._emit_incremental_process_rows(
+                    "".join(chunks),
+                    emitted_row_keys,
+                    process_row_callback,
+                )
 
                 buffered_for_log += delta
                 # Avoid flushing mid-（工种：xxx） pattern — only flush when
@@ -668,6 +702,10 @@ class ProcessGenerator:
             for i in range(0, len(final_text), step):
                 log_callback(final_text[i:i + step])
                 time.sleep(0.01)
+
+        if process_row_callback and final_text:
+            emitted_row_keys = set()
+            self._emit_incremental_process_rows(final_text, emitted_row_keys, process_row_callback)
 
         return final_text
 
