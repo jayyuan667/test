@@ -149,6 +149,26 @@ def test_process_stream_does_not_fabricate_operation_from_identifier_only():
     assert event["payload"]["legacy_type"] == "process_stream"
 
 
+def test_process_stream_with_structured_operation_becomes_operation_upserted():
+    operation = {
+        "id": "operation-0010",
+        "code": "0010",
+        "trade": "车工",
+        "content": "粗车外圆",
+        "equipment": ["卧式车床"],
+        "duration_minutes": None,
+        "parameters": [],
+        "note": "依据外圆特征",
+        "status": "streaming",
+    }
+    event = normalize_event(
+        "task", {"id": 4, "type": "process_stream", "data": json.dumps({"operation": operation})}
+    )
+    assert event["type"] == "operation_upserted"
+    assert event["phase"] == "process_generation"
+    assert event["payload"]["operation"] == operation
+
+
 def test_payload_normalization_does_not_mutate_input_dict():
     payload = {"phase": "drawing_analysis"}
     normalize_event("task", {"id": 1, "type": "log", "data": payload, "message": "hello"})

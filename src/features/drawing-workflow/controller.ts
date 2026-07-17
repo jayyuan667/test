@@ -132,6 +132,10 @@ export function createDrawingWorkflowController(client: DrawingWorkflowClient, o
       const snapshot = await client.submitReview(taskId, body);
       if (disposed || expectedGeneration !== generation || activeTask !== taskId) return;
       publish(reduceWorkflowState(state, { type: "snapshot_received", snapshot }));
+      const currentState = state.snapshot?.task.state;
+      if (currentState === "awaiting_review") {
+        publish(reduceWorkflowState(state, { type: "command_transitioned", state: "processing", phase: "process_generation", progress: 75 }));
+      }
     },
     async cancel() {
       if (!activeTask) throw new Error("No active workflow task");

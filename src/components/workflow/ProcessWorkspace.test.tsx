@@ -65,3 +65,20 @@ test("keeps the workstation visible while processing without fake percentage pro
   assert.match(html, /结构化工序将在生成后显示/);
   assert.doesNotMatch(html, /导出 PDF/);
 });
+
+test("marks streamed operation rows as generating while process output arrives", () => {
+  const html = renderToStaticMarkup(
+    <ProcessWorkspace
+      operations={[{ ...operation, status: "streaming" }]}
+      taskState="processing"
+      phase="process_generation"
+      connection="connected"
+      error={null}
+      onExport={() => {}}
+    />,
+  );
+
+  assert.match(html, /forge-process__row--streaming/);
+  assert.match(html, /生成中/);
+  assert.match(html, /粗车外圆并留精加工余量/);
+});

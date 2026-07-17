@@ -77,8 +77,11 @@ export function ProcessWorkspace({
           </thead>
           <tbody>
             {operations.map((operation) => (
-              <tr data-testid="operation-row" key={operation.id}>
-                <td data-label="工序"><strong>{operation.code || "编号未提供"}</strong></td>
+              <tr className={`forge-process__row forge-process__row--${operation.status}`} data-testid="operation-row" key={operation.id}>
+                <td data-label="工序">
+                  <strong>{operation.code || "编号未提供"}</strong>
+                  {operation.status === "streaming" ? <span className="forge-process__row-status">生成中</span> : null}
+                </td>
                 <td data-label="工种">{operation.trade ?? "工种未提供"}</td>
                 <td data-label="加工内容">{operation.content || "内容未提供"}</td>
                 <td data-label="设备">{operation.equipment.length ? operation.equipment.join("、") : "设备未提供"}</td>

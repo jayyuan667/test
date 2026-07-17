@@ -415,6 +415,23 @@
   color: var(--text-secondary);
 }
 
+.forge-workflow .forge-process__row--streaming {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  animation: forge-operation-row-breathe 1.5s ease-in-out infinite;
+}
+
+.forge-workflow .forge-process__row-status {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent-bright) 48%, transparent);
+  border-radius: 999px;
+  color: var(--accent-bright);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
 .forge-workflow .forge-process__table td strong {
   color: var(--accent-bright);
   font-family: "JetBrains Mono", monospace;
@@ -995,6 +1012,12 @@
   50% {
     opacity: 0.36;
     transform: scaleX(0.92);
+  }
+}
+
+@keyframes forge-operation-row-breathe {
+  50% {
+    background: color-mix(in srgb, var(--accent) 13%, transparent);
   }
 }
 

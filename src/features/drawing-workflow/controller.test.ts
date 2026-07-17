@@ -167,6 +167,17 @@ test("hides annotation confirmation immediately after an accepted finalize comma
   assert.equal(controller.getState().snapshot?.task.progress, 40);
 });
 
+test("moves to process generation loading immediately after an accepted review command", async () => {
+  const awaiting = { ...snapshot("task-1", "awaiting_review"), task: { ...snapshot("task-1", "awaiting_review").task, phase: "feature_review" as const, progress: 60 } };
+  const { client } = harness(async () => awaiting);
+  client.submitReview = async () => awaiting;
+  const controller = createDrawingWorkflowController(client);
+  await controller.start("task-1");
+  await controller.submitReview({ features: [] });
+  assert.equal(controller.getState().snapshot?.task.state, "processing");
+  assert.equal(controller.getState().snapshot?.task.phase, "process_generation");
+});
+
 test("refreshes snapshot on task_failed before closing the stream", async () => {
   let reads = 0;
   const structured = { code: "VLM_TIMEOUT", message: "timeout", retryable: true, phase: "drawing_analysis" as const, details: { checkpoint: "page-2" } };
