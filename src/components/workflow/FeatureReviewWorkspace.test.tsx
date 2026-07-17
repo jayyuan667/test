@@ -105,7 +105,7 @@ test("shows one active feature with pager controls instead of stacking every fea
   assert.equal((html.match(/data-testid="feature-row"/g) ?? []).length, 1);
 });
 
-test("orders feature review from lowest confidence to highest confidence", () => {
+test("orders feature review from highest confidence to lowest confidence", () => {
   const lowestConfidence: WorkflowFeature = {
     ...feature,
     id: "feature-low",
@@ -129,11 +129,11 @@ test("orders feature review from lowest confidence to highest confidence", () =>
     />,
   );
 
-  assert.match(html, /<h3>缺失置信度槽宽<\/h3>/);
-  assert.match(html, /置信度 · 未知<\/span><strong>未提供<\/strong>/);
-  assert.match(html, /查看第 1 项特征：缺失置信度槽宽/);
+  assert.match(html, /<h3>外圆直径<\/h3>/);
+  assert.match(html, /置信度 · 高<\/span><strong>87%<\/strong>/);
+  assert.match(html, /查看第 1 项特征：外圆直径/);
   assert.match(html, /查看第 2 项特征：低置信度倒角/);
-  assert.match(html, /查看第 3 项特征：外圆直径/);
+  assert.match(html, /查看第 3 项特征：缺失置信度槽宽/);
 });
 
 test("adds direction-aware motion hooks for feature page transitions", () => {

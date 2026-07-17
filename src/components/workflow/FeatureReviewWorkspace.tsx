@@ -134,7 +134,7 @@ export function FeatureReviewWorkspace({ mode, features, preview, busy, canConfi
   const sortedFeatures = useMemo(
     () => features
       .map((feature, index) => ({ feature, index }))
-      .sort((a, b) => confidenceSortValue(a.feature) - confidenceSortValue(b.feature) || a.index - b.index)
+      .sort((a, b) => confidenceSortValue(b.feature) - confidenceSortValue(a.feature) || a.index - b.index)
       .map(({ feature }) => feature),
     [features],
   );
