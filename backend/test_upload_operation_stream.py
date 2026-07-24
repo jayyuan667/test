@@ -23,6 +23,33 @@ def test_operation_event_from_enriched_row_matches_v1_shape():
     }
 
 
+def test_operation_event_can_include_feature_evidence():
+    operation = _operation_event_from_enriched_row(
+        "task-1",
+        ["0020", "车", "粗车外圆", "卧式车床 CW61100", "2h"],
+        1,
+        evidence_features=[
+            {
+                "id": "feature-dia-1",
+                "label": "外圆",
+                "value": "Φ146±0.05",
+                "source": {"page": 1, "evidence_text": "Φ146±0.05"},
+                "confidence": 0.92,
+            }
+        ],
+    )
+
+    assert operation["evidence_features"] == [
+        {
+            "id": "feature-dia-1",
+            "label": "外圆",
+            "value": "Φ146±0.05",
+            "source": {"page": 1, "evidence_text": "Φ146±0.05"},
+            "confidence": 0.92,
+        }
+    ]
+
+
 def test_finalize_processing_marks_completed_after_result_is_saved():
     source = inspect.getsource(_finalize_processing)
 

@@ -99,8 +99,9 @@ def _normalize_operation(row, index):
         duration = getter("duration_minutes", getter("duration"))
         identifier, parameters = getter("id"), getter("parameters", [])
         note, status = getter("note"), getter("status", "complete")
+        evidence_features = getter("evidence_features", [])
     duration_minutes = duration if isinstance(duration, int) and not isinstance(duration, bool) else _duration_minutes(duration)
-    return {
+    operation = {
         "id": identifier or f"op-{code}-{index}",
         "code": code,
         "trade": trade,
@@ -111,6 +112,15 @@ def _normalize_operation(row, index):
         "note": note,
         "status": status if status in {"draft", "streaming", "complete", "modified"} else "complete",
     }
+    if "evidence_features" not in locals():
+        evidence_features = []
+    if isinstance(evidence_features, list):
+        operation["evidence_features"] = [
+            _normalize_structured_feature(feature, evidence_index)
+            for evidence_index, feature in enumerate(evidence_features)
+            if isinstance(feature, dict)
+        ][:3]
+    return operation
 
 
 def _normalize_task_error(state, phase, value):

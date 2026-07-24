@@ -12,6 +12,29 @@ test("normalizes nullable backend collections without inventing confidence", () 
   assert.equal(snapshot.features[0].source.method, null);
 });
 
+test("normalizes operation feature evidence without inventing missing values", () => {
+  const snapshot = normalizeTaskSnapshot({
+    schema_version: "1.0",
+    task: { id: "t", state: "completed", phase: "done", progress: 100, revision: 1 },
+    drawing: {},
+    process_operations: [{
+      id: "op-1",
+      code: "0020",
+      content: "粗车外圆",
+      evidence_features: [
+        { id: "f1", label: "外圆", value: "Φ146±0.05", source: { method: "vlm", page: 1, evidence_text: "Φ146±0.05" }, confidence: 0.92 },
+        { id: "bad", label: 123, value: null, source: { page: -1 }, confidence: 2 },
+      ],
+    }],
+  });
+
+  assert.equal(snapshot?.process_operations[0].evidence_features[0].value, "Φ146±0.05");
+  assert.equal(snapshot?.process_operations[0].evidence_features[0].source.page, 1);
+  assert.equal(snapshot?.process_operations[0].evidence_features[0].confidence, 0.92);
+  assert.equal(snapshot?.process_operations[0].evidence_features[1].label, "");
+  assert.equal(snapshot?.process_operations[0].evidence_features[1].confidence, null);
+});
+
 test("accepts only structured workflow errors and never invents failure for success", () => {
   const completed = normalizeTaskSnapshot({ schema_version: "1.0", task: { id: "done", state: "completed", phase: "done", progress: 100, revision: 2, error: { code: "STALE", message: "stale legacy error" } }, drawing: {} });
   const failed = normalizeTaskSnapshot({ schema_version: "1.0", task: { id: "bad", state: "failed", phase: "drawing_analysis", progress: 30, revision: 3, error: "plain string" }, drawing: {} });

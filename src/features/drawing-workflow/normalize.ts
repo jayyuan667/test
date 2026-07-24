@@ -32,7 +32,7 @@ function normalizeFeature(value: unknown, index: number): Feature {
 
 function normalizeOperation(value: unknown, index: number): ProcessOperation {
   const item = record(value);
-  return { id: string(item.id, `operation-${index}`), code: string(item.code), trade: nullableString(item.trade), content: string(item.content), equipment: Array.isArray(item.equipment) ? item.equipment.filter((entry): entry is string => typeof entry === "string") : [], duration_minutes: typeof item.duration_minutes === "number" && Number.isFinite(item.duration_minutes) && item.duration_minutes >= 0 ? item.duration_minutes : null, parameters: Array.isArray(item.parameters) ? item.parameters : [], note: nullableString(item.note), status: operationStatuses.has(item.status as ProcessOperation["status"]) ? item.status as ProcessOperation["status"] : "draft" };
+  return { id: string(item.id, `operation-${index}`), code: string(item.code), trade: nullableString(item.trade), content: string(item.content), equipment: Array.isArray(item.equipment) ? item.equipment.filter((entry): entry is string => typeof entry === "string") : [], duration_minutes: typeof item.duration_minutes === "number" && Number.isFinite(item.duration_minutes) && item.duration_minutes >= 0 ? item.duration_minutes : null, parameters: Array.isArray(item.parameters) ? item.parameters : [], note: nullableString(item.note), evidence_features: Array.isArray(item.evidence_features) ? item.evidence_features.map(normalizeFeature) : [], status: operationStatuses.has(item.status as ProcessOperation["status"]) ? item.status as ProcessOperation["status"] : "draft" };
 }
 
 export function normalizeTaskSnapshot(value: unknown): TaskSnapshot | null {

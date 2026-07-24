@@ -1,4 +1,5 @@
 import type {
+  Feature,
   ProcessOperation,
   TaskPhase,
   TaskState,
@@ -28,10 +29,47 @@ const phaseLabels: Record<TaskPhase, string> = {
   done: "工艺生成已完成",
 };
 
-function operationSource(operation: ProcessOperation): string {
-  // The v1 operation contract has no dedicated source field. A note remains a
-  // note; when it is absent we say so instead of deriving evidence from content.
-  return operation.note?.trim() || "来源未提供";
+function confidenceTone(confidence: number | null): "high" | "medium" | "low" | "unknown" {
+  if (confidence === null) return "unknown";
+  if (confidence >= 0.8) return "high";
+  if (confidence >= 0.55) return "medium";
+  return "low";
+}
+
+function confidenceLabel(confidence: number | null): string {
+  return confidence === null ? "置信度未提供" : `${Math.round(confidence * 100)}%`;
+}
+
+function evidenceValue(feature: Feature): string {
+  return feature.value || feature.source.evidence_text || feature.label || "特征值未提供";
+}
+
+function EvidenceSummary({ operation }: { operation: ProcessOperation }) {
+  const evidence = operation.evidence_features.slice(0, 2);
+  if (!evidence.length) {
+    return (
+      <div className="forge-process__evidence forge-process__evidence--empty">
+        <span>依据未匹配，请人工核对</span>
+        {operation.note?.trim() ? <small>{operation.note.trim()}</small> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="forge-process__evidence">
+      <div className="forge-process__evidence-list">
+        {evidence.map((feature) => (
+          <span className="forge-process__evidence-chip" data-tone={confidenceTone(feature.confidence)} key={feature.id}>
+            <strong>{feature.label || "特征"}</strong>
+            <em>{evidenceValue(feature)}</em>
+            {feature.source.page !== null ? <small>第 {feature.source.page} 页</small> : null}
+            <b>{confidenceLabel(feature.confidence)}</b>
+          </span>
+        ))}
+      </div>
+      {operation.note?.trim() ? <small className="forge-process__evidence-note">{operation.note.trim()}</small> : null}
+    </div>
+  );
 }
 
 export function ProcessWorkspace({
@@ -86,7 +124,7 @@ export function ProcessWorkspace({
                 <td data-label="加工内容">{operation.content || "内容未提供"}</td>
                 <td data-label="设备">{operation.equipment.length ? operation.equipment.join("、") : "设备未提供"}</td>
                 <td data-label="工时">{operation.duration_minutes === null ? "工时未提供" : `${operation.duration_minutes} 分钟`}</td>
-                <td data-label="依据 / 备注">{operationSource(operation)}</td>
+                <td data-label="依据 / 备注"><EvidenceSummary operation={operation} /></td>
               </tr>
             ))}
           </tbody>

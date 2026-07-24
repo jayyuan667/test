@@ -25,6 +25,7 @@ const operation: ProcessOperation = {
   duration_minutes: null,
   parameters: [],
   note: null,
+  evidence_features: [],
   status: "complete",
 };
 

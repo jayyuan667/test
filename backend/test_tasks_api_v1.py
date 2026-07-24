@@ -79,6 +79,51 @@ def test_snapshot_maps_persisted_result_and_preserves_full_envelope(client):
     assert snapshot["task"]["updated_at"] is not None
 
 
+def test_snapshot_preserves_operation_feature_evidence(client):
+    enterprise = _enterprise_user("evidence")
+    task_store.insert_task("task-evidence", pdf_name="drawing.pdf", enterprise_id=enterprise["id"])
+    task_store.save_result("task-evidence", {
+        "features": [
+            {
+                "id": "feature-dia-1",
+                "kind": "diameter",
+                "label": "外圆",
+                "value": "Φ146±0.05",
+                "source": {"method": "vlm", "page": 1, "bbox": None, "evidence_text": "Φ146±0.05"},
+                "confidence": 0.92,
+            }
+        ],
+        "process_operations": [
+            {
+                "id": "op-0020-0",
+                "code": "0020",
+                "trade": "车",
+                "content": "粗车外圆，留精加工余量",
+                "equipment": ["卧式车床 CW61100"],
+                "duration_minutes": 120,
+                "parameters": [],
+                "note": None,
+                "status": "complete",
+                "evidence_features": [
+                    {
+                        "id": "feature-dia-1",
+                        "label": "外圆",
+                        "value": "Φ146±0.05",
+                        "source": {"page": 1, "evidence_text": "Φ146±0.05"},
+                        "confidence": 0.92,
+                    }
+                ],
+            }
+        ],
+    })
+    _login(client, "evidence")
+
+    operation = client.get("/api/v1/tasks/task-evidence").get_json()["process_operations"][0]
+
+    assert operation["evidence_features"][0]["value"] == "Φ146±0.05"
+    assert operation["evidence_features"][0]["source"]["page"] == 1
+
+
 def test_snapshot_route_preserves_persisted_updated_at(client):
     enterprise = _enterprise_user("timestamp")
     task_store.insert_task("task-time", pdf_name="drawing.pdf", enterprise_id=enterprise["id"])

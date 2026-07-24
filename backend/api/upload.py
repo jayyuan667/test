@@ -97,13 +97,13 @@ def _duration_text_to_minutes(value):
     return None
 
 
-def _operation_event_from_enriched_row(task_id, row, index, status="streaming"):
+def _operation_event_from_enriched_row(task_id, row, index, status="streaming", evidence_features=None):
     code = str(row[0]).strip() if len(row) > 0 and row[0] is not None else f"{(index + 1) * 10:04d}"
     trade = str(row[1]).strip() if len(row) > 1 and row[1] not in (None, "") else None
     content = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
     equipment_text = str(row[3]).strip() if len(row) > 3 and row[3] not in (None, "", "—") else ""
     duration_text = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ""
-    return {
+    operation = {
         "id": f"op-{code}-{index}",
         "code": code,
         "trade": trade,
@@ -114,6 +114,60 @@ def _operation_event_from_enriched_row(task_id, row, index, status="streaming"):
         "note": None,
         "status": status,
     }
+    if isinstance(evidence_features, list):
+        operation["evidence_features"] = evidence_features[:3]
+    return operation
+
+
+def _tokenize_evidence_text(value):
+    text = str(value or "").strip()
+    if not text:
+        return set()
+    tokens = set(re.findall(r"[A-Za-z]?\d+(?:\.\d+)?|[Φφϕ∅]?\d+(?:\.\d+)?(?:±\d+(?:\.\d+)?)?|M\d+(?:[×xX]\d+(?:\.\d+)?)?|R\d+(?:\.\d+)?|[一-鿿]{2,}", text))
+    normalized = {token.replace("φ", "Φ").replace("ϕ", "Φ").replace("∅", "Φ") for token in tokens}
+    return {token for token in normalized if token}
+
+
+def _feature_evidence_from_task(task):
+    report = task.get("feature_report_json") if isinstance(task, dict) else {}
+    if not isinstance(report, dict):
+        return []
+    features = []
+    for page in report.get("pages") or []:
+        if not isinstance(page, dict):
+            continue
+        page_no = page.get("page")
+        page_features = page.get("features") if isinstance(page.get("features"), dict) else {}
+        for label, values in page_features.items():
+            value_list = values if isinstance(values, list) else [values]
+            for value in value_list:
+                value_text = str(value or "").strip()
+                if not value_text or value_text in {"无", "未识别"}:
+                    continue
+                features.append({
+                    "id": f"feature-evidence-{len(features)}",
+                    "label": str(label or "").strip(),
+                    "value": value_text,
+                    "source": {"page": page_no if isinstance(page_no, int) else None, "evidence_text": value_text},
+                    "confidence": None,
+                })
+    return features
+
+
+def _match_operation_evidence(content, features, limit=2):
+    operation_tokens = _tokenize_evidence_text(content)
+    if not operation_tokens:
+        return []
+    ranked = []
+    for feature in features or []:
+        text = " ".join(str(feature.get(key) or "") for key in ("label", "value"))
+        feature_tokens = _tokenize_evidence_text(text)
+        overlap = operation_tokens & feature_tokens
+        if not overlap:
+            continue
+        ranked.append((len(overlap), feature))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return [feature for _, feature in ranked[:limit]]
 
 
 DRAWING_FILE_RE = re.compile(r'\.(pdf|png|jpg|jpeg|dxf|dwg)$', re.IGNORECASE)
@@ -303,6 +357,7 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
     _STREAM_INTERVAL = 0.04  # emit at most every 40 ms (~25 chunks/s)
     _stream_emit_count = 0
     _operation_emit_keys: set[tuple[str, str, str]] = set()
+    _feature_evidence_pool = _feature_evidence_from_task(task)
 
     # Equipment/time enrichment is used by both provisional streaming rows and
     # the final saved process table.
@@ -340,12 +395,13 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
             return
         _operation_emit_keys.add(key)
         equip, est_time = TRADE_EQUIP_TIME.get(trade, ("—", "—"))
+        evidence = _match_operation_evidence(content, _feature_evidence_pool)
         emit_custom(
             task_id,
             event_data,
             event_locks,
             "process_stream",
-            {"operation": _operation_event_from_enriched_row(task_id, [code, trade, content, equip, est_time], index)},
+            {"operation": _operation_event_from_enriched_row(task_id, [code, trade, content, equip, est_time], index, evidence_features=evidence)},
         )
 
     # Flush any remaining buffer after generate() returns
@@ -388,6 +444,7 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
 
     # Enrich process data with equipment & time based on trade type
     enriched = []
+    process_operations = []
     for index, row in enumerate(process_data or []):
         code = row[0] if len(row) > 0 else ""
         trade = row[1] if len(row) > 1 else ""
@@ -396,12 +453,21 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
         # If row is [code, trade, content], output [code, trade, content, equip, time]
         enriched_row = [code, trade, content, equip, est_time]
         enriched.append(enriched_row)
+        evidence = _match_operation_evidence(content, _feature_evidence_pool)
+        operation = _operation_event_from_enriched_row(
+            task_id,
+            enriched_row,
+            index,
+            status="complete",
+            evidence_features=evidence,
+        )
+        process_operations.append(operation)
         emit_custom(
             task_id,
             event_data,
             event_locks,
             "process_stream",
-            {"operation": _operation_event_from_enriched_row(task_id, enriched_row, index)},
+            {"operation": operation},
         )
 
     task["process_flow"] = {
@@ -410,6 +476,7 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
         "columns": ["标签编码", "工种", "工序内容", "设备", "工时"],
         "format": "markdown",
     }
+    task["process_operations"] = process_operations
     task["rag_results"] = rag_results
 
     result = {
@@ -422,6 +489,7 @@ def _finalize_processing(task_id, file_name, output_dir, reviewed_text, prefix_h
         "png_count": len(task.get("png_paths", []) or []),
         "expert_judgment": expert_judgment,
         "process_flow": task["process_flow"],
+        "process_operations": process_operations,
         "process_flow_raw": process_flow_raw,
         "vision_descriptions": task.get("vision_descriptions", []),
         "vision_failures": task.get("vision_failures", []),

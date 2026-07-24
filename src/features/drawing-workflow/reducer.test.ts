@@ -13,6 +13,7 @@ const operation = (content: string): ProcessOperation => ({
   duration_minutes: null,
   parameters: [],
   note: null,
+  evidence_features: [],
   status: "streaming",
 });
 

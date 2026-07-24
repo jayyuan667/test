@@ -437,6 +437,92 @@
   font-family: "JetBrains Mono", monospace;
 }
 
+.forge-workflow .forge-process__evidence {
+  display: grid;
+  gap: 7px;
+  min-width: 220px;
+}
+
+.forge-workflow .forge-process__evidence-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.forge-workflow .forge-process__evidence-chip {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  gap: 2px 7px;
+  max-width: 260px;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface) 82%, white 18%);
+  color: var(--text-secondary);
+  line-height: 1.25;
+}
+
+.forge-workflow .forge-process__evidence-chip strong {
+  grid-column: 1 / -1;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.7rem;
+}
+
+.forge-workflow .forge-process__evidence-chip em {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-style: normal;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forge-workflow .forge-process__evidence-chip small,
+.forge-workflow .forge-process__evidence-chip b,
+.forge-workflow .forge-process__evidence-note,
+.forge-workflow .forge-process__evidence--empty small {
+  color: var(--text-ghost);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  font-weight: 650;
+}
+
+.forge-workflow .forge-process__evidence-chip b {
+  justify-self: end;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.forge-workflow .forge-process__evidence-chip[data-tone="high"] b {
+  background: color-mix(in srgb, #0f9f6e 18%, transparent);
+  color: #047857;
+}
+
+.forge-workflow .forge-process__evidence-chip[data-tone="medium"] b {
+  background: color-mix(in srgb, #d97706 18%, transparent);
+  color: #92400e;
+}
+
+.forge-workflow .forge-process__evidence-chip[data-tone="low"] b {
+  background: color-mix(in srgb, #e07828 20%, transparent);
+  color: #b45309;
+}
+
+.forge-workflow .forge-process__evidence--empty {
+  padding: 8px 10px;
+  border: 1px dashed color-mix(in srgb, var(--border) 90%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface) 58%, transparent);
+}
+
+.forge-workflow .forge-process__evidence--empty span {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
 .forge-workflow .forge-process__table tbody tr:last-child td {
   border-bottom: 0;
 }

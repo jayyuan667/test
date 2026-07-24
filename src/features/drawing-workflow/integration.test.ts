@@ -12,7 +12,7 @@ const feature: Feature = {
 };
 const operation: ProcessOperation = {
   id: "operation-10", code: "0010", trade: "车工", content: "粗车外圆", equipment: ["数控车床"],
-  duration_minutes: null, parameters: [], note: null, status: "complete",
+  duration_minutes: null, parameters: [], note: null, evidence_features: [], status: "complete",
 };
 
 function snapshot(state: TaskSnapshot["task"]["state"] = "processing"): TaskSnapshot {

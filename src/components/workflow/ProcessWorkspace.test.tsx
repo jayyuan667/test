@@ -15,10 +15,11 @@ const operation: ProcessOperation = {
   duration_minutes: null,
   parameters: [],
   note: null,
+  evidence_features: [],
   status: "complete",
 };
 
-test("renders structured operations and explicit absent equipment, duration, and source", () => {
+test("renders structured operations and explicit absent equipment, duration, and evidence", () => {
   const html = renderToStaticMarkup(
     <ProcessWorkspace
       operations={[operation]}
@@ -34,13 +35,51 @@ test("renders structured operations and explicit absent equipment, duration, and
   assert.match(html, /粗车外圆并留精加工余量/);
   assert.match(html, /设备未提供/);
   assert.match(html, /工时未提供/);
-  assert.match(html, /来源未提供/);
+  assert.match(html, /依据未匹配，请人工核对/);
   assert.match(html, /当前阶段/);
   assert.match(html, /工艺生成已完成/);
   assert.doesNotMatch(html, /完成度 100%/);
   assert.doesNotMatch(html, /<progress/);
   assert.match(html, /导出 PDF/);
   assert.doesNotMatch(html, /markdown|seq|closed/i);
+});
+
+test("renders operation evidence as compact trust tags", () => {
+  const html = renderToStaticMarkup(
+    <ProcessWorkspace
+      operations={[{
+        ...operation,
+        note: "留精加工余量",
+        evidence_features: [
+          {
+            id: "feature-dia-1",
+            kind: "diameter",
+            label: "外圆",
+            value: "Φ146±0.05",
+            unit: null,
+            tolerance: { upper: null, lower: null, text: null },
+            source: { method: "vlm", page: 1, bbox: null, evidence_text: "Φ146±0.05" },
+            confidence: 0.92,
+            review_status: "confirmed",
+            missing_reason: null,
+          },
+        ],
+      }]}
+      taskState="completed"
+      phase="done"
+      connection="closed"
+      error={null}
+      onExport={() => {}}
+    />,
+  );
+
+  assert.match(html, /依据 \/ 备注/);
+  assert.match(html, /外圆/);
+  assert.match(html, /Φ146±0.05/);
+  assert.match(html, /第 1 页/);
+  assert.match(html, /92%/);
+  assert.match(html, /留精加工余量/);
+  assert.doesNotMatch(html, /来源未提供/);
 });
 
 test("keeps the workstation visible while processing without fake percentage progress", () => {

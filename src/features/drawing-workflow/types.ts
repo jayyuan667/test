@@ -61,6 +61,7 @@ export interface ProcessOperation {
   duration_minutes: number | null;
   parameters: unknown[];
   note: string | null;
+  evidence_features: Feature[];
   status: "draft" | "streaming" | "complete" | "modified";
 }
 
