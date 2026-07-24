@@ -128,11 +128,30 @@ def _tokenize_evidence_text(value):
     return {token for token in normalized if token}
 
 
+def _append_feature_evidence(features, seen, label, value, page=None):
+    label_text = str(label or "").strip()
+    value_text = str(value or "").strip()
+    if not value_text or value_text in {"无", "无。", "未识别"}:
+        return
+    key = (label_text, value_text, page)
+    if key in seen:
+        return
+    seen.add(key)
+    features.append({
+        "id": f"feature-evidence-{len(features)}",
+        "label": label_text,
+        "value": value_text,
+        "source": {"page": page if isinstance(page, int) else None, "evidence_text": value_text},
+        "confidence": None,
+    })
+
+
 def _feature_evidence_from_task(task):
     report = task.get("feature_report_json") if isinstance(task, dict) else {}
     if not isinstance(report, dict):
         return []
     features = []
+    seen = set()
     for page in report.get("pages") or []:
         if not isinstance(page, dict):
             continue
@@ -141,31 +160,69 @@ def _feature_evidence_from_task(task):
         for label, values in page_features.items():
             value_list = values if isinstance(values, list) else [values]
             for value in value_list:
-                value_text = str(value or "").strip()
-                if not value_text or value_text in {"无", "未识别"}:
-                    continue
-                features.append({
-                    "id": f"feature-evidence-{len(features)}",
-                    "label": str(label or "").strip(),
-                    "value": value_text,
-                    "source": {"page": page_no if isinstance(page_no, int) else None, "evidence_text": value_text},
-                    "confidence": None,
-                })
+                _append_feature_evidence(features, seen, label, value, page_no)
+
+    report_text = str(report.get("report_text") or task.get("feature_report_text") or task.get("review_text") or "")
+    for label, raw_values in re.findall(r"【([^】]+)】([^\r\n]+)", report_text):
+        if label in {"报告名称", "页数"}:
+            continue
+        for value in re.split(r"[;；]", raw_values):
+            _append_feature_evidence(features, seen, label, value)
     return features
 
 
+def _semantic_evidence_score(content, feature):
+    content_text = str(content or "")
+    label = str(feature.get("label") or "")
+    value = str(feature.get("value") or "")
+    text = f"{label} {value}"
+    score = 0
+
+    operation_tokens = _tokenize_evidence_text(content_text)
+    feature_tokens = _tokenize_evidence_text(text)
+    score += len(operation_tokens & feature_tokens) * 10
+
+    if label and label in content_text:
+        score += 8
+    if value and value in content_text:
+        score += 12
+
+    is_turning = any(keyword in content_text for keyword in ("车", "外圆", "端面", "内孔", "回转"))
+    if is_turning and (label in {"关键尺寸", "外圆", "直径"} or re.search(r"[Φφϕ∅]\s*\d", value)):
+        score += 9
+    if "外圆" in content_text and re.search(r"[Φφϕ∅]\s*\d", value):
+        score += 12
+
+    if any(keyword in content_text for keyword in ("钻", "攻", "螺纹", "螺孔")):
+        if "螺" in label or "孔" in label or re.search(r"\bM\d", value, re.IGNORECASE):
+            score += 12
+
+    if any(keyword in content_text for keyword in ("备料", "下料", "毛坯")):
+        if any(keyword in label for keyword in ("材料", "毛坯", "外形", "关键尺寸")):
+            score += 10
+
+    if any(keyword in content_text for keyword in ("检", "测量", "终检")):
+        if any(keyword in label for keyword in ("关键尺寸", "公差", "粗糙度", "技术要求")):
+            score += 8
+
+    if any(keyword in content_text for keyword in ("热", "退火", "时效", "淬火", "回火")):
+        if "热处理" in label or any(keyword in value for keyword in ("退火", "时效", "淬火", "回火")):
+            score += 12
+
+    if any(keyword in content_text for keyword in ("表处", "镀", "氧化", "喷漆")):
+        if any(keyword in label for keyword in ("表面", "镀层", "技术要求")):
+            score += 12
+
+    return score
+
+
 def _match_operation_evidence(content, features, limit=2):
-    operation_tokens = _tokenize_evidence_text(content)
-    if not operation_tokens:
-        return []
     ranked = []
     for feature in features or []:
-        text = " ".join(str(feature.get(key) or "") for key in ("label", "value"))
-        feature_tokens = _tokenize_evidence_text(text)
-        overlap = operation_tokens & feature_tokens
-        if not overlap:
+        score = _semantic_evidence_score(content, feature)
+        if score <= 0:
             continue
-        ranked.append((len(overlap), feature))
+        ranked.append((score, feature))
     ranked.sort(key=lambda item: item[0], reverse=True)
     return [feature for _, feature in ranked[:limit]]
 

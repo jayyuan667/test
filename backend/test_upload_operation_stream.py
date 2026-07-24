@@ -1,6 +1,11 @@
 import inspect
 
-from backend.api.upload import _finalize_processing, _operation_event_from_enriched_row
+from backend.api.upload import (
+    _feature_evidence_from_task,
+    _finalize_processing,
+    _match_operation_evidence,
+    _operation_event_from_enriched_row,
+)
 
 
 def test_operation_event_from_enriched_row_matches_v1_shape():
@@ -48,6 +53,34 @@ def test_operation_event_can_include_feature_evidence():
             "confidence": 0.92,
         }
     ]
+
+
+def test_feature_evidence_falls_back_to_report_text_when_pages_are_empty():
+    features = _feature_evidence_from_task({
+        "feature_report_json": {
+            "report_text": "【材料】45钢\n【关键尺寸】Φ146±0.05；总长1471.8±0.1\n【螺纹与螺孔】M115×3-6g"
+        }
+    })
+
+    assert [feature["value"] for feature in features] == [
+        "45钢",
+        "Φ146±0.05",
+        "总长1471.8±0.1",
+        "M115×3-6g",
+    ]
+
+
+def test_operation_evidence_matches_turning_content_to_key_dimension():
+    features = _feature_evidence_from_task({
+        "feature_report_json": {
+            "report_text": "【材料】45钢\n【关键尺寸】Φ146±0.05；总长1471.8±0.1\n【螺纹与螺孔】M115×3-6g"
+        }
+    })
+
+    evidence = _match_operation_evidence("粗车外圆，留精加工余量", features)
+
+    assert evidence
+    assert evidence[0]["value"] == "Φ146±0.05"
 
 
 def test_finalize_processing_marks_completed_after_result_is_saved():
