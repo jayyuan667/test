@@ -4,8 +4,13 @@
 import os
 import json
 from typing import Dict, Any
+from urllib.parse import urlparse
+
+import httpx
+from openai import OpenAI
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+DIRECT_OPENAI_HOSTS = {"ark.cn-beijing.volces.com"}
 
 
 def load_config() -> Dict[str, Any]:
@@ -118,9 +123,10 @@ def init_config() -> None:
     for key in env_keys:
         val = os.getenv(key, "")
         if val:
-            display = val[:20] + "..." if len(val) > 20 else val
             if "KEY" in key:
-                display = val[:8] + "..." if len(val) > 8 else val
+                display = "configured=true"
+            else:
+                display = val[:20] + "..." if len(val) > 20 else val
             print(f"  {key}: {display}")
 
     config = load_config()
@@ -131,10 +137,35 @@ def init_config() -> None:
                 value = config[config_key]
                 if isinstance(value, str):
                     os.environ[key] = value
-                    preview = value[:20] + "..." if len(value) > 20 else value
                     if "KEY" in key:
-                        preview = value[:8] + "..." if len(value) > 8 else value
+                        preview = "configured=true"
+                    else:
+                        preview = value[:20] + "..." if len(value) > 20 else value
                     print(f"  [from config.json] {key}: {preview}")
+
+
+def create_openai_client(api_key: str | None, base_url: str | None) -> OpenAI:
+    """Build an OpenAI-compatible client.
+
+    Some vision/embedding providers are unstable behind the user's local proxy.
+    For known direct-connect hosts, bypass environment proxy settings explicitly
+    while keeping the default behavior for all other providers.
+    """
+    host = ""
+    if base_url:
+        try:
+            host = (urlparse(base_url).hostname or "").lower()
+        except ValueError:
+            host = ""
+
+    if host in DIRECT_OPENAI_HOSTS:
+        return OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            http_client=httpx.Client(trust_env=False),
+        )
+
+    return OpenAI(api_key=api_key, base_url=base_url)
 
 
 def _iter_extra_paths(raw_value: str):
@@ -168,8 +199,22 @@ def ensure_poppler_path() -> None:
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 OUTPUT_FOLDER = os.path.join(BASE_DIR, "output")
+KB_PREVIEW_FOLDER = os.path.join(BASE_DIR, "db_data", "kb_previews")
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024
 MAX_HISTORY_COUNT = 50
+
+# ============ YOLO 预标注配置 ============
+YOLO_WEIGHT_PATH = os.getenv("YOLO_WEIGHT_PATH", os.path.join(BASE_DIR, "db_data", "best.pt"))
+YOLO_ONNX_PATH   = os.getenv("YOLO_ONNX_PATH",   os.path.join(BASE_DIR, "db_data", "best.onnx"))
+YOLO_CONF        = float(os.getenv("YOLO_CONF", "0.25"))
+YOLO_IOU         = float(os.getenv("YOLO_IOU",  "0.45"))
+YOLO_IMG_SIZE    = int(os.getenv("YOLO_IMG_SIZE", "1280"))
+YOLO_DEVICE      = os.getenv("YOLO_DEVICE", "cpu")
+
+# ============ YOLO GPU 服务配置 ============
+YOLO_SERVICE_URL       = os.getenv("YOLO_SERVICE_URL", "http://127.0.0.1:8000")
+YOLO_SERVICE_TOKEN     = os.getenv("YOLO_SERVICE_TOKEN", "")
+YOLO_SERVICE_TIMEOUT   = float(os.getenv("YOLO_SERVICE_TIMEOUT", "15"))
 
 # ============ FreeCAD / OnShape 配置 ============
 
@@ -197,3 +242,17 @@ def get_freecad_qt_plugin_paths() -> list[str]:
         r"C:\Program Files\FreeCAD 1.1\bin\Lib\site-packages\PySide6\plugins",
     ]
     return [p for p in candidates if p and os.path.exists(os.path.join(p, "platforms"))]
+
+
+import secrets
+
+
+def get_jwt_secret() -> str:
+    """Return JWT secret key from env or generate a random one for dev."""
+    secret = os.getenv("JWT_SECRET_KEY", "").strip()
+    if secret:
+        return secret
+    # Auto-generate for development; note this invalidates all tokens on restart
+    generated = secrets.token_hex(32)
+    os.environ["JWT_SECRET_KEY"] = generated
+    return generated

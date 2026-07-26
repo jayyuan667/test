@@ -1,0 +1,282 @@
+import json
+import sqlite3
+
+import pytest
+
+
+class TestWorkflowRunLifecycle:
+    def test_workflow_run_lifecycle(self, monkeypatch, tmp_path):
+        from backend import workflow_harness
+
+        db_path = str(tmp_path / "vectors.db")
+        monkeypatch.setattr(workflow_harness, "DB_PATH", db_path)
+
+        run = workflow_harness.create_workflow_run(
+            workflow_type="zip_import",
+            enterprise_id=6,
+            user_id=12,
+            library_key="vectors_my_db",
+            batch_id="kb_test",
+            input_hash="abc",
+            cache_key="cache-abc",
+        )
+
+        workflow_harness.record_workflow_event(
+            run["run_id"],
+            "received",
+            "ZIP received",
+            progress_hint=5,
+            payload={"zip_name": "demo.zip"},
+        )
+        finished = workflow_harness.finish_workflow_run(
+            run["run_id"],
+            "completed",
+            result={"batch_id": "kb_test", "validation": {"status": "passed"}},
+        )
+
+        loaded = workflow_harness.get_workflow_run(run["run_id"], include_events=True)
+
+        assert run["run_id"].startswith("wf_zip_import_")
+        assert finished["status"] == "completed"
+        assert loaded["workflow_type"] == "zip_import"
+        assert loaded["enterprise_id"] == 6
+        assert loaded["library_key"] == "vectors_my_db"
+        assert loaded["result"]["validation"]["status"] == "passed"
+        assert loaded["events"][0]["stage"] == "received"
+        assert loaded["events"][0]["payload"]["zip_name"] == "demo.zip"
+
+    def test_finish_workflow_run_records_failure(self, monkeypatch, tmp_path):
+        from backend import workflow_harness
+
+        db_path = str(tmp_path / "vectors.db")
+        monkeypatch.setattr(workflow_harness, "DB_PATH", db_path)
+
+        run = workflow_harness.create_workflow_run(
+            workflow_type="zip_import",
+            enterprise_id=None,
+            user_id=1,
+        )
+        workflow_harness.finish_workflow_run(
+            run["run_id"],
+            "failed",
+            error_code="visibility_mismatch",
+            error_message="visible count mismatch",
+        )
+
+        conn = sqlite3.connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT status, error_code, error_message FROM workflow_runs WHERE run_id = ?",
+                (run["run_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        assert row == ("failed", "visibility_mismatch", "visible count mismatch")
+
+
+class TestUpdateWorkflowMetadata:
+    def test_update_cache_key_after_scope_resolution(self, monkeypatch, tmp_path):
+        from backend import workflow_harness
+
+        db_path = str(tmp_path / "vectors.db")
+        monkeypatch.setattr(workflow_harness, "DB_PATH", db_path)
+
+        run = workflow_harness.create_workflow_run(
+            "zip_import",
+            enterprise_id=6,
+            user_id=1,
+            library_key="",
+            cache_key="provisional-key",
+        )
+
+        updated = workflow_harness.update_workflow_metadata(
+            run["run_id"],
+            library_key="vectors_final_lib",
+            cache_key="final-cache-key",
+        )
+
+        assert updated["library_key"] == "vectors_final_lib"
+        assert updated["cache_key"] == "final-cache-key"
+
+        reloaded = workflow_harness.get_workflow_run(run["run_id"])
+        assert reloaded["cache_key"] == "final-cache-key"
+
+
+class TestRollbackSnapshots:
+    def test_save_restore_and_delete_snapshots(self, monkeypatch, tmp_path):
+        from backend import workflow_harness
+
+        db_path = str(tmp_path / "vectors.db")
+        monkeypatch.setattr(workflow_harness, "DB_PATH", db_path)
+
+        # Create a vector table so we can restore into it
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                """
+                CREATE TABLE vectors_test_snap (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    prefix TEXT NOT NULL UNIQUE,
+                    enterprise_id INTEGER,
+                    real INTEGER DEFAULT 1,
+                    workflow_run_id TEXT DEFAULT '',
+                    source_text TEXT DEFAULT '',
+                    vector_content TEXT DEFAULT ''
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO vectors_test_snap (prefix, enterprise_id, real, workflow_run_id, source_text, vector_content) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("Y1", 6, 1, "wf_old_run", "old source text", "old vector"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        existing = {
+            "prefix": "Y1",
+            "enterprise_id": 6,
+            "real": 1,
+            "workflow_run_id": "wf_old_run",
+            "source_text": "old source text",
+            "vector_content": "old vector",
+        }
+
+        # Save the snapshot
+        workflow_harness.save_rollback_snapshot(
+            "wf_current", "vectors_test_snap", "Y1", existing
+        )
+
+        # Overwrite with new record (simulating INSERT OR REPLACE)
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO vectors_test_snap (prefix, enterprise_id, real, workflow_run_id, source_text, vector_content) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("Y1", 6, 1, "wf_current", "new source text", "new vector"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Restore snapshots
+        restored = workflow_harness.restore_rollback_snapshots("wf_current")
+        assert restored == 1
+
+        # Delete current run's rows
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute("DELETE FROM vectors_test_snap WHERE workflow_run_id = ?", ("wf_current",))
+            conn.commit()
+            row = conn.execute(
+                "SELECT prefix, source_text, workflow_run_id FROM vectors_test_snap WHERE prefix = ?",
+                ("Y1",),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        # Old record is restored
+        assert row is not None
+        assert row[0] == "Y1"
+        assert row[1] == "old source text"
+
+        # Cleanup snapshots
+        deleted = workflow_harness.delete_rollback_snapshots("wf_current")
+        assert deleted == 1
+
+        # Verify snapshots are gone
+        conn = sqlite3.connect(db_path)
+        try:
+            remaining = conn.execute(
+                "SELECT COUNT(*) FROM workflow_rollback_snapshots WHERE workflow_run_id = ?",
+                ("wf_current",),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert remaining == 0
+
+    def test_restore_nonexistent_snapshots_returns_zero(self, monkeypatch, tmp_path):
+        from backend import workflow_harness
+
+        db_path = str(tmp_path / "vectors.db")
+        monkeypatch.setattr(workflow_harness, "DB_PATH", db_path)
+
+        restored = workflow_harness.restore_rollback_snapshots("wf_nonexistent")
+        assert restored == 0
+
+    def test_snapshot_existing_record_restores_vector_and_content(self, monkeypatch, tmp_path):
+        from backend import workflow_harness
+
+        db_path = str(tmp_path / "vectors.db")
+        monkeypatch.setattr(workflow_harness, "DB_PATH", db_path)
+
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                """
+                CREATE TABLE vectors_raw_snap (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    prefix TEXT NOT NULL,
+                    vector BLOB,
+                    content TEXT,
+                    context TEXT,
+                    enterprise_id INTEGER,
+                    workflow_run_id TEXT DEFAULT '',
+                    real INTEGER DEFAULT 1
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE UNIQUE INDEX idx_vectors_raw_snap_prefix_real_unique
+                ON vectors_raw_snap(prefix)
+                WHERE COALESCE(real, 1) = 1
+                """
+            )
+            conn.execute(
+                "INSERT INTO vectors_raw_snap (prefix, vector, content, context, enterprise_id, workflow_run_id, real) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("Y1", b"old-vector", '["0010@车@旧"]', "old context", 6, "wf_old", 1),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        saved = workflow_harness.snapshot_existing_record("wf_current", "vectors_raw_snap", "Y1")
+        assert saved is True
+
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO vectors_raw_snap (prefix, vector, content, context, enterprise_id, workflow_run_id, real) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("Y1", b"new-vector", '["0010@车@新"]', "new context", 6, "wf_current", 1),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        restored = workflow_harness.restore_rollback_snapshots("wf_current")
+        assert restored == 1
+
+        conn = sqlite3.connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT prefix, vector, content, context, enterprise_id, workflow_run_id, real "
+                "FROM vectors_raw_snap WHERE prefix = ?",
+                ("Y1",),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        assert row == (
+            "Y1",
+            b"old-vector",
+            '["0010@车@旧"]',
+            "old context",
+            6,
+            "wf_old",
+            1,
+        )

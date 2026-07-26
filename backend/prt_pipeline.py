@@ -384,105 +384,121 @@ def _normalize_prt_path(prt_path: str) -> tuple[str, Path | None]:
 
 
 # ── Win32 helpers for Creo dialog automation ──────────────────────────────────
-import ctypes
-import ctypes.wintypes as _W
+if os.name == "nt":
+    import ctypes
+    import ctypes.wintypes as _W
 
-_user32   = ctypes.WinDLL("user32",   use_last_error=True)
-_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-_WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, _W.HWND, _W.LPARAM)
+    _user32 = ctypes.WinDLL("user32", use_last_error=True)
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, _W.HWND, _W.LPARAM)
 
-_INPUT_MOUSE    = 0
-_INPUT_KEYBOARD = 1
-_MOUSEEVENTF_MOVE     = 0x0001
-_MOUSEEVENTF_LEFTDOWN = 0x0002
-_MOUSEEVENTF_LEFTUP   = 0x0004
-_MOUSEEVENTF_ABSOLUTE = 0x8000
-_KEYEVENTF_KEYUP      = 0x0002
-_VK_RETURN            = 0x0D
+    _INPUT_MOUSE = 0
+    _INPUT_KEYBOARD = 1
+    _MOUSEEVENTF_MOVE = 0x0001
+    _MOUSEEVENTF_LEFTDOWN = 0x0002
+    _MOUSEEVENTF_LEFTUP = 0x0004
+    _MOUSEEVENTF_ABSOLUTE = 0x8000
+    _KEYEVENTF_KEYUP = 0x0002
+    _VK_RETURN = 0x0D
 
-class _MOUSEINPUT(ctypes.Structure):
-    _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long),
-                ("mouseData", _W.DWORD), ("dwFlags", _W.DWORD),
-                ("time", _W.DWORD), ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+    class _MOUSEINPUT(ctypes.Structure):
+        _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long),
+                    ("mouseData", _W.DWORD), ("dwFlags", _W.DWORD),
+                    ("time", _W.DWORD), ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
 
-class _KEYBDINPUT(ctypes.Structure):
-    _fields_ = [("wVk", _W.WORD), ("wScan", _W.WORD),
-                ("dwFlags", _W.DWORD), ("time", _W.DWORD),
-                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+    class _KEYBDINPUT(ctypes.Structure):
+        _fields_ = [("wVk", _W.WORD), ("wScan", _W.WORD),
+                    ("dwFlags", _W.DWORD), ("time", _W.DWORD),
+                    ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
 
-class _INPUT_UNION(ctypes.Union):
-    _fields_ = [("mi", _MOUSEINPUT), ("ki", _KEYBDINPUT)]
+    class _INPUT_UNION(ctypes.Union):
+        _fields_ = [("mi", _MOUSEINPUT), ("ki", _KEYBDINPUT)]
 
-class _INPUT(ctypes.Structure):
-    _fields_ = [("type", _W.DWORD), ("_u", _INPUT_UNION)]
+    class _INPUT(ctypes.Structure):
+        _fields_ = [("type", _W.DWORD), ("_u", _INPUT_UNION)]
 
+    def _creo_enum_windows(substring: str) -> list:
+        found = []
 
-def _creo_enum_windows(substring: str) -> list:
-    found = []
-    @_WNDENUMPROC
-    def cb(hwnd, _):
-        buf = ctypes.create_unicode_buffer(512)
-        _user32.GetWindowTextW(hwnd, buf, 512)
-        if substring in buf.value:
-            r = _W.RECT()
-            _user32.GetWindowRect(hwnd, ctypes.byref(r))
-            found.append((hwnd, buf.value, r))
-        return True
-    _user32.EnumWindows(cb, 0)
-    return found
+        @_WNDENUMPROC
+        def cb(hwnd, _):
+            buf = ctypes.create_unicode_buffer(512)
+            _user32.GetWindowTextW(hwnd, buf, 512)
+            if substring in buf.value:
+                r = _W.RECT()
+                _user32.GetWindowRect(hwnd, ctypes.byref(r))
+                found.append((hwnd, buf.value, r))
+            return True
 
+        _user32.EnumWindows(cb, 0)
+        return found
 
-def _creo_send_click(x: int, y: int):
-    sw = _user32.GetSystemMetrics(0)
-    sh = _user32.GetSystemMetrics(1)
-    nx = int(x * 65535 / sw)
-    ny = int(y * 65535 / sh)
-    mk = lambda flags: _INPUT(type=_INPUT_MOUSE,
-                               _u=_INPUT_UNION(mi=_MOUSEINPUT(
-                                   dx=nx, dy=ny, mouseData=0, dwFlags=flags,
-                                   time=0, dwExtraInfo=None)))
-    arr = (_INPUT * 3)(
-        mk(_MOUSEEVENTF_MOVE | _MOUSEEVENTF_ABSOLUTE),
-        mk(_MOUSEEVENTF_LEFTDOWN | _MOUSEEVENTF_ABSOLUTE),
-        mk(_MOUSEEVENTF_LEFTUP | _MOUSEEVENTF_ABSOLUTE),
-    )
-    _user32.SendInput(3, arr, ctypes.sizeof(_INPUT))
+    def _creo_send_click(x: int, y: int):
+        sw = _user32.GetSystemMetrics(0)
+        sh = _user32.GetSystemMetrics(1)
+        nx = int(x * 65535 / sw)
+        ny = int(y * 65535 / sh)
+        mk = lambda flags: _INPUT(type=_INPUT_MOUSE,
+                                   _u=_INPUT_UNION(mi=_MOUSEINPUT(
+                                       dx=nx, dy=ny, mouseData=0, dwFlags=flags,
+                                       time=0, dwExtraInfo=None)))
+        arr = (_INPUT * 3)(
+            mk(_MOUSEEVENTF_MOVE | _MOUSEEVENTF_ABSOLUTE),
+            mk(_MOUSEEVENTF_LEFTDOWN | _MOUSEEVENTF_ABSOLUTE),
+            mk(_MOUSEEVENTF_LEFTUP | _MOUSEEVENTF_ABSOLUTE),
+        )
+        _user32.SendInput(3, arr, ctypes.sizeof(_INPUT))
 
+    def _creo_send_enter():
+        mk = lambda flags: _INPUT(type=_INPUT_KEYBOARD,
+                                   _u=_INPUT_UNION(ki=_KEYBDINPUT(
+                                       wVk=_VK_RETURN, wScan=0, dwFlags=flags,
+                                       time=0, dwExtraInfo=None)))
+        arr = (_INPUT * 2)(mk(0), mk(_KEYEVENTF_KEYUP))
+        _user32.SendInput(2, arr, ctypes.sizeof(_INPUT))
 
-def _creo_send_enter():
-    mk = lambda flags: _INPUT(type=_INPUT_KEYBOARD,
-                               _u=_INPUT_UNION(ki=_KEYBDINPUT(
-                                   wVk=_VK_RETURN, wScan=0, dwFlags=flags,
-                                   time=0, dwExtraInfo=None)))
-    arr = (_INPUT * 2)(mk(0), mk(_KEYEVENTF_KEYUP))
-    _user32.SendInput(2, arr, ctypes.sizeof(_INPUT))
+    def _creo_force_click(hwnd: int, x: int, y: int):
+        """AttachThreadInput → BringWindowToTop → SetForegroundWindow → SendInput click + Enter."""
+        tid_t = _user32.GetWindowThreadProcessId(hwnd, None)
+        tid_s = _kernel32.GetCurrentThreadId()
+        _user32.AttachThreadInput(tid_s, tid_t, True)
+        try:
+            _user32.BringWindowToTop(hwnd)
+            _user32.SetForegroundWindow(hwnd)
+            _user32.SetFocus(hwnd)
+            time.sleep(0.15)
+            _creo_send_click(x, y)
+            time.sleep(0.12)
+            _creo_send_enter()
+        finally:
+            _user32.AttachThreadInput(tid_s, tid_t, False)
 
+    def _creo_pick_dialog(title_exact: str, max_w: int, max_h: int):
+        """Find a small top-level dialog with exact title match; return (hwnd, rect) or (0, None)."""
+        for hwnd, title, r in _creo_enum_windows(title_exact):
+            w = r.right - r.left
+            h = r.bottom - r.top
+            if title.strip() == title_exact and w < max_w and h < max_h:
+                return hwnd, r
+        return 0, None
+else:
+    _user32 = None
+    _kernel32 = None
 
-def _creo_force_click(hwnd: int, x: int, y: int):
-    """AttachThreadInput → BringWindowToTop → SetForegroundWindow → SendInput click + Enter."""
-    tid_t = _user32.GetWindowThreadProcessId(hwnd, None)
-    tid_s = _kernel32.GetCurrentThreadId()
-    _user32.AttachThreadInput(tid_s, tid_t, True)
-    try:
-        _user32.BringWindowToTop(hwnd)
-        _user32.SetForegroundWindow(hwnd)
-        _user32.SetFocus(hwnd)
-        time.sleep(0.15)
-        _creo_send_click(x, y)
-        time.sleep(0.12)
-        _creo_send_enter()
-    finally:
-        _user32.AttachThreadInput(tid_s, tid_t, False)
+    def _creo_enum_windows(substring: str) -> list:
+        return []
 
+    def _creo_send_click(x: int, y: int):
+        return None
 
-def _creo_pick_dialog(title_exact: str, max_w: int, max_h: int):
-    """Find a small top-level dialog with exact title match; return (hwnd, rect) or (0, None)."""
-    for hwnd, title, r in _creo_enum_windows(title_exact):
-        w = r.right - r.left
-        h = r.bottom - r.top
-        if title.strip() == title_exact and w < max_w and h < max_h:
-            return hwnd, r
-    return 0, None
+    def _creo_send_enter():
+        return None
+
+    def _creo_force_click(hwnd: int, x: int, y: int):
+        return None
+
+    def _creo_pick_dialog(title_exact: str, max_w: int, max_h: int):
+        return 0, None
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -572,6 +588,9 @@ def _close_creo(proc: subprocess.Popen):
 
 def run_creo_capture(prt_path: str) -> bool:
     import threading
+    if os.name != "nt":
+        print("[creo] 非 Windows 环境，跳过 Creo 截图")
+        return False
     norm_path, temp_copy = _normalize_prt_path(prt_path)
     try:
         _clean_creo_trail_files()

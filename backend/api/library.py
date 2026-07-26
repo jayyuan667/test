@@ -7,6 +7,7 @@ import re
 import sqlite3
 import uuid
 import logging
+from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
@@ -25,14 +26,18 @@ from ..vector_map_rag import (
     extract_structured_features,
     invalidate_index_cache,
     query_by_fused_text,
+    query_by_vector_similarity,
 )
 from ..library_scope import (
     PUBLIC_LIBRARY_KEY,
     browse_unlock_status,
-    ensure_scope_registry,
+    initialize_library_storage,
+    is_public_scope_type,
+    is_public_library,
     list_scopes,
     resolve_scope,
 )
+from ..auth_utils import login_required
 from ._utils import PRT_FILE_RE
 
 
@@ -117,9 +122,13 @@ def _persist_feature_report_json(feature_report_json: dict, feature_report_path:
 
 
 def _ensure_context_column():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='vectors_v2'")
+        if not cursor.fetchone():
+            return
         cursor.execute("PRAGMA table_info(vectors_v2)")
         columns = {row[1] for row in cursor.fetchall()}
         if "context" not in columns:
@@ -133,9 +142,11 @@ _VECTOR_TABLE_COLUMNS = (
     # provenance columns (original)
     ("source_type", "TEXT DEFAULT ''"),
     ("source_task_id", "TEXT DEFAULT ''"),
+    ("workflow_run_id", "TEXT DEFAULT ''"),
     ("preview_task_id", "TEXT DEFAULT ''"),
     ("preview_total_pages", "INTEGER DEFAULT 0"),
     ("preview_image_urls", "TEXT DEFAULT ''"),
+    ("preview_thumb_urls", "TEXT DEFAULT ''"),
     ("feature_report_text", "TEXT DEFAULT ''"),
     ("feature_report_path", "TEXT DEFAULT ''"),
     # structured filter columns (merged from drawing_features)
@@ -152,6 +163,12 @@ _VECTOR_TABLE_COLUMNS = (
     ("inspection_standards", "TEXT"),
     ("special_requirements", "TEXT DEFAULT ''"),
     ("vector_content", "TEXT DEFAULT ''"),
+    # retrieval self-check metadata (query-dependent diagnostic, not canonical similarity)
+    ("retrieval_check_status", "TEXT DEFAULT ''"),
+    ("retrieval_check_similarity", "REAL DEFAULT 0"),
+    ("retrieval_check_matched_prefix", "TEXT DEFAULT ''"),
+    ("retrieval_check_reason", "TEXT DEFAULT ''"),
+    ("retrieval_checked_at", "TEXT DEFAULT ''"),
 )
 
 
@@ -168,6 +185,7 @@ def _migrate_vector_table(cursor, table_name: str):
 
 def _ensure_provenance_columns():
     # Migrate all registered library vector tables + the public vectors_v2
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     scopes = list_scopes()
     tables = {"vectors_v2"} | {s["vector_table"] for s in scopes if s.get("vector_table")}
     conn = sqlite3.connect(DB_PATH)
@@ -186,6 +204,7 @@ def _ensure_scope_columns(scope: dict):
     vector_table = scope.get("vector_table")
     if not vector_table:
         return
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
@@ -195,8 +214,18 @@ def _ensure_scope_columns(scope: dict):
         conn.close()
 
 
+def _retrieval_check_payload(status, similarity, matched_prefix, reason, checked_at):
+    return {
+        "status": status or "",
+        "similarity": float(similarity or 0),
+        "matched_prefix": matched_prefix or "",
+        "reason": reason or "",
+        "checked_at": checked_at or "",
+    }
+
+
 _ensure_context_column()
-ensure_scope_registry()
+initialize_library_storage()
 _ensure_provenance_columns()
 
 
@@ -210,6 +239,7 @@ def _scope_from_key(library_key: str = ""):
 def _library_ready_status(library_key: str = ""):
     scope = _scope_from_key(library_key)
     vector_table = scope["vector_table"]
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
@@ -321,7 +351,7 @@ def _extract_trades_from_rows(process_list):
     for row in (process_list or []):
         text = str(row or "").strip()
         parts = [p.strip() for p in text.split("@") if p.strip()]
-        if len(parts) >= 3 and re.match(r'^[一-鿿\-]{1,6}$', parts[1]) and not parts[1].startswith(('工种', '设备', '工时')):
+        if len(parts) >= 3 and re.match(r'^[一-鿿\-\d]{1,8}$', parts[1]) and not parts[1].startswith(('工种', '设备', '工时')):
             trade = parts[1]
             if trade and trade not in seen:
                 seen.add(trade)
@@ -373,7 +403,10 @@ def _fetch_existing_record(prefix: str, library_key: str = ""):
         SELECT id, prefix, vector, content, context, product_type, process_summary,
                key_features, materials, created_at, tech_requirement, real,
                source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls,
-               feature_report_text, feature_report_path
+               feature_report_text, feature_report_path, enterprise_id,
+               retrieval_check_status, retrieval_check_similarity,
+               retrieval_check_matched_prefix, retrieval_check_reason,
+               retrieval_checked_at
         FROM {vector_table}
         WHERE UPPER(prefix) = ?
         """,
@@ -405,6 +438,12 @@ def _fetch_existing_record(prefix: str, library_key: str = ""):
         preview_image_urls,
         feature_report_text,
         feature_report_path,
+        enterprise_id,
+        retrieval_check_status,
+        retrieval_check_similarity,
+        retrieval_check_matched_prefix,
+        retrieval_check_reason,
+        retrieval_checked_at,
     ) = row
 
     try:
@@ -434,6 +473,14 @@ def _fetch_existing_record(prefix: str, library_key: str = ""):
         "feature_report_text": feature_report_text or "",
         "feature_report_path": feature_report_path or "",
         "feature_report_json": feature_report_json,
+        "enterprise_id": enterprise_id,
+        "retrieval_check": _retrieval_check_payload(
+            retrieval_check_status,
+            retrieval_check_similarity,
+            retrieval_check_matched_prefix,
+            retrieval_check_reason,
+            retrieval_checked_at,
+        ),
     }
 
 
@@ -448,7 +495,10 @@ def _fetch_record_by_id(record_id: int, library_key: str = ""):
         SELECT id, prefix, content, context, product_type, process_summary,
                    key_features, materials, created_at, tech_requirement, real,
                    source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls,
-                   feature_report_text, feature_report_path
+                   feature_report_text, feature_report_path, enterprise_id,
+                   retrieval_check_status, retrieval_check_similarity,
+                   retrieval_check_matched_prefix, retrieval_check_reason,
+                   retrieval_checked_at
             FROM {vector_table}
             WHERE id = ?
             """,
@@ -480,6 +530,12 @@ def _fetch_record_by_id(record_id: int, library_key: str = ""):
         preview_image_urls,
         feature_report_text,
         feature_report_path,
+        enterprise_id,
+        retrieval_check_status,
+        retrieval_check_similarity,
+        retrieval_check_matched_prefix,
+        retrieval_check_reason,
+        retrieval_checked_at,
     ) = row
 
     try:
@@ -510,6 +566,14 @@ def _fetch_record_by_id(record_id: int, library_key: str = ""):
         "feature_report_text": feature_report_text or "",
         "feature_report_path": feature_report_path or "",
         "feature_report_json": feature_report_json,
+        "enterprise_id": enterprise_id,
+        "retrieval_check": _retrieval_check_payload(
+            retrieval_check_status,
+            retrieval_check_similarity,
+            retrieval_check_matched_prefix,
+            retrieval_check_reason,
+            retrieval_checked_at,
+        ),
     }
 
 
@@ -522,6 +586,35 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
 
     where = ["COALESCE(real, 1) = 1"]
     params = []
+
+    # ── Enterprise isolation ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    _ent_sql = ""
+    _ent_params_pt = []
+    if _is_super:
+        # Super admin: optionally filter by enterprise_id
+        _filter_ent = request.args.get("enterprise_id", type=int)
+        if _filter_ent is not None:
+            where.append("enterprise_id = ?")
+            params.append(_filter_ent)
+            _ent_sql = "AND enterprise_id = ?"
+            _ent_params_pt = [_filter_ent]
+    else:
+        _scope_type_key = (scope or {}).get("scope_type", "")
+        if is_public_scope_type(_scope_type_key):
+            # Public scope: all records visible, no enterprise_id filter
+            pass
+        elif _ent_id is not None:
+            where.append("enterprise_id = ?")
+            params.append(_ent_id)
+            _ent_sql = "AND enterprise_id = ?"
+            _ent_params_pt = [_ent_id]
+        else:
+            # Unassigned user, non-public scope: no data
+            where.append("1 = 0")
+            _ent_sql = "AND 1 = 0"
+
     if query:
         where.append("(UPPER(prefix) LIKE ? OR UPPER(context) LIKE ? OR UPPER(process_summary) LIKE ? OR UPPER(content) LIKE ? OR UPPER(feature_report_text) LIKE ?)")
         keyword = f"%{query.strip().upper()}%"
@@ -541,7 +634,11 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
             f"""
             SELECT id, prefix, product_type, process_summary, context, tech_requirement, created_at, content,
                    source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls,
-                   feature_report_text, feature_report_path
+                   preview_thumb_urls,
+                   feature_report_text, feature_report_path,
+                   retrieval_check_status, retrieval_check_similarity,
+                   retrieval_check_matched_prefix, retrieval_check_reason,
+                   retrieval_checked_at
             FROM {vector_table}
             WHERE {where_sql}
             ORDER BY id DESC
@@ -552,7 +649,8 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
         rows = cursor.fetchall()
 
         cursor.execute(
-            f"SELECT DISTINCT product_type FROM {vector_table} WHERE COALESCE(real, 1) = 1 AND product_type IS NOT NULL AND TRIM(product_type) != '' ORDER BY product_type"
+            f"SELECT DISTINCT product_type FROM {vector_table} WHERE COALESCE(real, 1) = 1 AND product_type IS NOT NULL AND TRIM(product_type) != '' {_ent_sql} ORDER BY product_type",
+            _ent_params_pt,
         )
         product_types = [row[0] for row in cursor.fetchall() if row and row[0]]
     finally:
@@ -560,7 +658,29 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
 
     items = []
     for row in rows:
-        row_id, prefix, row_product_type, process_summary, context, tech_requirement, created_at, content, source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls, feature_report_text, feature_report_path = row
+        (
+            row_id,
+            prefix,
+            row_product_type,
+            process_summary,
+            context,
+            tech_requirement,
+            created_at,
+            content,
+            source_type,
+            source_task_id,
+            preview_task_id,
+            preview_total_pages,
+            preview_image_urls,
+            preview_thumb_urls,
+            feature_report_text,
+            feature_report_path,
+            retrieval_check_status,
+            retrieval_check_similarity,
+            retrieval_check_matched_prefix,
+            retrieval_check_reason,
+            retrieval_checked_at,
+        ) = row
         try:
             process_list = json.loads(content) if content else []
         except Exception:
@@ -587,9 +707,17 @@ def _list_records(page: int = 1, page_size: int = 20, query: str = "", product_t
                 "preview_task_id": preview_task_id or "",
                 "preview_total_pages": preview_total_pages or 0,
                 "preview_image_urls": preview_image_urls or "",
+                "preview_thumb_urls": preview_thumb_urls or "",
                 "feature_report_text": feature_report_text or "",
                 "feature_report_path": feature_report_path or "",
                 "feature_report_json": _load_feature_report_payload(feature_report_path, feature_report_text),
+                "retrieval_check": _retrieval_check_payload(
+                    retrieval_check_status,
+                    retrieval_check_similarity,
+                    retrieval_check_matched_prefix,
+                    retrieval_check_reason,
+                    retrieval_checked_at,
+                ),
             }
         )
 
@@ -684,6 +812,7 @@ def _update_record(record_id: int, payload: dict, library_key: str = ""):
 def _delete_record(record_id: int, library_key: str = ""):
     scope = _scope_from_key(library_key)
     vector_table = scope["vector_table"]
+    feature_table = scope.get("feature_table") or ""
     existing = _fetch_record_by_id(record_id, library_key=library_key)
     if not existing:
         return None
@@ -696,8 +825,10 @@ def _delete_record(record_id: int, library_key: str = ""):
     cursor = conn.cursor()
     try:
         cursor.execute(f"DELETE FROM {vector_table} WHERE id = ?", (record_id,))
-        if prefix:
-            cursor.execute("DELETE FROM drawing_features WHERE drawing_id = ?", (prefix,))
+        if prefix and feature_table:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (feature_table,))
+            if cursor.fetchone():
+                cursor.execute(f"DELETE FROM {feature_table} WHERE drawing_id = ?", (prefix,))
         conn.commit()
     finally:
         conn.close()
@@ -709,7 +840,7 @@ def _delete_record(record_id: int, library_key: str = ""):
         if preview_task_id and preview_task_id != source_task_id:
             delete_task_with_files(preview_task_id)
     except Exception as e:
-        print(f"[library] file cleanup failed for record {record_id}: {e}")
+        logger.warning("[library] file cleanup failed for record %s: %s", record_id, e)
 
     invalidate_index_cache()
     return existing
@@ -869,21 +1000,127 @@ def _build_draft_from_file(file_storage, prefix: str, source_name: str):
     draft["preview_task_id"] = preview_task_id
     draft["preview_total_pages"] = len(png_paths)
     draft["source_task_id"] = preview_task_id
-    draft["preview_image_urls"] = [f"/api/result/{preview_task_id}/asset/{os.path.basename(path)}" for path in png_paths]
+    draft["preview_image_urls"] = [f"/api/result/{preview_task_id}/asset/{os.path.relpath(path, os.path.join(OUTPUT_FOLDER, preview_task_id)).replace(os.sep, '/')}" for path in png_paths]
     return draft, existing, similar
+
+
+def _normalise_searchable_text(draft: dict) -> tuple[str, str]:
+    """Return source_text and vector_text for storage and retrieval."""
+    source_text = (
+        draft.get("source_text")
+        or draft.get("feature_report_text")
+        or draft.get("context")
+        or draft.get("key_features_text")
+        or draft.get("vector_content")
+        or ""
+    )
+    source_text = str(source_text or "").strip()
+    vector_text = str(draft.get("vector_text") or source_text or "").strip()
+    return source_text, vector_text
+
+
+def _build_retrieval_check(prefix: str, vector_text: str, library_key: str = ""):
+    normalized_prefix = str(prefix or "").strip().upper()
+    text = str(vector_text or "").strip()
+    if not text:
+        return {
+            "status": "skipped",
+            "searchable": False,
+            "matched_prefix": "",
+            "similarity": 0,
+            "reason": "vector_text is empty",
+        }
+    if not os.getenv("EMBEDDING_API_KEY", ""):
+        return {
+            "status": "skipped",
+            "searchable": False,
+            "matched_prefix": "",
+            "similarity": 0,
+            "reason": "EMBEDDING_API_KEY not configured",
+        }
+
+    try:
+        matches = query_by_vector_similarity(
+            text,
+            top_k=5,
+            min_similarity=0.0,
+            library_key=library_key or None,
+        )
+    except Exception as exc:
+        logger.warning("[Library] retrieval self-check failed prefix=%s: %s", normalized_prefix, exc)
+        return {
+            "status": "failed",
+            "searchable": False,
+            "matched_prefix": "",
+            "similarity": 0,
+            "reason": str(exc) or "retrieval self-check failed",
+        }
+
+    for match in matches or []:
+        matched_prefix = str(match.get("drawing_id") or match.get("prefix") or "").strip().upper()
+        if matched_prefix == normalized_prefix:
+            return {
+                "status": "ok",
+                "searchable": True,
+                "matched_prefix": normalized_prefix,
+                "similarity": float(match.get("similarity") or 0),
+                "reason": "",
+            }
+
+    return {
+        "status": "failed",
+        "searchable": False,
+        "matched_prefix": "",
+        "similarity": 0,
+        "reason": "saved prefix not returned by retrieval self-check",
+    }
+
+
+def _persist_retrieval_check(prefix: str, retrieval_check: dict, library_key: str = ""):
+    scope = _scope_from_key(library_key)
+    vector_table = scope["vector_table"]
+    _ensure_scope_columns(scope)
+
+    checked_at = datetime.now().isoformat(timespec="seconds")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            f"""
+            UPDATE {vector_table}
+            SET retrieval_check_status = ?,
+                retrieval_check_similarity = ?,
+                retrieval_check_matched_prefix = ?,
+                retrieval_check_reason = ?,
+                retrieval_checked_at = ?
+            WHERE UPPER(prefix) = ?
+            """,
+            (
+                str(retrieval_check.get("status") or ""),
+                float(retrieval_check.get("similarity") or 0),
+                str(retrieval_check.get("matched_prefix") or ""),
+                str(retrieval_check.get("reason") or ""),
+                checked_at,
+                str(prefix or "").strip().upper(),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
     scope = _scope_from_key(library_key)
     vector_table = scope["vector_table"]
 
-    vector = create_query_vector(draft.get("vector_text") or draft.get("source_text") or "")
+    source_text, vector_text = _normalise_searchable_text(draft)
+    vector = create_query_vector(vector_text)
     vector_blob = vector.tobytes() if vector is not None else None
     prefix = draft["prefix"].strip().upper()
     process_list = draft.get("process_list", [])
     content = json.dumps(process_list, ensure_ascii=False)
-    context = draft.get("context") or draft.get("source_text") or ""
-    key_features_text = draft.get("key_features_text") or draft.get("vector_text") or draft.get("source_text") or ""
+    context = draft.get("context") or source_text
+    key_features_text = draft.get("key_features_text") or vector_text or source_text
     key_features = key_features_text
     materials = json.dumps(draft.get("materials", []), ensure_ascii=False)
     product_type = draft.get("product_type") or ""
@@ -892,16 +1129,22 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
     real_flag = 1 if draft.get("real", 1) else 0
     source_type = draft.get("source_type") or ""
     source_task_id = draft.get("source_task_id") or ""
+    workflow_run_id = (draft.get("workflow_run_id") or "").strip()
     preview_task_id = draft.get("preview_task_id") or ""
     preview_total_pages = int(draft.get("preview_total_pages") or 0)
     preview_image_urls = draft.get("preview_image_urls") or []
-    feature_report_text = (draft.get("feature_report_text") or "").strip()
+    preview_thumb_urls = draft.get("preview_thumb_urls") or []
+    feature_report_text = (draft.get("feature_report_text") or source_text).strip()
     feature_report_path = (draft.get("feature_report_path") or "").strip()
     feature_report_json = draft.get("feature_report_json")
     if isinstance(preview_image_urls, list):
         preview_image_urls = json.dumps(preview_image_urls, ensure_ascii=False)
     elif not isinstance(preview_image_urls, str):
         preview_image_urls = ""
+    if isinstance(preview_thumb_urls, list):
+        preview_thumb_urls = json.dumps(preview_thumb_urls, ensure_ascii=False)
+    elif not isinstance(preview_thumb_urls, str):
+        preview_thumb_urls = ""
 
     if isinstance(feature_report_json, dict) and feature_report_json:
         feature_report_path, feature_report_json = _persist_feature_report_json(feature_report_json, feature_report_path, prefix=prefix)
@@ -922,7 +1165,7 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
     heat_treatment = structured_features.get("热处理与探伤") if isinstance(structured_features, dict) else None
     inspection_standards = structured_features.get("标识与检验") if isinstance(structured_features, dict) else None
     special_requirements = structured.get("process_reference", "") if isinstance(structured, dict) else ""
-    vector_content = structured.get("vector_index", draft.get("vector_text") or key_features_text) if isinstance(structured, dict) else (draft.get("vector_text") or key_features_text)
+    vector_content = structured.get("vector_index", vector_text or key_features_text) if isinstance(structured, dict) else (vector_text or key_features_text)
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -932,11 +1175,11 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
             f"""
             INSERT OR REPLACE INTO {vector_table}
             (prefix, vector, content, context, product_type, process_summary, key_features, materials, tech_requirement, real,
-             source_type, source_task_id, preview_task_id, preview_total_pages, preview_image_urls, feature_report_text, feature_report_path,
+             source_type, source_task_id, workflow_run_id, preview_task_id, preview_total_pages, preview_image_urls, preview_thumb_urls, feature_report_text, feature_report_path,
              blank_type, overall_length_min, overall_length_max, main_diameter_min, main_diameter_max,
              tolerance_levels, thread_specs, hole_specs, roughness,
-             heat_treatment, inspection_standards, special_requirements, vector_content)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             heat_treatment, inspection_standards, special_requirements, vector_content, enterprise_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 prefix,
@@ -951,9 +1194,11 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
                 real_flag,
                 source_type,
                 source_task_id,
+                workflow_run_id,
                 preview_task_id,
                 preview_total_pages,
                 preview_image_urls,
+                preview_thumb_urls,
                 feature_report_text,
                 feature_report_path,
                 blank_type,
@@ -969,6 +1214,7 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
                 inspection_standards,
                 special_requirements,
                 vector_content,
+                draft.get("enterprise_id"),
             ),
         )
 
@@ -976,10 +1222,12 @@ def _upsert_record(draft: dict, replace: bool, library_key: str = ""):
     finally:
         conn.close()
 
-    invalidate_index_cache()
+    invalidate_index_cache(library_key or None)
+    return {"prefix": prefix, "source_text": source_text, "vector_text": vector_text}
 
 
 @library_bp.route("/library/preview", methods=["POST"])
+@login_required
 def preview_library_record():
     payload = request.get_json(silent=True) or request.form.to_dict() or {}
     source_type = payload.get("source_type") or request.form.get("source_type")
@@ -1036,11 +1284,23 @@ def library_status():
 
 
 @library_bp.route("/library/scopes", methods=["GET"])
+@login_required
 def library_scopes():
-    return jsonify(_json_safe({"items": list_scopes(), **browse_unlock_status()}))
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    scopes = list_scopes()
+    if not _is_super:
+        if _ent_id is not None:
+            scopes = [s for s in scopes
+                      if is_public_scope_type(s.get("scope_type"))
+                      or s.get("enterprise_id") == _ent_id]
+        else:
+            scopes = [s for s in scopes if is_public_scope_type(s.get("scope_type"))]
+    return jsonify(_json_safe({"items": scopes, **browse_unlock_status()}))
 
 
 @library_bp.route("/library/records", methods=["GET"])
+@login_required
 def list_library_records():
     page = request.args.get("page", 1)
     page_size = request.args.get("page_size", 20)
@@ -1051,16 +1311,34 @@ def list_library_records():
 
 
 @library_bp.route("/library/records/<int:record_id>", methods=["GET"])
+@login_required
 def get_library_record(record_id):
     record = _fetch_record_by_id(record_id, library_key=request.args.get("library_key", ""))
     if not record:
         return jsonify({"error": "Record not found"}), 404
+    # ── Enterprise isolation check ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    if not _is_super and record:
+        _rec_ent = record.get("enterprise_id")
+        if _rec_ent is not None and _rec_ent != _ent_id:
+            return jsonify({"error": "Record not found"}), 404
     return jsonify(_json_safe(record))
 
 
 @library_bp.route("/library/records/<int:record_id>", methods=["PUT"])
+@login_required
 def update_library_record(record_id):
     payload = request.get_json(silent=True) or {}
+    # ── Enterprise isolation check ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    if not _is_super:
+        _existing = _fetch_record_by_id(record_id, library_key=payload.get("library_key") or request.args.get("library_key", ""))
+        if _existing:
+            _rec_ent = _existing.get("enterprise_id")
+            if _rec_ent is not None and _rec_ent != _ent_id:
+                return jsonify({"error": "Record not found"}), 404
     record = _update_record(record_id, payload, library_key=payload.get("library_key") or request.args.get("library_key", ""))
     if not record:
         return jsonify({"error": "Record not found"}), 404
@@ -1068,8 +1346,18 @@ def update_library_record(record_id):
 
 
 @library_bp.route("/library/records/<int:record_id>", methods=["DELETE"])
+@login_required
 def delete_library_record(record_id):
     library_key = request.args.get("library_key", "")
+    # ── Enterprise isolation check ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    if not _is_super:
+        _existing = _fetch_record_by_id(record_id, library_key=library_key)
+        if _existing:
+            _rec_ent = _existing.get("enterprise_id")
+            if _rec_ent is not None and _rec_ent != _ent_id:
+                return jsonify({"error": "Record not found"}), 404
     record = _delete_record(record_id, library_key=library_key)
     if not record:
         return jsonify({"error": "Record not found"}), 404
@@ -1077,7 +1365,18 @@ def delete_library_record(record_id):
 
 
 @library_bp.route("/library/scopes/<string:library_key>", methods=["DELETE"])
+@login_required
 def clear_library_scope(library_key):
+    # ── Enterprise isolation check ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    if not _is_super:
+        from ..library_scope import resolve_scope
+        _scope = resolve_scope(library_key)
+        if _scope:
+            _scope_ent = _scope.get("enterprise_id")
+            if _scope_ent is not None and _scope_ent != _ent_id:
+                return jsonify({"error": "Scope not found"}), 404
     scope, error = _clear_scope_records(library_key)
     if error:
         return jsonify({"error": error}), 403
@@ -1085,6 +1384,7 @@ def clear_library_scope(library_key):
 
 
 @library_bp.route("/library/commit", methods=["POST"])
+@login_required
 def commit_library_record():
     payload = request.get_json(silent=True) or {}
     draft = payload.get("draft")
@@ -1095,13 +1395,30 @@ def commit_library_record():
     if not draft or not draft.get("prefix"):
         return jsonify({"error": "draft prefix required"}), 400
 
+    # ── Enterprise isolation: write enterprise_id on create ──
+    from ._utils import get_enterprise_scope as _get_ent_scope
+    _ent_id, _is_super = _get_ent_scope()
+    if _ent_id is not None:
+        draft["enterprise_id"] = _ent_id
+
     existing = _fetch_existing_record(draft["prefix"], library_key=library_key)
     if existing and action == "keep":
         return jsonify({"message": "Existing record kept", "existing": existing, "draft": draft})
 
     replace = action != "keep"
-    _upsert_record(draft, replace=replace, library_key=library_key)
-    logger.info("[Library] commit finished prefix=%s replaced=%s", draft.get("prefix"), replace)
+    saved_meta = _upsert_record(draft, replace=replace, library_key=library_key)
+    retrieval_check = _build_retrieval_check(
+        saved_meta["prefix"],
+        saved_meta["vector_text"],
+        library_key=library_key,
+    )
+    _persist_retrieval_check(saved_meta["prefix"], retrieval_check, library_key=library_key)
+    logger.info(
+        "[Library] commit finished prefix=%s replaced=%s retrieval_status=%s",
+        draft.get("prefix"),
+        replace,
+        retrieval_check.get("status"),
+    )
 
     fresh = _fetch_existing_record(draft["prefix"], library_key=library_key)
     return jsonify(
@@ -1113,6 +1430,132 @@ def commit_library_record():
             "saved": fresh,
             "replaced": bool(existing) and replace,
             "active_scope": _scope_from_key(library_key),
+            "retrieval_check": retrieval_check,
         }
         )
     )
+
+
+
+# 占位 SVG：源文件不存在时返回，避免浏览器显示破碎图标
+PLACEHOLDER_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <rect width="200" height="200" fill="#f1f5f9" rx="8"/>
+  <path d="M90 60h20v80H90zM60 90h80v20H60z" fill="#cbd5e1"/>
+</svg>"""
+
+
+def _thumb_placeholder():
+    """Return a placeholder SVG when thumbnail cannot be generated."""
+    from flask import Response
+    return Response(PLACEHOLDER_SVG, mimetype="image/svg+xml")
+
+
+@library_bp.route("/library/records/<int:record_id>/thumb", methods=["GET"])
+def get_library_record_thumb(record_id: int):
+    """返回记录的缩略图, 无缩略图时按需生成再返回."""
+    from flask import send_file
+    library_key = request.args.get("library_key", "")
+    scope = _scope_from_key(library_key)
+    vector_table = scope["vector_table"]
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            f"SELECT preview_task_id, preview_image_urls, preview_thumb_urls FROM {vector_table} WHERE id = ?",
+            (record_id,),
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return _thumb_placeholder()
+
+    preview_task_id, preview_image_urls, preview_thumb_urls = row
+
+    # ① 已有缩略图且文件存在 → 直接返回
+    thumb_list = _parse_json_list(preview_thumb_urls)
+    for url in thumb_list:
+        if url.startswith("/api/library/thumbs/"):
+            parts = url.split("/")
+            filepath = "/".join(parts[4:])  # thumbs/{table}/{id}.png
+            thumb_path = os.path.join(OUTPUT_FOLDER, "_thumbs", filepath)
+            if os.path.isfile(thumb_path):
+                return send_file(thumb_path, mimetype="image/png")
+
+    # ② 无有效缩略图 → 从原图生成
+    image_list = _parse_json_list(preview_image_urls)
+    if not image_list:
+        return _thumb_placeholder()
+
+    target_url = image_list[0]
+    if not target_url.startswith("/api/result/"):
+        return _thumb_placeholder()
+
+    parts = target_url.split("/")
+    task_id = parts[3]
+    filename = "/".join(parts[5:])
+    src_path = os.path.join(OUTPUT_FOLDER, task_id, filename)
+    if not os.path.isfile(src_path):
+        return _thumb_placeholder()
+
+    # ③ 生成 200x200 缩略图
+    thumb_dir = os.path.join(OUTPUT_FOLDER, "_thumbs", vector_table)
+    os.makedirs(thumb_dir, exist_ok=True)
+    dst_path = os.path.join(thumb_dir, f"{record_id}.png")
+    try:
+        from PIL import Image
+        with Image.open(src_path) as img:
+            img.thumbnail((200, 200), Image.Resampling.LANCZOS)
+            if img.mode not in ("RGB", "RGBA"):
+                img = img.convert("RGB")
+            img.save(dst_path, format="PNG", optimize=True)
+    except Exception:
+        # 生成失败时回退到原图
+        if os.path.isfile(src_path):
+            return send_file(src_path, mimetype="image/png")
+        return _thumb_placeholder()
+
+    # ④ 更新 DB: preview_thumb_urls
+    thumb_url = f"/api/library/thumbs/{vector_table}/{record_id}.png"
+    thumb_urls_json = json.dumps([thumb_url])
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE {vector_table} SET preview_thumb_urls = ? WHERE id = ?",
+            (thumb_urls_json, record_id),
+        )
+        conn.commit()
+    except Exception:
+        pass  # 不影响返回
+    finally:
+        conn.close()
+
+    return send_file(dst_path, mimetype="image/png")
+
+
+def _parse_json_list(value) -> list:
+    """解析 JSON 数组字符串或返回空列表"""
+    if not value:
+        return []
+    if isinstance(value, list):
+        return value
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+@library_bp.route("/library/thumbs/<path:filepath>", methods=["GET"])
+def get_library_thumb_file(filepath: str):
+    """Serve generated thumbnail files from OUTPUT_FOLDER/_thumbs/"""
+    if ".." in filepath:
+        return jsonify({"error": "File not found"}), 404
+    thumb_path = os.path.join(OUTPUT_FOLDER, "_thumbs", filepath)
+    if not os.path.isfile(thumb_path):
+        return jsonify({"error": "File not found"}), 404
+    from flask import send_file
+    return send_file(thumb_path, mimetype="image/png")

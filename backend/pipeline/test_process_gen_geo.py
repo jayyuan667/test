@@ -10,6 +10,15 @@ def _make_pg():
     return object.__new__(ProcessGenerator)
 
 
+REAL_PAGE_SUMMARY_REVIEW_TEXT = (
+    "【毛坯类型】：12Cr1MoVG；：无\n"
+    "【物料形态】棒料（圆）\n"
+    "【第1页摘要】图号：2779.301.13.0；零件名称：高温过热器出口集箱；"
+    "毛坯类型：12Cr1MoVG；技术要求：按图制造；"
+    "关键尺寸：900；10630；φ273×40；2-φ102；12-φ107；236-φ29"
+)
+
+
 _GEO_PLATE = {
     "shape_class": "板类",
     "dimensions": {"x": 250.0, "y": 100.0, "z": 30.0},
@@ -239,6 +248,56 @@ def test_extract_constraints_uses_creo_explicit_over_step():
     assert constraints["hard_constraints"]["geo_blank_spec"] == "δ40×250×180=1"
 
 
+def test_extract_authoritative_blank_spec_accepts_suffixed_plate_spec():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("毛坯规格：δ20×390×248（锯床下料）") == "δ20×390×248"
+
+
+def test_extract_authoritative_blank_spec_accepts_suffixed_round_spec():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("毛坯规格：φ80×320=1") == "φ80×320=1"
+
+
+def test_extract_authoritative_blank_spec_rejects_counterbore_angle_spec():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("钻φ5.6×90°沉孔") == ""
+
+
+def test_extract_authoritative_blank_spec_accepts_round_spec_with_l_length():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("毛坯规格：φ65×L，L=120") == "φ65×120"
+
+
+def test_extract_authoritative_blank_spec_normalizes_spaced_quantity():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("毛坯规格：φ80×320 = 1") == "φ80×320=1"
+
+
+def test_extract_authoritative_blank_spec_accepts_plate_spec_with_quantity():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("毛坯规格：δ20×390×248=1") == "δ20×390×248=1"
+
+
+def test_extract_authoritative_blank_spec_normalizes_spaced_plate_quantity():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("毛坯规格：δ20×390×248 = 1") == "δ20×390×248=1"
+
+
+def test_extract_authoritative_blank_spec_rejects_multiple_specs():
+    pg = _make_pg()
+    assert pg._extract_authoritative_blank_spec("毛坯规格：δ20×390×248；φ80×320=1") == ""
+
+
+def test_extract_authoritative_blank_spec_rejects_long_summary():
+    pg = _make_pg()
+    text = (
+        "图号：2779.301.13.0；零件名称：高温过热器出口集箱；毛坯类型：12Cr1MoVG；"
+        "技术要求：按图制造；关键尺寸：900；10630；φ273×40；2-φ102；12-φ107；236-φ29"
+    )
+
+    assert pg._extract_authoritative_blank_spec(text) == ""
+
+
 # ── Post-check tests ────────────────────────────────────────────────────────
 
 def _make_constraints(geo_blank="", blank_size="", hole_count=0, bore_range=""):
@@ -318,6 +377,69 @@ def test_post_check_fallback_to_blank_size_when_no_geo():
     assert "δ30×250×100" in result
 
 
+def test_post_check_rewrites_spaced_plate_quantity_suffix():
+    pg = _make_pg()
+    constraints = _make_constraints(blank_size="δ20×390×248 = 1")
+    constraints["hard_constraints"]["part_count"] = 5
+    raw = "- 0010: 备料 δ20×390×248 = 1"
+
+    result = pg._post_check_process(raw, constraints)
+
+    assert "δ20×390×248=5" in result
+    assert "δ20×390×248 = 1" not in result
+
+
+def test_post_check_rewrites_plate_quantity_when_dimensions_match():
+    pg = _make_pg()
+    constraints = _make_constraints(blank_size="δ20×390×248=1")
+    constraints["hard_constraints"]["part_count"] = 5
+    raw = "- 0010: 备料 δ20×390×248=1"
+
+    result = pg._post_check_process(raw, constraints)
+
+    assert "δ20×390×248=5" in result
+
+
+def test_post_check_rewrites_plate_quantity_when_dimensions_change():
+    pg = _make_pg()
+    constraints = _make_constraints(blank_size="δ20×390×248=1")
+    constraints["hard_constraints"]["part_count"] = 5
+    raw = "- 0010: 备料 δ20×300×150=1"
+
+    result = pg._post_check_process(raw, constraints)
+
+    assert "δ20×390×248=5" in result
+
+
+def test_post_check_rewrites_spaced_quantity_suffix():
+    pg = _make_pg()
+    constraints = _make_constraints(geo_blank="φ80×320 = 1")
+    constraints["hard_constraints"]["part_count"] = 5
+    raw = "- 0010: 备料 φ80×320 = 1"
+
+    result = pg._post_check_process(raw, constraints)
+
+    assert "φ80×320=5" in result
+    assert "φ80×320 = 1" not in result
+
+
+def test_extract_constraints_and_post_check_preserve_original_0010_for_real_page_summary():
+    pg = _make_pg()
+    constraints = pg._extract_process_constraints(REAL_PAGE_SUMMARY_REVIEW_TEXT, geo_data=None)
+    raw = (
+        "- 0010: 下料，按图纸尺寸准备12Cr1MoVG无缝钢管，"
+        "规格为φ273×40，长度10630mm （工种：料）"
+    )
+
+    result = pg._post_check_process(raw, constraints)
+
+    assert constraints["hard_constraints"]["blank_size"] == ""
+    assert result == raw
+    assert "图号：" not in result
+    assert "零件名称：" not in result
+    assert "毛坯类型：" not in result
+
+
 def test_post_check_shaft_blank_phi_format():
     pg = _make_pg()
     raw = "- 0010: 备料 φ60×320=1"
@@ -364,6 +486,20 @@ def test_post_check_bore_tolerance_margin():
 def test_post_check_no_geo_constraints_unchanged():
     pg = _make_pg()
     raw = "- 0010: 备料 δ20×300×150=1\n- 0030: 钻4×φ8"
+    result = pg._post_check_process(raw, _make_constraints())
+    assert result == raw
+
+
+def test_post_check_standalone_flip_row_trade_is_flip():
+    pg = _make_pg()
+    raw = "- 0040: 翻面，以正面为基准重新装夹，压紧底面两侧 （工种：数铣）"
+    result = pg._post_check_process(raw, _make_constraints())
+    assert result == "- 0040: 翻面，以正面为基准重新装夹，压紧底面两侧 （工种：翻面）"
+
+
+def test_post_check_combined_flip_workstep_keeps_machining_trade():
+    pg = _make_pg()
+    raw = "- 0040: 工步1：铣正面；工步2：翻面，以正面为基准重新装夹，铣背面槽 （工种：数铣）"
     result = pg._post_check_process(raw, _make_constraints())
     assert result == raw
 
@@ -448,6 +584,43 @@ def test_build_controlled_prompt_requires_dropping_unsupported_blueprint_steps()
         allowed_fragments={},
     )
     assert "若蓝本某工序在当前零件特征中找不到依据，则删除该工序" in prompt
+
+
+def test_build_controlled_prompt_labels_standalone_flip_step_as_flip():
+    pg = _make_pg()
+    prompt = pg._build_controlled_prompt(
+        fused_description="【吊面/翻面特征】背面有孔需翻面加工",
+        expert_judgment="",
+        rag_context="",
+        rag_results={"matches": []},
+        constraints={
+            "hard_constraints": {
+                "blank_size": "",
+                "outer_size": "",
+                "key_dims": "",
+                "flip_face": "背面有孔需翻面加工",
+                "geo_blank_spec": "",
+                "geo_hole_count": 0,
+                "geo_bore_range": "",
+                "part_count": 1,
+            },
+            "soft_features": {},
+        },
+        use_blueprint=False,
+        allowed_fragments={},
+    )
+    assert "独立翻面工序的工种必须写【翻面】" in prompt
+    assert "工种保持与正面加工工序一致" not in prompt
+
+
+def test_build_fallback_prompt_labels_standalone_flip_step_as_flip():
+    pg = _make_pg()
+    prompt = pg._build_fallback_prompt(
+        fused_description="【吊面/翻面特征】背面有孔需翻面加工",
+        expert_judgment="",
+        constraints={"hard_constraints": {"flip_face": "背面有孔需翻面加工"}},
+    )
+    assert "独立翻面工序的工种必须写【翻面】" in prompt
 
 
 # ── generate() signature test ──────────────────────────────────────────────
@@ -781,3 +954,16 @@ def test_derive_blank_keydim_lwh_fallback_when_no_inferred():
     result = pg._derive_blank_from_creo_zhushi(fields, part_count=1, geo_data=None)
     # 无推断 → 关键尺寸 OCC 摘要：D3=24.5, gap=5.5<6.5→35, D1=240→250, D2=163→173
     assert result == "δ35×250×173=1", f"got {result}"
+
+
+def test_parse_markdown_process_handles_at_trade_rows():
+    gen = ProcessGenerator()
+    raw = """- 0080@车@车准M24-6H螺孔螺纹。
+- 0100@钳@1 去毛刺，清理干净螺纹表面；2 涂油，套螺纹保护套。
+- 0110@检@入库。"""
+    rows = gen._parse_markdown_process(raw)
+    assert rows == [
+        ["0080", "车", "车准M24-6H螺孔螺纹。"],
+        ["0100", "钳", "1 去毛刺，清理干净螺纹表面；2 涂油，套螺纹保护套。"],
+        ["0110", "检", "入库。"],
+    ]

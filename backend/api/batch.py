@@ -8,14 +8,14 @@ import json
 import threading
 import logging
 from datetime import datetime
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 
 from ..config import UPLOAD_FOLDER, OUTPUT_FOLDER, validate_vision_config
 from ..feature_report import build_feature_report, write_feature_report_json
 from ..history import add_history_entry
 from ._response import fail, ERR_FILE_MISSING, ERR_FILE_TYPE
+from ..auth_utils import login_required, require_quota
 from ..task_store import insert_task, update_task_status, save_result
-from ..prt_pipeline import prepare_prt_artifacts
 from ..services.event_emitter import (
     emit_step_start,
     emit_step_complete,
@@ -25,7 +25,9 @@ from ..services.event_emitter import (
     emit_log,
 )
 from ..vision_utils import split_vision_results, format_vision_failure_message
-from ._utils import PRT_FILE_RE, extract_prefix_from_filename
+from ._utils import PRT_FILE_RE, extract_prefix_from_filename, get_enterprise_scope
+from ..library_scope import PUBLIC_LIBRARY_KEY
+from ..services.process_rollout import resolve_generation_library_key
 
 batch_bp = Blueprint("batch", __name__)
 logger = logging.getLogger(__name__)
@@ -44,6 +46,23 @@ def set_shared_state(tasks_dict, event_data_dict, event_locks_dict):
 
 
 _extract_prefix_from_filename = extract_prefix_from_filename
+
+
+def _raw_request_retrieval_library_key() -> str:
+    """Read the RAG retrieval library key from new and legacy request fields."""
+    return (
+        request.form.get("retrieval_library_key")
+        or request.args.get("retrieval_library_key")
+        or request.form.get("library_key")
+        or request.args.get("library_key")
+        or ""
+    )
+
+
+def _request_retrieval_library_key() -> tuple[str, dict]:
+    """Resolve the RAG retrieval library key for the current user."""
+    user = getattr(g, "current_user", None)
+    return resolve_generation_library_key(_raw_request_retrieval_library_key(), user)
 
 
 def _build_upload_mode_meta(file_count: int, page_count: int):
@@ -78,6 +97,8 @@ def _build_upload_mode_meta(file_count: int, page_count: int):
 
 
 @batch_bp.route("/batch_upload", methods=["POST"])
+@login_required
+@require_quota
 def batch_upload():
     if "files" not in request.files:
         return fail(ERR_FILE_MISSING, "No files provided")
@@ -93,6 +114,8 @@ def batch_upload():
     batch_task_id = str(uuid.uuid4())
     logger.info("[%s] /batch_upload received %d prt file(s)", batch_task_id, len(prt_files))
     print(f"[{batch_task_id}] /batch_upload received {len(prt_files)} prt file(s)")
+    enterprise_id, _ = get_enterprise_scope()
+    _resolved_retrieval_key, _resolution_meta = _request_retrieval_library_key()
 
     tasks[batch_task_id] = {
         "task_id": batch_task_id,
@@ -100,9 +123,12 @@ def batch_upload():
         "status": "processing",
         "progress": 0,
         "created_at": datetime.now().isoformat(),
-        "library_key": request.form.get("library_key") or request.args.get("library_key") or "public",
+        "library_key": request.form.get("library_key") or request.args.get("library_key") or PUBLIC_LIBRARY_KEY,
+        "retrieval_library_key": _resolved_retrieval_key,
+        "retrieval_library_resolution": _resolution_meta,
+        "enterprise_id": enterprise_id,
     }
-    insert_task(task_id=batch_task_id, pdf_name=f"Batch ({len(prt_files)} files)", prt_name=f"Batch ({len(prt_files)} files)", output_dir=os.path.join(OUTPUT_FOLDER, batch_task_id), prefix_hint="batch", library_key=tasks[batch_task_id]["library_key"], source_kind="prt")
+    insert_task(task_id=batch_task_id, pdf_name=f"Batch ({len(prt_files)} files)", prt_name=f"Batch ({len(prt_files)} files)", output_dir=os.path.join(OUTPUT_FOLDER, batch_task_id), prefix_hint="batch", library_key=tasks[batch_task_id]["library_key"], source_kind="prt", enterprise_id=enterprise_id)
     event_data[batch_task_id] = []
     event_locks[batch_task_id] = threading.Lock()
 
@@ -123,6 +149,7 @@ def batch_upload():
                 "prt_path": filepath,
                 "status": "pending",
                 "prefix_hint": prefix_hint,
+                "enterprise_id": enterprise_id,
             }
         )
         tasks[task_id] = {
@@ -133,6 +160,7 @@ def batch_upload():
             "status": "pending",
             "progress": 0,
             "created_at": datetime.now().isoformat(),
+            "enterprise_id": enterprise_id,
         }
         event_data[task_id] = []
         event_locks[task_id] = threading.Lock()
@@ -171,8 +199,13 @@ def batch_upload():
                 output_dir = os.path.join(OUTPUT_FOLDER, task_id)
                 os.makedirs(output_dir, exist_ok=True)
 
-                artifacts = prepare_prt_artifacts(prt_path, output_dir)
-                png_paths = artifacts["view_paths"]
+                try:
+                    from ..prt_pipeline import prepare_prt_artifacts
+                    artifacts = prepare_prt_artifacts(prt_path, output_dir)
+                    png_paths = artifacts["view_paths"]
+                except ModuleNotFoundError:
+                    logger.warning("[%s] prt_pipeline not available, skipping PRT", task_id)
+                    continue
                 all_png_paths.extend(png_paths)
 
                 # 计算当前总页数（在extend之后）
@@ -354,7 +387,10 @@ def batch_upload():
             feature_report_json = build_feature_report(successful_descriptions, prefix_hint=batch_prefix_hint, total_pages=len(successful_descriptions))
 
             process_flow_raw, process_data, rag_results = generator.generate(
-                fused_descriptions, comprehensive, prefix_hint=batch_prefix_hint, library_key=tasks[batch_task_id].get("library_key")
+                fused_descriptions,
+                comprehensive,
+                prefix_hint=batch_prefix_hint,
+                library_key=tasks[batch_task_id].get("retrieval_library_key") or tasks[batch_task_id].get("library_key"),
             )
 
             tasks[batch_task_id]["progress"] = 100
@@ -382,6 +418,7 @@ def batch_upload():
                 "feature_report_json": feature_report_json,
                 "feature_report_text": feature_report_json.get("report_text", ""),
                 "completed_at": datetime.now().isoformat(),
+                "enterprise_id": tasks[batch_task_id].get("enterprise_id"),
             }
 
             output_dir = os.path.join(OUTPUT_FOLDER, batch_task_id)
@@ -404,6 +441,7 @@ def batch_upload():
                 progress=100,
                 created_at=tasks[batch_task_id].get("created_at", ""),
                 file_count=len(files),
+                enterprise_id=tasks[batch_task_id].get("enterprise_id"),
             )
 
         except Exception as e:

@@ -2,15 +2,26 @@
 """Event emitter for SSE real-time progress updates."""
 
 import threading
-import sys
 from datetime import datetime
 from typing import Dict, Any, Callable
 import logging
 
-sys.stdout.reconfigure(encoding="utf-8")
-
 
 logger = logging.getLogger(__name__)
+
+DURABLE_CUSTOM_EVENTS = {
+    "annotation_required",
+    "preview_updated",
+    "review_required",
+}
+
+
+def _persist_event(task_id: str, event_type: str, data: Dict[str, Any]) -> None:
+    try:
+        from backend.task_store import save_event
+        save_event(task_id, event_type, data)
+    except Exception:
+        pass
 
 
 def create_event_emitter(
@@ -56,6 +67,7 @@ def emit_step_start(
     if message:
         data["message"] = message
     emit_event("step_start", data)
+    _persist_event(task_id, "step_start", data)
 
 
 def emit_step_complete(
@@ -72,6 +84,7 @@ def emit_step_complete(
     if result:
         data["result"] = result
     emit_event("step_complete", data)
+    _persist_event(task_id, "step_complete", data)
 
 
 def emit_complete(
@@ -82,7 +95,9 @@ def emit_complete(
 ) -> None:
     """Emit a complete event."""
     emit_event = create_event_emitter(task_id, event_data, event_locks)
-    emit_event("complete", {"message": message})
+    data = {"message": message}
+    emit_event("complete", data)
+    _persist_event(task_id, "complete", data)
 
 
 def emit_error(
@@ -93,7 +108,9 @@ def emit_error(
 ) -> None:
     """Emit an error event."""
     emit_event = create_event_emitter(task_id, event_data, event_locks)
-    emit_event("error", {"message": message})
+    data = {"message": message}
+    emit_event("error", data)
+    _persist_event(task_id, "error", data)
 
 
 def emit_image_ready(
@@ -105,16 +122,29 @@ def emit_image_ready(
     image_path: str,
 ) -> None:
     """Emit an image_ready event when a page image is generated."""
+    import os
+    try:
+        from ..config import OUTPUT_FOLDER
+    except ImportError:
+        from backend.config import OUTPUT_FOLDER
+
+    try:
+        task_dir = os.path.join(OUTPUT_FOLDER, task_id)
+        rel = os.path.relpath(image_path, task_dir).replace("\\", "/")
+        asset_url = f"/api/result/{task_id}/asset/{rel}"
+    except Exception:
+        asset_url = ""
+
     emit_event = create_event_emitter(task_id, event_data, event_locks)
-    emit_event(
-        "image_ready",
-        {
-            "page": page,
-            "total": total,
-            "image_path": image_path,
-            "message": f"第 {page}/{total} 页图片已生成",
-        },
-    )
+    data = {
+        "page": page,
+        "total": total,
+        "image_path": image_path,
+        "url": asset_url,
+        "message": f"第 {page}/{total} 页图片已生成",
+    }
+    emit_event("image_ready", data)
+    _persist_event(task_id, "image_ready", data)
 
 
 def emit_log(
@@ -146,15 +176,11 @@ def emit_log(
         },
     )
     # Persist to SQLite for SSE replay after memory state loss
-    try:
-        from backend.task_store import save_event
-        save_event(task_id, "log", {
-            "step": step,
-            "message": message,
-            "level": normalized_level,
-        })
-    except Exception:
-        pass  # Persistence is best-effort; never block the pipeline
+    _persist_event(task_id, "log", {
+        "step": step,
+        "message": message,
+        "level": normalized_level,
+    })
 
 
 def emit_custom(
@@ -167,3 +193,5 @@ def emit_custom(
     """Emit a custom SSE event type."""
     emit_event = create_event_emitter(task_id, event_data, event_locks)
     emit_event(event_type, data)
+    if event_type in DURABLE_CUSTOM_EVENTS:
+        _persist_event(task_id, event_type, data)

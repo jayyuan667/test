@@ -1,0 +1,33 @@
+# syntax=docker/dockerfile:1
+
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    YOLO_MODEL_DIR=/app/gpu_service/models_binary \
+    YOLO_DEVICE=cuda:0 \
+    YOLO_MAX_IMAGE_MB=20
+
+WORKDIR /app/gpu_service
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libgl1 \
+        libglib2.0-0 \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY gpu_service/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY gpu_service ./
+
+RUN if ! getent group 986 >/dev/null; then groupadd --gid 986 smartproc; fi \
+    && if ! getent passwd 986 >/dev/null; then useradd --uid 986 --gid 986 --home-dir /app --shell /usr/sbin/nologin smartproc; fi \
+    && chown -R smartproc:smartproc /app
+
+USER smartproc
+EXPOSE 8010
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8010"]

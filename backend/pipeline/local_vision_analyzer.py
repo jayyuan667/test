@@ -15,10 +15,25 @@ _V_MODEL_DIR = os.path.join(_BACKEND_DIR, "..", "v_model_test")
 if _V_MODEL_DIR not in sys.path:
     sys.path.insert(0, _V_MODEL_DIR)
 
-from ppstructure_extractor import extract_with_ppstructure
-from rule_engine import DrawingRuleEngine
-from semantic_enhancer import enhance as semantic_enhance
-from format_output import format_output
+try:
+    from ppstructure_extractor import extract_with_ppstructure
+except ImportError:
+    extract_with_ppstructure = None
+
+try:
+    from rule_engine import DrawingRuleEngine
+except ImportError:
+    DrawingRuleEngine = None
+
+try:
+    from semantic_enhancer import enhance as semantic_enhance
+except ImportError:
+    semantic_enhance = None
+
+try:
+    from format_output import format_output
+except ImportError:
+    format_output = None
 
 
 # 本地 vLLM 服务地址（服务器）
@@ -159,8 +174,12 @@ class LocalVisionAnalyzer:
     def __init__(self):
         print("[LocalVision] 初始化本地视觉分析器")
         print(f"[LocalVision] vLLM: {_LOCAL_VLLM_URL}")
-        self.rule_engine = DrawingRuleEngine()
-        print("[LocalVision] RuleEngine 初始化完成")
+        if DrawingRuleEngine is None:
+            self.rule_engine = None
+            print("[LocalVision] RuleEngine 不可用，本地视觉分析器仅提供占位实现")
+        else:
+            self.rule_engine = DrawingRuleEngine()
+            print("[LocalVision] RuleEngine 初始化完成")
 
     def analyze_image(self, image_path: str) -> Dict[str, Any]:
         """分析单张图片
@@ -174,6 +193,9 @@ class LocalVisionAnalyzer:
         print(f"[LocalVision] 分析图片: {image_path}")
 
         try:
+            if not all((extract_with_ppstructure, self.rule_engine, semantic_enhance, format_output)):
+                raise RuntimeError("本地视觉分析器依赖未安装，无法执行离线分析")
+
             # Step 1: EasyOCR OCR
             ocr_result = extract_with_ppstructure(image_path)
             full_text = ocr_result.get("full_text", "")
@@ -238,3 +260,20 @@ class LocalVisionAnalyzer:
 
         print(f"[LocalVision] 所有图片分析完成，共 {len(results)} 页")
         return results
+
+    def analyze_drawing(self, image_paths: List[str]) -> Dict[str, Any]:
+        """兼容 VisionAnalyzer.analyze_drawing() 接口。
+
+        本地模式无双模并行能力，回退为逐页分析后合并描述。
+        """
+        results = self.analyze_images(image_paths)
+        ok_items = [r for r in results if r.get("ok") and r.get("description", "").strip()]
+        merged = "\n".join(r["description"] for r in ok_items)
+        has_error = any(not r.get("ok") for r in results)
+        return {
+            "image_path": image_paths[0] if image_paths else "",
+            "description": merged,
+            "timestamp": results[0]["timestamp"] if results else "",
+            "ok": bool(ok_items),
+            **({"error": "部分页面分析失败"} if has_error else {}),
+        }

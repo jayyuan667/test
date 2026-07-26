@@ -43,6 +43,10 @@ def _convert_with_pdf2image(pdf_path: str, output_dir: str, dpi: int, on_image_r
     return png_paths
 
 
+class PDFConversionUnavailable(RuntimeError):
+    pass
+
+
 def convert_pdf_to_images(
     pdf_path: str,
     output_dir: str,
@@ -53,9 +57,13 @@ def convert_pdf_to_images(
 
     Uses PyMuPDF if available (no Poppler needed), otherwise falls back to pdf2image.
     """
-    os.makedirs(output_dir, exist_ok=True)
+    from backend.services.capabilities import inspect_pdf_capability
 
-    try:
+    os.makedirs(output_dir, exist_ok=True)
+    capability = inspect_pdf_capability()
+    provider = capability.get("provider")
+    if provider == "pymupdf":
         return _convert_with_fitz(pdf_path, output_dir, dpi, on_image_ready)
-    except ImportError:
+    if provider == "poppler":
         return _convert_with_pdf2image(pdf_path, output_dir, dpi, on_image_ready)
+    raise PDFConversionUnavailable(capability.get("reason") or "PDF转换不可用")

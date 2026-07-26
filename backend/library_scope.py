@@ -1,3 +1,4 @@
+import os
 import re
 import sqlite3
 from datetime import datetime
@@ -12,8 +13,74 @@ except ImportError:
 
 PUBLIC_LIBRARY_KEY = "public"
 PUBLIC_LIBRARY_NAME = "公共工艺库"
+PUBLIC_SCOPE_TYPE = "public"
 PUBLIC_VECTOR_TABLE = "vectors_v2"
 PUBLIC_FEATURE_TABLE = "drawing_features"
+
+
+def is_public_library(library_key: str | None) -> bool:
+    """Check whether a library_key refers to the public library."""
+    return (library_key or "").strip() == PUBLIC_LIBRARY_KEY
+
+
+def is_public_scope_type(scope_type: str | None) -> bool:
+    """Check whether a scope_type value is public."""
+    return (scope_type or "").strip() == PUBLIC_SCOPE_TYPE
+
+
+def ensure_import_tracking_tables():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS kb_import_batches (
+                batch_id TEXT PRIMARY KEY,
+                zip_name TEXT,
+                conflict_mode TEXT,
+                total_files INTEGER DEFAULT 0,
+                pdf_count INTEGER DEFAULT 0,
+                xlsx_count INTEGER DEFAULT 0,
+                matched_pairs INTEGER DEFAULT 0,
+                imported_count INTEGER DEFAULT 0,
+                skipped_count INTEGER DEFAULT 0,
+                error_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                finished_at TIMESTAMP
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS kb_import_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id TEXT,
+                prefix TEXT,
+                pdf_name TEXT,
+                xlsx_name TEXT,
+                status TEXT,
+                message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.commit()
+
+        # Migration: add enterprise_id column to kb_import_batches
+        cursor.execute("PRAGMA table_info(kb_import_batches)")
+        if "enterprise_id" not in {r[1] for r in cursor.fetchall()}:
+            cursor.execute("ALTER TABLE kb_import_batches ADD COLUMN enterprise_id INTEGER")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_batches_enterprise ON kb_import_batches(enterprise_id)")
+
+        # Migration: add workflow_run_id column to kb_import_batches
+        cursor.execute("PRAGMA table_info(kb_import_batches)")
+        if "workflow_run_id" not in {r[1] for r in cursor.fetchall()}:
+            cursor.execute("ALTER TABLE kb_import_batches ADD COLUMN workflow_run_id TEXT DEFAULT ''")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_batches_workflow_run ON kb_import_batches(workflow_run_id)")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def sanitize_identifier(value: str) -> str:
@@ -59,6 +126,13 @@ def ensure_scope_registry():
                 "",
             ),
         )
+
+        # Migration: add enterprise_id column
+        cursor.execute("PRAGMA table_info(kb_library_scopes)")
+        if "enterprise_id" not in {r[1] for r in cursor.fetchall()}:
+            cursor.execute("ALTER TABLE kb_library_scopes ADD COLUMN enterprise_id INTEGER")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_scopes_enterprise ON kb_library_scopes(enterprise_id)")
+
         conn.commit()
     finally:
         conn.close()
@@ -126,6 +200,19 @@ def ensure_vector_table(table_name: str):
             WHERE COALESCE(real, 1) = 1
             """
         )
+
+        # Migration: add enterprise_id column
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        if "enterprise_id" not in {r[1] for r in cursor.fetchall()}:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN enterprise_id INTEGER")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_enterprise ON {table_name}(enterprise_id)")
+
+        # Migration: add workflow_run_id column
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        if "workflow_run_id" not in {r[1] for r in cursor.fetchall()}:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN workflow_run_id TEXT DEFAULT ''")
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_workflow_run ON {table_name}(workflow_run_id)")
+
         conn.commit()
     finally:
         conn.close()
@@ -135,6 +222,13 @@ def ensure_feature_table(table_name: str):
     # Structured filter columns are now part of the vector table.
     # This function is kept as a no-op so existing callers don't break.
     pass
+
+
+def initialize_library_storage():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    ensure_scope_registry()
+    ensure_vector_table(PUBLIC_VECTOR_TABLE)
+    ensure_import_tracking_tables()
 
 
 def copy_public_baseline(target_vector_table: str, target_feature_table: str):
@@ -162,7 +256,7 @@ def copy_public_baseline(target_vector_table: str, target_feature_table: str):
         conn.close()
 
 
-def ensure_scope(library_key: str, library_name: str, scope_type: str = "private", seed_public: bool = False, last_batch_id: str = ""):
+def ensure_scope(library_key: str, library_name: str, scope_type: str = "private", seed_public: bool = False, last_batch_id: str = "", enterprise_id: int | None = None):
     ensure_scope_registry()
     normalized_key = sanitize_identifier(library_key)
     vector_table = f"vectors_{normalized_key}"
@@ -178,8 +272,8 @@ def ensure_scope(library_key: str, library_name: str, scope_type: str = "private
         cursor.execute(
             """
             INSERT OR REPLACE INTO kb_library_scopes
-            (library_key, library_name, scope_type, vector_table, feature_table, seed_source, last_batch_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (library_key, library_name, scope_type, vector_table, feature_table, seed_source, last_batch_id, enterprise_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 normalized_key,
@@ -189,6 +283,7 @@ def ensure_scope(library_key: str, library_name: str, scope_type: str = "private
                 feature_table,
                 "public" if seed_public else "empty",
                 last_batch_id or "",
+                enterprise_id,
             ),
         )
         conn.commit()
@@ -203,6 +298,7 @@ def ensure_scope(library_key: str, library_name: str, scope_type: str = "private
         "feature_table": feature_table,
         "seed_source": "public" if seed_public else "empty",
         "last_batch_id": last_batch_id or "",
+        "enterprise_id": enterprise_id,
     }
 
 
@@ -214,7 +310,7 @@ def resolve_scope(library_key: str | None = None):
     try:
         cursor.execute(
             """
-            SELECT library_key, library_name, scope_type, vector_table, feature_table, seed_source, created_at, last_batch_id
+            SELECT library_key, library_name, scope_type, vector_table, feature_table, seed_source, created_at, last_batch_id, enterprise_id
             FROM kb_library_scopes WHERE library_key = ?
             """,
             (key,),
@@ -235,6 +331,7 @@ def resolve_scope(library_key: str | None = None):
         "seed_source": row[5],
         "created_at": row[6],
         "last_batch_id": row[7] or "",
+        "enterprise_id": row[8],
     }
 
 
@@ -245,7 +342,7 @@ def list_scopes():
     try:
         cursor.execute(
             """
-            SELECT library_key, library_name, scope_type, vector_table, feature_table, seed_source, created_at, last_batch_id
+            SELECT library_key, library_name, scope_type, vector_table, feature_table, seed_source, created_at, last_batch_id, enterprise_id
             FROM kb_library_scopes
             ORDER BY CASE WHEN library_key = ? THEN 0 ELSE 1 END, created_at DESC
             """,
@@ -265,6 +362,7 @@ def list_scopes():
             "seed_source": row[5],
             "created_at": row[6],
             "last_batch_id": row[7] or "",
+            "enterprise_id": row[8],
         }
         for row in rows
     ]
@@ -286,6 +384,7 @@ def mark_scope_batch(library_key: str, batch_id: str):
 
 def browse_unlock_status():
     ensure_scope_registry()
+    ensure_import_tracking_tables()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:

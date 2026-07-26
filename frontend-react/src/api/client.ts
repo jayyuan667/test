@@ -1,0 +1,759 @@
+import type { User, Enterprise, QuotaInfo, AdminUser } from '../types/auth'
+
+const BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+
+function fallbackErrorMessage(status: number, fallback: string): string {
+  if (status === 401) return '请先登录'
+  if (status === 403) return '没有权限执行此操作'
+  return fallback
+}
+
+function extractErrorMessage(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    const nested = extractErrorMessage(obj.message ?? obj.error ?? obj.detail, '')
+    if (nested) return nested
+  }
+  return fallback
+}
+
+export class ApiError<TBody = unknown> extends Error {
+  status: number
+  body?: TBody
+
+  constructor(message: string, status: number, body?: TBody) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.body = body
+  }
+}
+
+async function readErrorBody(res: Response): Promise<unknown> {
+  const text = await res.text().catch(() => '')
+  if (!text.trim()) return undefined
+  try {
+    return JSON.parse(text)
+  } catch {
+    return text
+  }
+}
+
+async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  const defaultMessage = fallbackErrorMessage(res.status, fallback)
+  const text = await res.text().catch(() => '')
+  if (!text.trim()) return defaultMessage
+  try {
+    return extractErrorMessage(JSON.parse(text), defaultMessage)
+  } catch {
+    return extractErrorMessage(text, defaultMessage)
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, `请求失败：HTTP ${res.status}`))
+  }
+  return res.json()
+}
+
+export async function uploadFile(file: File, opts?: { retrieval_library_key?: string; feature_cache?: boolean }): Promise<{ task_id: string; pdf_name: string }> {
+  const fd = new FormData()
+  fd.append('file', file)
+  if (opts?.retrieval_library_key) fd.append('retrieval_library_key', opts.retrieval_library_key)
+  if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
+  const res = await fetch(`${BASE}/upload`, { method: 'POST', body: fd, credentials: 'include' })
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, `上传失败：HTTP ${res.status}`))
+  }
+  return res.json()
+}
+
+export async function batchUpload(files: File[], opts?: { retrieval_library_key?: string; feature_cache?: boolean }): Promise<{
+  batch_task_id: string
+  file_count: number
+  files: { task_id: string; pdf_name: string; prt_name: string }[]
+  message: string
+}> {
+  const fd = new FormData()
+  files.forEach(f => fd.append('files', f))
+  if (opts?.retrieval_library_key) fd.append('retrieval_library_key', opts.retrieval_library_key)
+  if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
+  const res = await fetch(`${BASE}/batch_upload`, { method: 'POST', body: fd, credentials: 'include' })
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, `批量上传失败：HTTP ${res.status}`))
+  }
+  return res.json()
+}
+
+export async function getStatus(taskId: string) {
+  return request<{ task_id: string; status: string; progress: number; pdf_name: string }>(
+    `/status/${taskId}`,
+  )
+}
+
+export async function getResult(taskId: string) {
+  return request<Record<string, unknown>>(`/result/${taskId}`)
+}
+
+export async function submitReview(taskId: string, payload: { review_text: string; action: string; retrieval_library_key?: string }) {
+  const res = await fetch(`${BASE}/review/${taskId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  })
+  if (res.ok) return { message: 'Review accepted', task_id: taskId }
+
+  throw new Error(await readErrorMessage(res, `审阅提交失败：HTTP ${res.status}`))
+}
+
+export async function rerunTask(taskId: string, reviewText?: string) {
+  return request<{ message: string; task_id: string }>(`/rerun/${taskId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(reviewText ? { review_text: reviewText } : {}),
+  })
+}
+
+export async function updateProcess(taskId: string, processText: string) {
+  return request<Record<string, unknown>>(`/process/${taskId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ process_text: processText }),
+  })
+}
+
+export async function getHistory(params?: { page?: number; page_size?: number; completed_date?: string }) {
+  const qs = new URLSearchParams()
+  if (params?.page) qs.set('page', String(params.page))
+  if (params?.page_size) qs.set('page_size', String(params.page_size))
+  if (params?.completed_date) qs.set('completed_date', params.completed_date)
+  return request<Record<string, unknown>>(`/history?${qs}`)
+}
+
+export async function deleteTask(taskId: string) {
+  return request<{ message: string }>(`/history/${taskId}`, { method: 'DELETE' })
+}
+
+export async function getExportData(taskId: string) {
+  return request<Record<string, unknown>>(`/export/${taskId}`)
+}
+
+export async function downloadExport(taskId: string, format: 'pdf' | 'xlsx', rows?: [string, string, string][]) {
+  const body: Record<string, unknown> = {}
+  if (rows && rows.length) body.rows = rows
+  const res = await fetch(`${BASE}/export/${taskId}?format=${format}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `导出失败：HTTP ${res.status}`))
+  return res.blob()
+}
+
+export function connectSSE(taskId: string, handlers: {
+  onEvent?: (type: string, data: Record<string, unknown>) => void
+  onComplete?: (data: Record<string, unknown>) => void
+  onError?: (data: Record<string, unknown>) => void
+  onReviewRequired?: (data: Record<string, unknown>) => void
+  onLog?: (data: Record<string, unknown>) => void
+  onProcessStream?: (data: Record<string, unknown>) => void
+  onPreviewUpdated?: (data: Record<string, unknown>) => void
+  onYoloProgress?: (data: Record<string, unknown>) => void
+  onStepStart?: (data: Record<string, unknown>) => void
+  onStepComplete?: (data: Record<string, unknown>) => void
+  onImageReady?: (data: Record<string, unknown>) => void
+  onAnnotationRequired?: (data: Record<string, unknown>) => void
+}): EventSource {
+  const es = new EventSource(`${BASE}/events/${taskId}`, { withCredentials: true })
+  let closedIntentionally = false
+  const close = es.close.bind(es)
+  es.close = () => {
+    closedIntentionally = true
+    close()
+  }
+
+  es.addEventListener('sse_ready', () => {})
+
+  es.addEventListener('step_start', (e) => {
+    const d = JSON.parse(e.data)
+    handlers.onStepStart?.(d)
+    handlers.onEvent?.('step_start', d)
+  })
+
+  es.addEventListener('step_complete', (e) => {
+    const d = JSON.parse(e.data)
+    handlers.onStepComplete?.(d)
+    handlers.onEvent?.('step_complete', d)
+  })
+
+  es.addEventListener('log', (e) => {
+    const d = JSON.parse(e.data)
+    handlers.onLog?.(d)
+    handlers.onEvent?.('log', d)
+  })
+
+  es.addEventListener('process_stream', (e) => {
+    const d = JSON.parse(e.data)
+    handlers.onProcessStream?.(d)
+    handlers.onEvent?.('process_stream', d)
+  })
+
+  es.addEventListener('review_required', (e) => {
+    const d = JSON.parse(e.data)
+    handlers.onReviewRequired?.(d)
+    handlers.onEvent?.('review_required', d)
+  })
+
+  es.addEventListener('complete', (e) => {
+    const d = JSON.parse(e.data)
+    handlers.onComplete?.(d)
+    handlers.onEvent?.('complete', d)
+    es.close()
+  })
+
+  es.addEventListener('error_event', (e) => {
+    const d = JSON.parse(e.data)
+    handlers.onError?.(d)
+    handlers.onEvent?.('error', d)
+    es.close()
+  })
+
+  es.addEventListener('preview_updated', (e) => {
+    const d = JSON.parse(e.data)
+    handlers.onPreviewUpdated?.(d)
+    handlers.onEvent?.('preview_updated', d)
+  })
+
+  es.addEventListener('yolo_progress', (e) => {
+    const d = JSON.parse(e.data)
+    handlers.onYoloProgress?.(d)
+    handlers.onEvent?.('yolo_progress', d)
+  })
+
+  es.addEventListener('image_ready', (e) => {
+    const d = JSON.parse(e.data)
+    handlers.onImageReady?.(d)
+    handlers.onEvent?.('image_ready', d)
+  })
+
+  es.addEventListener('annotation_required', (e) => {
+    const d = JSON.parse(e.data)
+    handlers.onAnnotationRequired?.(d)
+    handlers.onEvent?.('annotation_required', d)
+  })
+
+  es.onerror = () => {
+    // EventSource auto-reconnects on transient errors.
+    // If the connection is permanently closed (readyState === CLOSED),
+    // notify the handler so the UI can surface the failure.
+    if (!closedIntentionally && es.readyState === EventSource.CLOSED) {
+      handlers.onError?.({ message: 'SSE 连接已断开' })
+      handlers.onEvent?.('error', { message: 'SSE 连接已断开' })
+    }
+  }
+
+  return es
+}
+
+export function getAssetUrl(taskId: string, filename: string): string {
+  return `${BASE}/result/${taskId}/asset/${filename}`
+}
+
+/* ── Library / ZIP Import ── */
+
+export interface LibraryScope {
+  library_key: string
+  library_name: string
+  scope_type: 'public' | 'private'
+  record_count?: number
+  batch_count?: number
+}
+
+export interface LibraryScopesResponse {
+  items: LibraryScope[]
+  can_browse_db?: boolean
+  active_scope?: string
+}
+
+export interface ZipImportReport {
+  batch_id: string
+  zip_name: string
+  conflict_mode: string
+  library_mode: string
+  cached?: boolean
+  message?: string
+  workflow_run_id?: string
+  validation?: {
+    status: 'passed' | 'failed'
+    cached?: boolean
+    visible_count?: number
+    inserted_count?: number
+    expected_count?: number
+    error_code?: string
+  }
+  rollback?: {
+    attempted: boolean
+    status: string
+    deleted_records: number
+    restored_snapshots?: number
+    error?: string
+  }
+  error_code?: string
+  summary: {
+    total_files: number
+    prt_count: number
+    pdf_count: number
+    image_count: number
+    xlsx_count: number
+    matched_pairs: number
+    imported_count: number
+    skipped_count: number
+    error_count: number
+  }
+  matched_pairs: {
+    prefix: string
+    status: string
+    existing?: { process_summary?: string; context?: string }
+    draft?: { process_summary?: string; context?: string; process_list?: unknown[]; pdf_page_count?: number }
+    prt_names?: string[]
+    pdf_names?: string[]
+    xlsx_names?: string[]
+    conflict_mode?: string
+  }[]
+  unmatched_pdfs: string[]
+  unmatched_xlsx: string[]
+  unmatched_prts: string[]
+  unmatched_images: string[]
+  errors: { prefix?: string; pdf_name?: string; image_name?: string; prt_name?: string; error?: string; message?: string }[]
+  target_library?: { library_key: string; library_name: string }
+  created_at: string
+}
+
+export async function getLibraryScopes(): Promise<LibraryScopesResponse> {
+  return request<LibraryScopesResponse>('/library/scopes')
+}
+
+export async function importZipZip(params: {
+  file: File
+  conflict_mode: 'replace' | 'keep'
+  library_mode: string
+  library_name?: string
+  library_key?: string
+}): Promise<ZipImportReport> {
+  const fd = new FormData()
+  fd.append('zip_file', params.file)
+  fd.append('conflict_mode', params.conflict_mode)
+  fd.append('library_mode', params.library_mode)
+  if (params.library_name) fd.append('library_name', params.library_name)
+  if (params.library_key) fd.append('library_key', params.library_key)
+  const res = await fetch(`${BASE}/kb/import_zip`, { method: 'POST', body: fd, credentials: 'include' })
+  if (!res.ok) {
+    const body = await readErrorBody(res)
+    const message = extractErrorMessage(body, fallbackErrorMessage(res.status, `导入失败：HTTP ${res.status}`))
+    throw new ApiError<Partial<ZipImportReport> & {
+      ok?: boolean
+      error?: string
+      error_code?: string
+      validation?: ZipImportReport['validation']
+      rollback?: ZipImportReport['rollback']
+      workflow_run_id?: string
+    }>(message, res.status, typeof body === 'object' && body !== null ? body as Partial<ZipImportReport> : undefined)
+  }
+  return res.json()
+}
+
+export interface ZipImportAccepted {
+  accepted: true
+  workflow_run_id: string
+  status_url: string
+}
+
+export async function importZipZipAsync(params: {
+  file: File
+  conflict_mode: 'replace' | 'keep'
+  library_mode: string
+  library_name?: string
+  library_key?: string
+}): Promise<ZipImportAccepted> {
+  const fd = new FormData()
+  fd.append('zip_file', params.file)
+  fd.append('conflict_mode', params.conflict_mode)
+  fd.append('library_mode', params.library_mode)
+  if (params.library_name) fd.append('library_name', params.library_name)
+  if (params.library_key) fd.append('library_key', params.library_key)
+  const res = await fetch(`${BASE}/kb/import_zip_async`, { method: 'POST', body: fd, credentials: 'include' })
+  if (!res.ok) {
+    const body = await readErrorBody(res)
+    const message = extractErrorMessage(body, fallbackErrorMessage(res.status, `提交入库失败：HTTP ${res.status}`))
+    throw new ApiError<Partial<ZipImportReport> & {
+      ok?: boolean
+      error?: string
+      error_code?: string
+      validation?: ZipImportReport['validation']
+      rollback?: ZipImportReport['rollback']
+      workflow_run_id?: string
+      active_run_id?: string
+    }>(message, res.status, typeof body === 'object' && body !== null ? body as Partial<ZipImportReport> : undefined)
+  }
+  return res.json()
+}
+
+export interface ZipImportRun {
+  run_id: string
+  status: string
+  stage: string
+  progress_hint?: number
+  enterprise_id?: number | null
+  library_key?: string
+  batch_id?: string
+  error_code?: string
+  error_message?: string
+  result?: Partial<ZipImportReport>
+  events: {
+    stage: string
+    level: string
+    message: string
+    progress_hint?: number
+    payload?: Record<string, unknown>
+    created_at: string
+  }[]
+}
+
+export async function getZipImportRun(runId: string): Promise<ZipImportRun> {
+  return request<ZipImportRun>(`/kb/import_zip/runs/${encodeURIComponent(runId)}`)
+}
+
+export function getSampleZipUrl(): string {
+  return `${BASE}/kb/sample_zip`
+}
+
+/* ── Library Records ── */
+
+export interface LibraryRecord {
+  id: number
+  prefix: string
+  product_type: string
+  process_summary: string
+  context: string
+  tech_requirement: string
+  created_at: string
+  process_count: number
+  content: string
+  process_list: Array<string | { code?: string; trade?: string; content?: string }>
+  trades: string[]
+  source_type: string
+  source_task_id: string
+  preview_task_id: string
+  preview_total_pages: number
+  preview_image_urls: string | string[]
+  feature_report_text: string
+  feature_report_path: string
+  feature_report_json: Record<string, unknown>
+  real?: number
+}
+
+export interface LibraryRecordsResponse {
+  items: LibraryRecord[]
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
+  product_types: string[]
+  active_scope: { library_key: string; library_name: string; scope_type: string }
+}
+
+export async function getLibraryRecords(params?: {
+  page?: number
+  page_size?: number
+  query?: string
+  product_type?: string
+  library_key?: string
+}): Promise<LibraryRecordsResponse> {
+  const qs = new URLSearchParams()
+  if (params?.page) qs.set('page', String(params.page))
+  if (params?.page_size) qs.set('page_size', String(params.page_size))
+  if (params?.query) qs.set('query', params.query)
+  if (params?.product_type) qs.set('product_type', params.product_type)
+  if (params?.library_key) qs.set('library_key', params.library_key)
+  return request<LibraryRecordsResponse>(`/library/records?${qs}`)
+}
+
+export async function getLibraryRecord(id: number, libraryKey?: string): Promise<LibraryRecord> {
+  const qs = libraryKey ? `?library_key=${encodeURIComponent(libraryKey)}` : ''
+  return request<LibraryRecord>(`/library/records/${id}${qs}`)
+}
+
+export async function updateLibraryRecord(id: number, payload: Partial<LibraryRecord> & { library_key?: string }): Promise<LibraryRecord> {
+  return request<LibraryRecord>(`/library/records/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteLibraryRecord(id: number, libraryKey?: string): Promise<{ message: string }> {
+  const qs = libraryKey ? `?library_key=${encodeURIComponent(libraryKey)}` : ''
+  return request<{ message: string }>(`/library/records/${id}${qs}`, { method: 'DELETE' })
+}
+
+export async function deleteLibraryScope(libraryKey: string): Promise<{ message: string }> {
+  return request<{ message: string }>(`/library/scopes/${encodeURIComponent(libraryKey)}`, { method: 'DELETE' })
+}
+
+export interface CommitDraft {
+  prefix: string
+  content: string
+  process_summary: string
+  feature_report_text: string
+  source_text: string
+  vector_text: string
+  preview_image_urls: string[]
+  source_type: string
+  source_task_id: string
+  process_list: { code: string; trade: string; content: string }[]
+  tech_requirement: string
+  product_type: string
+}
+
+export interface RetrievalCheck {
+  status: 'ok' | 'failed' | 'skipped'
+  searchable: boolean
+  matched_prefix: string
+  similarity: number
+  reason: string
+}
+
+export interface CommitLibraryResponse {
+  message: string
+  record_id?: number
+  retrieval_check?: RetrievalCheck
+}
+
+export async function commitToLibrary(params: {
+  draft: CommitDraft
+  action: 'replace' | 'keep'
+  library_key: string
+}): Promise<CommitLibraryResponse> {
+  return request<CommitLibraryResponse>('/library/commit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+}
+
+export async function getLibraryStatus(libraryKey?: string): Promise<{
+  ready: boolean
+  record_count: number
+  can_browse: boolean
+  imported_batches: string[]
+  scopes: LibraryScope[]
+  active_scope: { library_key: string; library_name: string; scope_type: string }
+}> {
+  const qs = libraryKey ? `?library_key=${encodeURIComponent(libraryKey)}` : ''
+  return request(`/library/status${qs}`)
+}
+
+/* ── Config ── */
+
+export interface SystemConfig {
+  vision_api_key: string
+  vision_api_base: string
+  vision_model_id: string
+  llm_api_key: string
+  llm_base_url: string
+  llm_model: string
+  vision_mode: string
+  poppler_path: string
+  creo_exe: string
+  creo_base_dir: string
+  creo_out_dir: string
+}
+
+export async function getConfig(): Promise<SystemConfig> {
+  return request<SystemConfig>('/config')
+}
+
+export async function updateConfig(payload: Partial<SystemConfig>): Promise<{ message: string }> {
+  return request<{ message: string }>('/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+/* ── 2D Drawing Upload ── */
+
+export async function uploadDrawing(file: File, opts?: { retrieval_library_key?: string; feature_cache?: boolean }): Promise<{ task_id: string; pdf_name: string; message: string }> {
+  const fd = new FormData()
+  fd.append('file', file)
+  if (opts?.retrieval_library_key) fd.append('retrieval_library_key', opts.retrieval_library_key)
+  if (opts?.feature_cache != null) fd.append('feature_cache', String(opts.feature_cache))
+  const res = await fetch(`${BASE}/upload_drawing`, { method: 'POST', body: fd, credentials: 'include' })
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, `上传失败：HTTP ${res.status}`))
+  }
+  return res.json()
+}
+
+/* ── Annotations ── */
+
+export interface AnnotationShapeBE {
+  label: string
+  points: [[number, number], [number, number]]
+  shape_type?: string
+  [key: string]: unknown
+}
+
+export interface AnnotationPageBE {
+  shapes: AnnotationShapeBE[]
+  imageWidth?: number
+  imageHeight?: number
+  imagePath?: string
+}
+
+export async function getAnnotations(taskId: string): Promise<Record<string, AnnotationPageBE>> {
+  const res = await request<{ task_id: string; pages: Record<string, AnnotationPageBE> }>(`/annotations/${taskId}`)
+  return res.pages || {}
+}
+
+export async function saveAnnotation(taskId: string, payload: {
+  page: number
+  shapes: AnnotationShapeBE[]
+  imageWidth: number
+  imageHeight: number
+  imagePath: string
+}): Promise<{ ok: boolean; json_path?: string; txt_path?: string }> {
+  const res = await fetch(`${BASE}/annotations/${taskId}/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error(`[saveAnnotation] ${res.status}:`, body, 'payload:', JSON.stringify(payload).slice(0, 500))
+    const fallback = fallbackErrorMessage(res.status, `保存失败：HTTP ${res.status}`)
+    let message = extractErrorMessage(body, fallback)
+    try {
+      message = extractErrorMessage(JSON.parse(body), fallback)
+    } catch {
+      // Keep the text-derived message.
+    }
+    throw new Error(message)
+  }
+  return res.json()
+}
+
+export async function finalizeAnnotation(taskId: string): Promise<{ ok: boolean; task_id: string; mode: string }> {
+  return request(`/annotations/${taskId}/finalize`, { method: 'POST' })
+}
+
+export async function exportAnnotations(taskId: string): Promise<Blob> {
+  const res = await fetch(`${BASE}/annotations/${taskId}/export`, { credentials: 'include' })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `导出失败：HTTP ${res.status}`))
+  return res.blob()
+}
+
+/* ── Auth / Admin ── */
+
+// Helper: auth/admin endpoints wrap responses in {success, data}
+async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const json = await request<{ success: boolean; data: T }>(path, init)
+  return json.data
+}
+
+export async function login(username: string, password: string): Promise<{ user: User }> {
+  return authRequest<{ user: User }>('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+}
+
+export async function register(username: string, password: string): Promise<{ user: User }> {
+  return authRequest<{ user: User }>('/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+}
+
+export async function logout(): Promise<void> {
+  await authRequest('/auth/logout', { method: 'POST' })
+}
+
+export async function getMe(): Promise<{ user: User }> {
+  return authRequest<{ user: User }>('/auth/me')
+}
+
+export async function getProfile(): Promise<{ user: User }> {
+  return authRequest<{ user: User }>('/user/profile')
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await authRequest('/user/password', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  })
+}
+
+export async function getEnterprises(): Promise<{ enterprises: Enterprise[] }> {
+  return authRequest<{ enterprises: Enterprise[] }>('/admin/enterprises')
+}
+
+export async function createEnterprise(name: string): Promise<{ enterprise: Enterprise }> {
+  return authRequest<{ enterprise: Enterprise }>('/admin/enterprises', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+export async function updateEnterprise(id: number, updates: Partial<Enterprise>): Promise<{ enterprise: Enterprise }> {
+  return authRequest<{ enterprise: Enterprise }>(`/admin/enterprises/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  })
+}
+
+export async function getAdminUsers(params?: number | { enterpriseId?: number; scope?: 'unassigned' }): Promise<{ users: AdminUser[] }> {
+  const qs = new URLSearchParams()
+  if (typeof params === 'number') {
+    qs.set('enterprise_id', String(params))
+  } else if (params) {
+    if (params.enterpriseId) qs.set('enterprise_id', String(params.enterpriseId))
+    if (params.scope) qs.set('scope', params.scope)
+  }
+  const query = qs.toString()
+  return authRequest<{ users: AdminUser[] }>(`/admin/users${query ? `?${query}` : ''}`)
+}
+
+export async function updateAdminUser(userId: number, updates: Partial<AdminUser>): Promise<{ user: AdminUser }> {
+  return authRequest<{ user: AdminUser }>(`/admin/users/${userId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  })
+}
+
+export async function createAdminGrant(userId: number, enterpriseId: number, durationDays = 365): Promise<{ grant: Record<string, unknown> }> {
+  return authRequest<{ grant: Record<string, unknown> }>('/admin/grants', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, enterprise_id: enterpriseId, duration_days: durationDays }),
+  })
+}
+
+export async function getAdminQuotas(): Promise<{ quotas: QuotaInfo[] }> {
+  return authRequest<{ quotas: QuotaInfo[] }>('/admin/quotas')
+}

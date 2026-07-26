@@ -1,79 +1,27 @@
-# =============================================
-# Python
-# =============================================
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-
-# Virtual environments
-.venv/
-venv/
-env/
-ENV/
-
-# =============================================
-# Environment variables
-# =============================================
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.*.example
 
-# =============================================
-# IDE
-# =============================================
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# =============================================
-# Logs
-# =============================================
 *.log
-backend.log
+*.db
+*.db-*
+*.db.*
+*.sqlite
+*.sqlite*
+*.key
+*.pem
 
-# =============================================
-# Build / Runtime output
-# =============================================
-output/
-uploads/
-backend/output/
-backend/uploads/
-*.tmp
-*.cache
-
-# =============================================
-# Runtime data
-# =============================================
-history.json
-backend/task_store.db
-backend/task_store.db-shm
-backend/task_store.db-wal
-task_store.db
-task_store.db-shm
-task_store.db-wal
-logs/
-
-# =============================================
-# Node / Frontend
-# =============================================
+.venv/
 node_modules/
-dist/
-build/
+frontend-react/node_modules/
 
-# =============================================
-# Claude / Agent tools
-# =============================================
-.claude/worktrees/
-.superpowers/
+uploads/
+output/
+db_data/
+db_data.local/
+output.local/
+deploy/docker/packages/
 
-# =============================================
-# OS files
-# =============================================
-.DS_Store
-Thumbs.db
+__pycache__/
+*.pyc

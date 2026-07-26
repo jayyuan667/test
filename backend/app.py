@@ -17,12 +17,17 @@ import os
 import json
 import uuid
 
-# Fix stdout encoding for Chinese output
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+# Fix stdout encoding for Chinese output (only when running, not during tests)
+if sys.stdout.isatty():
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Load environment variables
 load_dotenv()
@@ -30,13 +35,22 @@ load_dotenv()
 # Configure logging
 import logging
 
+_log_handlers = [
+    logging.FileHandler("backend.log", encoding="utf-8"),
+    logging.StreamHandler(sys.stdout),
+]
+# 如果 launcher 通过环境变量指定了日志路径，也写一份到那里
+_extra_log = os.getenv("BACKEND_LOG_PATH")
+if _extra_log:
+    try:
+        _log_handlers.append(logging.FileHandler(_extra_log, encoding="utf-8"))
+    except OSError:
+        pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s: %(message)s",
-    handlers=[
-        logging.FileHandler("backend.log", encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ],
+    handlers=_log_handlers,
 )
 logger = logging.getLogger(__name__)
 
@@ -55,14 +69,70 @@ ensure_poppler_path()
 
 # Create Flask app
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+
+def _get_cors_origins() -> list[str]:
+    raw_origins = os.getenv("CORS_ORIGINS", "")
+    if raw_origins.strip():
+        return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return [
+        "http://localhost:3200",
+        "http://localhost:5190",
+        "http://127.0.0.1:3200",
+        "http://127.0.0.1:5190",
+    ]
+
+
+CORS(app, resources={r"/api/*": {
+    "origins": _get_cors_origins(),
+    "supports_credentials": True,
+}})
 
 
 @app.route("/api/startup_token")
 def startup_token_route():
     return jsonify({"token": STARTUP_TOKEN})
 
+
+# ============ React 前端路由 ============
+
+@app.route("/")
+def react_index():
+    """Serve React frontend index.html."""
+    frontend_dir = os.path.join(BASE_DIR, "frontend-react", "dist")
+    index_path = os.path.join(frontend_dir, "index.html")
+    if not os.path.exists(index_path):
+        return Response("React frontend not found. Run 'npm run build' in frontend-react/ first.", status=404, mimetype="text/plain")
+    return send_from_directory(frontend_dir, "index.html")
+
+
+@app.route("/assets/<path:filename>")
+def react_assets(filename):
+    """Serve React frontend static assets."""
+    assets_dir = os.path.join(BASE_DIR, "frontend-react", "dist", "assets")
+    return send_from_directory(assets_dir, filename)
+
+
+@app.route("/vite.svg")
+def react_vite_svg():
+    """Serve vite.svg if present."""
+    frontend_dir = os.path.join(BASE_DIR, "frontend-react", "dist")
+    return send_from_directory(frontend_dir, "vite.svg")
+
+
+@app.route("/dica-logo.png")
+@app.route("/favicon-32.png")
+@app.route("/favicon.png")
+@app.route("/apple-touch-icon.png")
+def react_public_asset():
+    """Serve Vite public assets copied to the dist root."""
+    frontend_dir = os.path.join(BASE_DIR, "frontend-react", "dist")
+    return send_from_directory(frontend_dir, request.path.lstrip("/"))
+
+
+# ============ H5 前端路由（兼容旧版） ============
 
 @app.route("/dev/demo-industrial-console")
 def dev_demo_industrial_console():
@@ -87,6 +157,13 @@ def dev_demo_industrial_console():
     html = html.replace(
         'href="css/industrial-console.css"',
         f'href="/dev/css/industrial-console.css?v={css_mtime}"',
+        1
+    )
+    ann_js_path = os.path.join(BASE_DIR, "updated_front", "js", "annotation-tool.js")
+    ann_js_mtime = int(os.path.getmtime(ann_js_path)) if os.path.exists(ann_js_path) else 0
+    html = html.replace(
+        'src="js/annotation-tool.js"',
+        f'src="/dev/js/annotation-tool.js?v={ann_js_mtime}"',
         1
     )
 
@@ -189,4 +266,4 @@ if __name__ == "__main__":
     print("=" * 50)
     debug_mode = os.getenv("FLASK_DEBUG", "1") != "0"
     app.config["TEMPLATES_AUTO_RELOAD"] = debug_mode
-    app.run(host="0.0.0.0", port=5000, debug=debug_mode, use_reloader=debug_mode, threaded=True)
+    app.run(host="0.0.0.0", port=5190, debug=debug_mode, use_reloader=debug_mode, threaded=True)

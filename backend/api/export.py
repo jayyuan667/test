@@ -2,6 +2,7 @@
 """Export endpoint for downloading task results as Excel or PDF."""
 
 import json
+import logging
 import os
 from io import BytesIO
 from typing import List, Dict, Any, Tuple
@@ -9,8 +10,11 @@ from typing import List, Dict, Any, Tuple
 from flask import Blueprint, jsonify, request, send_file
 
 from ..config import OUTPUT_FOLDER
+from ..auth_utils import login_required
+from ._utils import assert_task_access
 
 export_bp = Blueprint("export", __name__)
+logger = logging.getLogger(__name__)
 
 tasks = {}
 
@@ -20,9 +24,26 @@ PDF_HEADER_GAP = 18
 PDF_TABLE_ROW_GAP = 12
 PDF_FIRST_IMAGE_MAX_H = 720
 FONT_CANDIDATES = [
+    # Project-local fonts for isolated Linux worktrees.
+    os.path.join(os.getcwd(), "fonts", "STHeiti-Medium.ttc"),
+    os.path.join(os.getcwd(), "fonts", "NotoSansCJK-Regular.ttc"),
+    os.path.join(os.getcwd(), "fonts", "SourceHanSansCN-Regular.otf"),
+    # Windows
     r"C:\Windows\Fonts\msyh.ttc",
     r"C:\Windows\Fonts\msyhbd.ttc",
     r"C:\Windows\Fonts\simsun.ttc",
+    r"C:\Windows\Fonts\simhei.ttf",
+    # macOS
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+    "/System/Library/Fonts/STHeiti Light.ttc",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/Library/Fonts/Arial Unicode.ttf",
+    # Linux
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/source-han-sans/SourceHanSansCN-Regular.otf",
+    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
 ]
 
 
@@ -43,6 +64,14 @@ def _load_result_data(task_id: str) -> Dict[str, Any] | None:
     if os.path.exists(result_file):
         with open(result_file, "r", encoding="utf-8") as f:
             return json.load(f)
+
+    try:
+        from ..task_store import get_result as get_stored_result
+        stored = get_stored_result(task_id)
+        if stored:
+            return stored
+    except Exception:
+        logger.exception("Failed to load export result from task_store task_id=%s", task_id)
     return None
 
 
@@ -60,6 +89,14 @@ def _task_image_path(task_id: str) -> str:
         )
         if files:
             return os.path.join(output_dir, files[0])
+    pages_dir = os.path.join(output_dir, "pages")
+    if os.path.isdir(pages_dir):
+        for ext in (".png", ".jpg", ".jpeg", ".webp"):
+            files = sorted(
+                [n for n in os.listdir(pages_dir) if n.lower().endswith(ext)]
+            )
+            if files:
+                return os.path.join(pages_dir, files[0])
     creo_dir = os.path.join(output_dir, "creo_views")
     if os.path.isdir(creo_dir):
         for ext in (".jpg", ".jpeg", ".png", ".webp"):
@@ -137,12 +174,65 @@ def _normalize_rows(result_data: Dict[str, Any]) -> List[List[str]]:
         if isinstance(row, dict):
             normalized.append([
                 str(row.get("processNo") or row.get("stepNo") or row.get("code") or "").strip(),
-                str(row.get("trade") or row.get("workCenter") or "").strip(),
+                str(row.get("trade") or row.get("tradeType") or row.get("workCenter") or "").strip(),
                 str(row.get("stepContent") or row.get("content") or row.get("description") or "").strip(),
             ])
             continue
         normalized.append(["", "", str(row or "").strip()])
     return normalized
+
+
+def _normalize_export_rows(rows: List[Any], columns: List[str]) -> List[List[str]]:
+    normalized = []
+    for row in rows:
+        if isinstance(row, dict):
+            values = [
+                row.get("processNo") or row.get("stepNo") or row.get("code") or "",
+                row.get("trade") or row.get("tradeType") or row.get("workCenter") or "",
+                row.get("stepContent") or row.get("content") or row.get("description") or "",
+            ]
+        else:
+            values = list(row) if isinstance(row, (list, tuple)) else ["", "", row]
+        padded = [str(value or "").strip() for value in values] + [""] * len(columns)
+        normalized.append(padded[: len(columns)])
+    return normalized
+
+
+def _write_xlsx_workbook(tables: Dict[str, List[List[str]]]) -> BytesIO:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    columns = ["标签编码", "工种", "工序内容"]
+    wb = Workbook()
+    default_sheet = wb.active
+    wb.remove(default_sheet)
+
+    wrote_sheet = False
+    for sheet_name, rows in tables.items():
+        ws = wb.create_sheet(title=(sheet_name[:31] or "Process"))
+        wrote_sheet = True
+        ws.append(columns)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill("solid", fgColor="FFF7ED")
+            cell.alignment = Alignment(vertical="center")
+        for row in rows:
+            ws.append(row)
+        ws.column_dimensions["A"].width = 14
+        ws.column_dimensions["B"].width = 12
+        ws.column_dimensions["C"].width = 80
+        for row_cells in ws.iter_rows():
+            for cell in row_cells:
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    if not wrote_sheet:
+        ws = wb.create_sheet(title="Process")
+        ws.append(columns)
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
 
 
 def _excel_response(task_id: str, result_data: Dict[str, Any]):
@@ -154,20 +244,12 @@ def _excel_response(task_id: str, result_data: Dict[str, Any]):
         if not tables:
             return jsonify({"error": "No data"}), 404
         try:
-            import pandas as pd
-
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                for table_name, data in tables.items():
-                    if not data:
-                        continue
-                    normalized_data = []
-                    for row in data:
-                        normalized_row = list(row) + [""] * (len(columns) - len(row))
-                        normalized_data.append(normalized_row[: len(columns)])
-                    df = pd.DataFrame(normalized_data, columns=columns)
-                    df.to_excel(writer, sheet_name=table_name[:31] or "Process", index=False)
-            output.seek(0)
+            workbook_tables = {
+                table_name: _normalize_export_rows(data or [], columns)
+                for table_name, data in tables.items()
+                if data
+            }
+            output = _write_xlsx_workbook(workbook_tables)
             return send_file(
                 output,
                 mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -175,20 +257,17 @@ def _excel_response(task_id: str, result_data: Dict[str, Any]):
                 download_name=f"Process_{task_id[:8]}.xlsx",
             )
         except Exception as e:
+            logger.exception("XLSX export failed task_id=%s table_mode=true", task_id)
             return jsonify({"error": f"Export failed: {str(e)}"}), 500
 
     data = _normalize_rows(result_data)
     if not data:
+        logger.warning("XLSX export has no rows task_id=%s", task_id)
         return jsonify({"error": "No data"}), 404
 
     try:
-        import pandas as pd
-
-        output = BytesIO()
-        df = pd.DataFrame(data, columns=columns)
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, sheet_name="Process", index=False)
-        output.seek(0)
+        output = _write_xlsx_workbook({"Process": _normalize_export_rows(data, columns)})
+        logger.info("XLSX export ready task_id=%s rows=%d", task_id, len(data))
         return send_file(
             output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -196,16 +275,27 @@ def _excel_response(task_id: str, result_data: Dict[str, Any]):
             download_name=f"Process_{task_id[:8]}.xlsx",
         )
     except Exception as e:
+        logger.exception("XLSX export failed task_id=%s rows=%d", task_id, len(data))
         return jsonify({"error": f"Export failed: {str(e)}"}), 500
+
+
+def _resolve_cjk_font_path() -> str:
+    configured = os.getenv("EXPORT_CJK_FONT_PATH", "").strip()
+    if configured and os.path.exists(configured):
+        return configured
+
+    for path in FONT_CANDIDATES:
+        if os.path.exists(path):
+            return path
+
+    logger.warning("No CJK font candidate found for PDF export")
+    raise FileNotFoundError("未找到可用中文字体，无法导出 PDF。请配置 EXPORT_CJK_FONT_PATH。")
 
 
 def _load_font(size: int):
     from PIL import ImageFont
 
-    for path in FONT_CANDIDATES:
-        if os.path.exists(path):
-            return ImageFont.truetype(path, size=size)
-    return ImageFont.load_default()
+    return ImageFont.truetype(_resolve_cjk_font_path(), size=size)
 
 
 def _text_width(draw, text: str, font) -> int:
@@ -449,6 +539,7 @@ def _pdf_response(task_id: str, result_data: Dict[str, Any]):
         first, rest = pages[0], pages[1:]
         first.save(output, format="PDF", save_all=True, append_images=rest, resolution=150.0)
         output.seek(0)
+        logger.info("PDF export ready task_id=%s pages=%d font=%s", task_id, len(pages), _resolve_cjk_font_path())
         return send_file(
             output,
             mimetype="application/pdf",
@@ -456,11 +547,17 @@ def _pdf_response(task_id: str, result_data: Dict[str, Any]):
             download_name=f"Process_{task_id[:8]}.pdf",
         )
     except Exception as e:
+        logger.exception("PDF export failed task_id=%s", task_id)
         return jsonify({"error": f"Export failed: {str(e)}"}), 500
 
 
-@export_bp.route("/export/<task_id>", methods=["GET"])
+@export_bp.route("/export/<task_id>", methods=["GET", "POST"])
+@login_required
 def export_result(task_id):
+    ok, err = assert_task_access(task_id)
+    if not ok:
+        return err
+
     try:
         result_data = _load_result_data(task_id)
     except Exception as e:
@@ -469,7 +566,16 @@ def export_result(task_id):
     if not result_data:
         return jsonify({"error": "Task not found"}), 404
 
+    # POST body may carry user-edited rows — override process_flow with them
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        rows = body.get("rows")
+        if rows and isinstance(rows, list):
+            result_data = dict(result_data)
+            result_data["process_flow"] = {"data": rows}
+
     export_format = (request.args.get("format") or "xlsx").strip().lower()
+    logger.info("Export request task_id=%s format=%s method=%s", task_id, export_format, request.method)
     if export_format == "pdf":
         return _pdf_response(task_id, result_data)
     if export_format == "xlsx":

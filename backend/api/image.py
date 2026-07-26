@@ -5,11 +5,14 @@ import os
 from flask import Blueprint, send_file
 
 from ..config import OUTPUT_FOLDER
+from ..auth_utils import login_required
+from ._utils import assert_task_access
 
 image_bp = Blueprint("image", __name__)
 
 
 @image_bp.route("/image/<task_id>/<filename>", methods=["GET"])
+@login_required
 def get_image(task_id, filename):
     """Serve a PNG image file for preview.
 
@@ -20,6 +23,10 @@ def get_image(task_id, filename):
     Returns:
         Image file or 404 error
     """
+    ok, err = assert_task_access(task_id)
+    if not ok:
+        return err
+
     image_path = os.path.join(OUTPUT_FOLDER, task_id, filename)
     if os.path.exists(image_path):
         return send_file(image_path, mimetype="image/png")

@@ -1,0 +1,51 @@
+services:
+  app:
+    image: smart-process/app:203-20260721
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.app
+    restart: unless-stopped
+    env_file:
+      - ./.env.docker
+    environment:
+      FLASK_DEBUG: "0"
+      POPPLER_PATH: /usr/bin
+      BACKEND_LOG_PATH: /app/logs/backend.log
+      YOLO_SERVICE_URL: http://yolo-gpu:8010
+      ZIP_IMPORT_GLOBAL_MAX_RUNNING: "2"
+      ZIP_IMPORT_MAX_WORKERS: "2"
+      ZIP_IMPORT_PARSE_WORKERS: "2"
+      PROCESS_SPEC_MAX_IMAGE_PIXELS: "34000000"
+      PROCESS_SPEC_MAX_IMAGE_BYTES: "9500000"
+    ports:
+      - "127.0.0.1:5191:5191"
+    volumes:
+      - /opt/smart-process-system/shared/uploads:/app/uploads
+      - /opt/smart-process-system/shared/output:/app/output
+      - /opt/smart-process-system/shared/db_data:/app/db_data
+      - /opt/smart-process-system/shared/logs:/app/logs
+    depends_on:
+      yolo-gpu:
+        condition: service_healthy
+
+  yolo-gpu:
+    image: smart-process/yolo-gpu:203-20260721
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.yolo
+    restart: unless-stopped
+    env_file:
+      - ./.env.docker
+    environment:
+      YOLO_MODEL_DIR: /app/gpu_service/models_binary
+      YOLO_DEVICE: cuda:0
+      YOLO_MAX_IMAGE_MB: "20"
+    ports:
+      - "127.0.0.1:8010:8010"
+    gpus: all
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
